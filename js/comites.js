@@ -23,6 +23,18 @@
   const fechaLarga = (s) => { if (!s) return ''; const d = new Date(String(s).slice(0, 10) + 'T12:00:00'); return `${d.getDate()} de ${CAT.MESES[d.getMonth()].toLowerCase()} de ${d.getFullYear()}`; };
 
   // ------------------------------------------------------------------ lista del comité
+  // Dónde se guarda el PDF de cada acta: PROGRAMA DE TECNOVIGILANCIA › (subcarpeta de comités existente, ej. "3. COMITES")
+  const destinoActas = async (ent) => {
+    const docs = await S.list('documentos', { entidad_id: ent.id });
+    const sub = docs.filter((d) => d.carpeta === 'tecnovigilancia' && /comit/i.test(d.subcarpeta || '')).map((d) => d.subcarpeta)[0];
+    return { carpeta: 'tecnovigilancia', subcarpeta: sub || '3. COMITES' };
+  };
+  // Carpeta PROGRAMA DE TECNOVIGILANCIA: eventos adversos + actas de comité FAR-013
+  A.G.tecnovigilancia = async (el, ctx) => {
+    el.innerHTML = '<div data-tv-ev></div><div data-tv-com></div>';
+    await A.G.eventos(el.querySelector('[data-tv-ev]'), ctx);
+    await A.G.comites(el.querySelector('[data-tv-com]'), ctx);
+  };
   A.G.comites = async (el, { ent }) => {
     let lista;
     try { lista = await S.list('actas_comite', { entidad_id: ent.id }); } catch (er) {
@@ -30,8 +42,8 @@
       return;
     }
     const actas = lista.sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.numero || '').localeCompare(String(a.numero || '')));
-    el.innerHTML = `<section class="panel"><header><div><h2>Actas de comité y reuniones</h2><span class="muted" style="font-size:.85rem">Formato acta de reunión ${h(fmtFAR().codigo)} · comité de tecnovigilancia, reuniones y capacitaciones. Cada acta genera su PDF en esta carpeta.</span></div>
-        ${esProp() ? `<div class="actions"><button class="btn pri" data-act="nuevaActa">${I.mas} Nueva acta de comité</button></div>` : ''}</header>
+    el.innerHTML = `<section class="panel"><header><div><h2>Comité de tecnovigilancia · Actas ${h(fmtFAR().codigo)}</h2><span class="muted" style="font-size:.85rem">Formato acta de reunión ${h(fmtFAR().codigo)} para comités, reuniones y capacitaciones. Cada acta genera su PDF en la subcarpeta de comités de esta carpeta.</span></div>
+        ${esProp() ? `<div class="actions"><button class="btn pri" data-act="nuevaActa">${I.mas} Nueva acta de comité (${h(fmtFAR().codigo)})</button></div>` : ''}</header>
       ${actas.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Acta No.</th><th>Fecha</th><th>Tipo</th><th>Tema</th><th>Compromisos</th><th>Firmas</th><th>Próxima reunión</th><th></th></tr></thead><tbody>
         ${actas.map((a) => { const d = a.datos || {}; const as = (d.asistentes || []).filter((x) => x.nombre); const fir = as.filter((x) => x.firma).length; return `<tr class="clic" data-act="verActa" data-id="${a.id}">
           <td class="mono">${h(a.numero || '')}</td><td class="num">${UI.fecha(a.fecha)}</td><td>${h(d.tipo || '')}</td><td>${h(a.tema || '')}</td>
@@ -209,7 +221,8 @@
       // PDF en la carpeta COMITÉS (reemplaza el anterior de esta acta)
       if (g.documento_id) { const old = await S.get('documentos', g.documento_id); if (old) { try { await S.removeFile(old.archivo); } catch {} await S.remove('documentos', old.id); } }
       const nombre = `Acta ${v.numero.trim()} - ${v.tema || 'Comité'} - ${UI.fecha(v.fecha).replace(/\//g, '-')}.pdf`;
-      const doc = await A.guardarPDF({ blob, nombre, entidad_id: ent.id, equipo_id: null, carpeta: 'comites', subcarpeta: `${new Date(v.fecha + 'T12:00:00').getFullYear()}-ACTAS DE COMITÉ` });
+      const dest = await destinoActas(ent);
+      const doc = await A.guardarPDF({ blob, nombre: `${fmtFAR().codigo} ${nombre}`, entidad_id: ent.id, equipo_id: null, carpeta: dest.carpeta, subcarpeta: dest.subcarpeta });
       await S.update('actas_comite', g.id, { documento_id: doc?.id || null, archivo: doc?.archivo || null });
       toast(`Acta ${v.numero} guardada`);
       UI.verPDF({ titulo: `Acta ${v.numero} · ${v.tema}`, blob, nombre });
