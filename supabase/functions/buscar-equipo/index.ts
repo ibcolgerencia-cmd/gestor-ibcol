@@ -30,47 +30,81 @@ const encodeBase64 = (b: Uint8Array) => { let s = ''; for (let i = 0; i < b.leng
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 // ------------------------------------------------------------------ Gemini con Google Search
-type Resp = { texto: string; modelo: string; fuentes: { titulo: string; url: string }[]; consultas: string[]; sugerencias: string };
+type Resp = { texto: string; modelo: string; fuentes: { titulo: string; url: string }[]; consultas: string[]; sugerencias: string; sinBusqueda?: boolean };
+const GL = 'https://generativelanguage.googleapis.com/v1beta';
+// Modelos "flash" que la clave realmente tiene (como en asistente-ia): los configurados primero
+let cacheModelos: string[] | null = null;
+async function modelosDisponibles(key: string): Promise<string[]> {
+  if (cacheModelos) return cacheModelos;
+  let lista: string[] = [];
+  try {
+    const r = await fetch(`${GL}/models?pageSize=200`, { headers: { 'x-goog-api-key': key }, signal: AbortSignal.timeout(15000) });
+    if (r.ok) {
+      const j = await r.json();
+      lista = (j.models || []).filter((m: any) => (m.supportedGenerationMethods || []).includes('generateContent'))
+        .map((m: any) => String(m.name).replace('models/', ''))
+        .filter((n: string) => /gemini/.test(n) && /flash/.test(n) && !/image|tts|audio|live|embedding|thinking-exp|lite-preview/.test(n));
+      lista.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    } else console.error('ListModels', r.status, (await r.text()).slice(0, 200));
+  } catch (e) { console.error('ListModels', (e as Error).message); }
+  const conf = MODELOS.filter((m) => !lista.length || lista.includes(m));
+  cacheModelos = [...new Set([...conf, ...lista])].slice(0, 6);
+  if (!cacheModelos.length) cacheModelos = MODELOS;
+  console.log('Modelos a probar:', cacheModelos.join(', '));
+  return cacheModelos;
+}
+
+async function llamarModelo(key: string, modelo: string, prompt: string, buscar: boolean) {
+  return await fetch(`${GL}/models/${modelo}:generateContent`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      ...(buscar ? { tools: [{ google_search: {} }] } : {}),
+      generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+    }),
+    signal: AbortSignal.timeout(100000),
+  });
+}
+
 async function gemini(prompt: string, buscar = true): Promise<Resp> {
   const key = Deno.env.get('GEMINI_API_KEY');
   if (!key) throw new Error('Falta el secreto GEMINI_API_KEY en Supabase (Edge Functions > Secrets).');
-  let ultimo = '';
-  for (const modelo of MODELOS) {
-    for (let intento = 0; intento < 2; intento++) {
+  const modelos = await modelosDisponibles(key);
+  const errores: string[] = [];
+  const t0 = Date.now();
+  for (const conBusqueda of buscar ? [true, false] : [false]) {
+    for (const modelo of modelos) {
+      if (Date.now() - t0 > 120000) break; // no pasar el límite de tiempo de la función
       let r: Response;
-      try {
-        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
-          method: 'POST',
-          headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            ...(buscar ? { tools: [{ google_search: {} }] } : {}),
-            generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
-          }),
-          signal: AbortSignal.timeout(110000),
-        });
-      } catch (e) { ultimo = `${modelo}: ${(e as Error).message}`; continue; }
+      try { r = await llamarModelo(key, modelo, prompt, conBusqueda); }
+      catch (e) { errores.push(`${modelo}: ${(e as Error).message}`); console.error('Gemini', errores.at(-1)); continue; }
       if (!r.ok) {
-        ultimo = `${modelo}: ${r.status} ${(await r.text()).slice(0, 300)}`;
-        console.error('Gemini', ultimo);
-        if (r.status === 503 || r.status === 500) { await new Promise((ok) => setTimeout(ok, 3000)); continue; }
-        break; // 404 modelo inexistente, 400 sin búsqueda, 429 cuota: probar el siguiente modelo
+        const cuerpo = (await r.text()).slice(0, 400);
+        let msg = cuerpo; try { msg = JSON.parse(cuerpo).error?.message || cuerpo; } catch { /* texto */ }
+        errores.push(`${modelo}${conBusqueda ? ' + Google' : ''}: ${r.status} ${msg}`);
+        console.error('Gemini', errores.at(-1));
+        continue;
       }
       const j = await r.json();
       const c = j.candidates?.[0];
       const texto = (c?.content?.parts || []).filter((p: any) => !p.thought).map((p: any) => p.text || '').join('').trim();
-      if (!texto) { ultimo = `${modelo}: respuesta vacía (${c?.finishReason || 'sin candidatos'})`; break; }
+      if (!texto) { errores.push(`${modelo}: respuesta vacía (${c?.finishReason || j.promptFeedback?.blockReason || 'sin candidatos'})`); console.error('Gemini', errores.at(-1)); continue; }
       const gm = c?.groundingMetadata || {};
       const vistos = new Set<string>();
       const fuentes = (gm.groundingChunks || []).map((x: any) => ({ titulo: x.web?.title || x.web?.domain || 'Fuente', url: x.web?.uri || '' }))
         .filter((x: any) => x.url && !vistos.has(x.url) && vistos.add(x.url));
-      return { texto, modelo, fuentes, consultas: gm.webSearchQueries || [], sugerencias: gm.searchEntryPoint?.renderedContent || '' };
+      if (buscar && !conBusqueda) console.error('Respondió SIN búsqueda de Google. Errores con búsqueda:', errores.join(' | '));
+      return { texto, modelo, fuentes, consultas: gm.webSearchQueries || [], sugerencias: gm.searchEntryPoint?.renderedContent || '', sinBusqueda: buscar && !conBusqueda };
     }
+    // con búsqueda solo se intenta sin ella si el problema no es de cuota general
+    if (errores.every((e) => /429|RESOURCE_EXHAUSTED/.test(e))) break;
   }
+  const ultimo = errores.join(' | ');
   console.error('Sin respuesta de Gemini:', ultimo);
-  if (/429|RESOURCE_EXHAUSTED|quota/i.test(ultimo)) throw new Error('Se agotó la cuota gratuita de Google Gemini por hoy o por minuto. Espere un momento e intente de nuevo.');
-  if (/503|overload|UNAVAILABLE/i.test(ultimo)) throw new Error('Google Gemini está saturado en este momento. Intente de nuevo en unos minutos.');
-  throw new Error('La IA de Google no respondió: ' + ultimo);
+  if (errores.length && errores.every((e) => /429|RESOURCE_EXHAUSTED|quota/i.test(e))) throw new Error('Se agotó la cuota gratuita de Google Gemini por hoy o por minuto. Espere un momento e intente de nuevo.');
+  if (errores.length && errores.every((e) => /503|overload|UNAVAILABLE/i.test(e))) throw new Error('Google Gemini está saturado en este momento. Intente de nuevo en unos minutos.');
+  throw new Error('La IA de Google no respondió. Detalle: ' + (errores.at(-1) || 'sin modelos disponibles').slice(0, 300));
 }
 
 function extraerJSON(t: string) {
@@ -194,13 +228,13 @@ Deno.serve(async (req) => {
       const r = await gemini(promptInvestigar(b.equipo || {}, b.que || []));
       const datos = extraerJSON(r.texto);
       if (!datos) return json({ error: 'La IA no devolvió los datos en el formato esperado. Intente de nuevo.', texto: r.texto.slice(0, 2000) }, 502);
-      return json({ datos, fuentes: r.fuentes, consultas: r.consultas, sugerencias: r.sugerencias, modelo: r.modelo });
+      return json({ datos, fuentes: r.fuentes, consultas: r.consultas, sugerencias: r.sugerencias, modelo: r.modelo, sin_busqueda: !!r.sinBusqueda });
     }
     if (b.accion === 'mantenimiento') {
       const r = await gemini(promptMantenimiento(b), b.google !== false);
       const datos = extraerJSON(r.texto);
       if (!datos) return json({ error: 'La IA no devolvió los datos en el formato esperado. Intente de nuevo.' }, 502);
-      return json({ datos, fuentes: r.fuentes, consultas: r.consultas, sugerencias: r.sugerencias, modelo: r.modelo });
+      return json({ datos, fuentes: r.fuentes, consultas: r.consultas, sugerencias: r.sugerencias, modelo: r.modelo, sin_busqueda: !!r.sinBusqueda });
     }
     return json({ error: 'Acción no reconocida' }, 400);
   } catch (e) {
