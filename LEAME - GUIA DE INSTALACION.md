@@ -1,6 +1,6 @@
 # Gestor Biomédico IBCOL — Guía de instalación gratuita en la nube
 
-> **Estado actual (28/10/2026, versión 28):** la app se publica en **GitHub Pages: https://ibcolgerencia-cmd.github.io/gestor-ibcol/** (repositorio `ibcolgerencia-cmd/gestor-ibcol`, cuenta GitHub de IBCOL). Para actualizar: en el repositorio → carpeta correspondiente → *Add file → Upload files* → *Commit changes*; GitHub publica solo en 1-2 minutos y sin límite de publicaciones. Al cambiar archivos de `js/` o `css/`, subir también `index.html` con el número `?v=` aumentado (ej. v=21 → v=22) para que los navegadores tomen la versión nueva de inmediato. Base de datos: Supabase `gestor-ibcol`. La dirección anterior de Netlify (gestor-ibcol.netlify.app, cuenta de Diana Pistala) queda con la versión del 27/10 a las 7:28 p. m. y ya no se actualiza: el plan gratis agotó sus créditos.
+> **Estado actual (28/10/2026, versión 29):** la app se publica en **GitHub Pages: https://ibcolgerencia-cmd.github.io/gestor-ibcol/** (repositorio `ibcolgerencia-cmd/gestor-ibcol`, cuenta GitHub de IBCOL). Para actualizar: en el repositorio → carpeta correspondiente → *Add file → Upload files* → *Commit changes*; GitHub publica solo en 1-2 minutos y sin límite de publicaciones. Al cambiar archivos de `js/` o `css/`, subir también `index.html` con el número `?v=` aumentado (ej. v=21 → v=22) para que los navegadores tomen la versión nueva de inmediato. Base de datos: Supabase `gestor-ibcol`. La dirección anterior de Netlify (gestor-ibcol.netlify.app, cuenta de Diana Pistala) queda con la versión del 27/10 a las 7:28 p. m. y ya no se actualiza: el plan gratis agotó sus créditos.
 
 **IBCOL Ingeniería Biomédica de Colombia** · Carrera 39 No. 6B-22 B/ Colombia II Etapa · Popayán - Cauca · Contacto: 3146872775 · ibcolgerencia@gmail.com
 
@@ -86,6 +86,17 @@ Para actualizar la app más adelante, vuelva a arrastrar la carpeta en *Deploys*
 Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola con otros modelos Gemini disponibles.
 
 **Hoja de vida: RS / PC / NA / NR y código ECRI.** En *Editar hoja de vida → Identificación* se marca a mano RS, PC, NA o NR (sale con X en el formato). La hoja de vida tiene la pestaña **Código ECRI**: muestra el código asignado, sugerencias según el nombre del equipo y un buscador en todo el listado; *Asignar* lo pone en la casilla 1.2 (luego *Guardar hoja de vida*). El campo *1.2 Código ECRI (UMDNS)* de la pestaña Identificación también tiene *Buscar en listado ECRI* (4.907 códigos del listado ECRI español-inglés, búsqueda por nombre o código) y sugerencias según el nombre del equipo.
+
+## Versión 29 (28/10/2026): Lista de chequeo diaria de limpieza y desinfección (FMB-006 v02)
+
+En cada entidad, carpeta **7. LISTA CHEQUEO LIMPIEZA Y DESINFECCIÓN → Lista de chequeo diaria**:
+- Se elige **servicio**, **año** y **mes**; se escribe el **responsable** y su **cargo**. Los **equipos salen del inventario** del servicio y cada día del mes es una columna.
+- Se **toca la casilla del día para marcar X** (se guarda sola; tocar de nuevo la quita). Botón **“Marcar X hoy en todos los equipos”**. La tabla se abre en el día de hoy.
+- Sábados y domingos en gris y **festivos de Colombia** en naranja (no marcar si no son laborales).
+- **Procedimiento, agente recomendado y frecuencia** (diario, después de cada paciente, cada 8 días…) los define IBCOL; la entidad los ve pero no los cambia. Cada mes nuevo copia equipos, textos y responsable del mes anterior.
+- **PDF FMB-006** con el diseño del formato; IBCOL puede *Guardar PDF en la carpeta* (subcarpeta del año).
+- **La entidad SÍ puede diligenciarla** con su usuario: es la única tabla que el cliente puede escribir, y solo las listas de su propia entidad. Cada marca queda en la auditoría.
+- Base de datos: tabla `listas_limpieza` (script `supabase/limpieza.sql`, ya ejecutado el 28/10/2026).
 
 ## Versión 28 (28/10/2026): FMB-004 en el asistente de IA · formatos Excel solo para IBCOL
 
