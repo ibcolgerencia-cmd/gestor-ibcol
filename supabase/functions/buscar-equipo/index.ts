@@ -52,6 +52,7 @@ async function gemini(prompt: string, buscar = true): Promise<Resp> {
       } catch (e) { ultimo = `${modelo}: ${(e as Error).message}`; continue; }
       if (!r.ok) {
         ultimo = `${modelo}: ${r.status} ${(await r.text()).slice(0, 300)}`;
+        console.error('Gemini', ultimo);
         if (r.status === 503 || r.status === 500) { await new Promise((ok) => setTimeout(ok, 3000)); continue; }
         break; // 404 modelo inexistente, 400 sin búsqueda, 429 cuota: probar el siguiente modelo
       }
@@ -66,6 +67,7 @@ async function gemini(prompt: string, buscar = true): Promise<Resp> {
       return { texto, modelo, fuentes, consultas: gm.webSearchQueries || [], sugerencias: gm.searchEntryPoint?.renderedContent || '' };
     }
   }
+  console.error('Sin respuesta de Gemini:', ultimo);
   if (/429|RESOURCE_EXHAUSTED|quota/i.test(ultimo)) throw new Error('Se agotó la cuota gratuita de Google Gemini por hoy o por minuto. Espere un momento e intente de nuevo.');
   if (/503|overload|UNAVAILABLE/i.test(ultimo)) throw new Error('Google Gemini está saturado en este momento. Intente de nuevo en unos minutos.');
   throw new Error('La IA de Google no respondió: ' + ultimo);
@@ -202,6 +204,7 @@ Deno.serve(async (req) => {
     }
     return json({ error: 'Acción no reconocida' }, 400);
   } catch (e) {
+    console.error('buscar-equipo', (e as Error).message);
     return json({ error: (e as Error).message || 'Error en la búsqueda' }, 500);
   }
 });
