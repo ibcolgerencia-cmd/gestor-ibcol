@@ -268,3 +268,46 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .sub.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .sub.on span { color: inherit; opacity: .8; }
 .sub:focus-visible { outline: 2px solid var(--accent-2); }
+
+/* ---------- v21: tablas editables, NO REGISTRA, buscador de mes, documentos de la HV ---------- */
+.tbl-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tbl-tools .sp { flex: 1; }
+.tbl-tools input[type=search] { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 7px 10px; min-width: 220px; flex: 0 1 300px; font: inherit; }
+.tbl-tools .field { margin: 0; }
+.edit-hint { margin: 0; background: var(--accent-soft); border-radius: 6px; padding: 8px 12px; font-size: .86rem; }
+.pill.nr { background: var(--warn-soft); color: var(--warn); border-color: transparent; font-size: .7rem; }
+.cel { border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); padding: 4px 6px; width: 100%; min-width: 70px; font: inherit; font-size: .84rem; }
+.cel:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
+.cel.saving { opacity: .55; } .cel.ok { border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok-soft); }
+.cel2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; min-width: 200px; }
+.tbl-eq td { padding: 7px 10px; }
+.crono.editando td { white-space: normal; }
+.crono th.mes-sel { background: var(--accent); color: var(--accent-ink); }
+.crono td.mes-sel:not(.P):not(.E):not(.N) { background: var(--accent-soft); }
+.crono td.w.mes-sel { box-shadow: inset 0 0 0 1px var(--accent); }
+.mes-res { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; font-size: .9rem; }
+.mes-res .sp { flex: 1; }
+.mes-res select { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 4px 6px; font: inherit; }
+.mes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+.mes-chk { display: grid; gap: 1px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; cursor: pointer; position: relative; }
+.mes-chk input { position: absolute; opacity: 0; pointer-events: none; }
+.mes-chk.on { border-color: var(--accent); background: var(--accent-soft); }
+.mes-chk small { color: var(--muted); font-size: .72rem; min-height: 1em; }
+.mes-chk:focus-within { outline: 2px solid var(--accent-2); }
+.med-prev { margin-top: 10px; display: grid; gap: 4px; }
+.med-prev [data-med-prev] { border: 1px dashed var(--line); border-radius: 6px; padding: 8px 10px; font: .82rem var(--f-mono); white-space: pre-wrap; background: var(--surface-2); }
+.hvd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.hvd-card { border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: grid; gap: 8px; align-content: start; background: var(--surface); min-width: 0; }
+.hvd-card.wide { grid-column: 1 / -1; }
+.hvd-card > header { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.hvd-card h4 { font-size: 1.05rem; }
+.hvd-card header .muted { font-size: .8rem; display: block; }
+.hvd-doc { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: 8px; min-width: 0; flex-wrap: wrap; }
+.hvd-doc .nm { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88rem; }
+.hvd-doc .ext { flex: none; font: 600 .62rem var(--f-mono); background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 3px 5px; }
+.hvd-vacio { color: var(--muted); font-size: .84rem; border-top: 1px dashed var(--line); padding-top: 8px; }
+.hvd-man { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.hvd-slot { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; display: grid; gap: 6px; align-content: start; background: var(--surface-2); min-width: 0; }
+.hvd-slot-h { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } .hvd-slot-h b { flex: 1; }
+.hvd-wrap { display: grid; gap: 12px; }
+@media (max-width: 640px) { .tbl-tools input[type=search] { flex: 1 1 100%; min-width: 0; } .cel2 { grid-template-columns: 1fr; min-width: 140px; } }
