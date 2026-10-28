@@ -387,7 +387,7 @@ window.APP = (() => {
       ${migas([...A.rutaEnt(ent), ['3. Información del equipo', 'areas', { id: ent.id }], `${c ? c._n + '. ' + c.nombre.toUpperCase() + ' / ' : ''}${eq.nombre.toUpperCase()}`])}
       <div class="page-head"><div><span class="eyebrow">${h(c?.nombre || 'Sin área')} · ${h(eq.ubicacion || '')}</span><h1>${h(eq.nombre)} ${A.riesgo(eq.clase_riesgo)}</h1>
         <span class="muted"><span class="mono">${h(eq.codigo_inv)}</span> · ${h([eq.marca, eq.modelo].filter(Boolean).join(' · '))} · S/N <span class="mono">${h(eq.serie || '—')}</span></span></div>
-        <div class="actions">${A.estadoPill(eq.estado)}${esProp() ? `<button class="btn" data-act="fotoEq">${I.subir} Imagen del equipo</button>` : ''}<button class="btn" data-act="pdfHV">${I.pdf} Hoja de vida PDF</button>${esProp() ? `<button class="btn pri" data-act="editHV">${I.edit} Editar hoja de vida</button>` : ''}</div></div>
+        <div class="actions">${A.estadoPill(eq.estado)}${esProp() ? `<button class="btn" data-act="fotoEq">${I.subir} Imagen del equipo</button>` : ''}<button class="btn" data-act="pdfHV">${I.pdf} Hoja de vida PDF</button>${esProp() ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button><button class="btn pri" data-act="editHV">${I.edit} Editar hoja de vida</button>` : ''}</div></div>
       <section class="panel"><div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
         <div style="flex:0 0 150px;height:150px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff${esProp() ? ';cursor:pointer' : ''}" ${esProp() ? 'data-act="fotoEq" title="Cambiar imagen del equipo"' : ''}>
           ${eq.hv?.foto ? `<img src="${eq.hv.foto}" alt="Imagen del equipo" style="max-width:100%;max-height:100%;object-fit:contain">` : '<span class="muted" style="font-size:.8rem;text-align:center;padding:8px">IMAGEN DEL EQUIPO<br>(sin cargar)</span>'}</div>
@@ -407,7 +407,7 @@ window.APP = (() => {
       </div></section>
       ${esProp() ? `<section class="panel"><header><h3>Acciones del equipo</h3></header><div class="actions">
         <button class="btn" data-act="nuevoMto" data-t="preventivo">${I.mas} Mantenimiento preventivo</button><button class="btn" data-act="nuevoMto" data-t="correctivo">${I.mas} Mantenimiento correctivo</button>
-        <button class="btn" data-act="nuevoMto" data-t="metrologia">${I.mas} Metrología</button><button class="btn" data-act="ia">${I.ia} Redactar con IA</button><button class="btn" data-act="estado">${I.on} Cambiar estado</button><button class="btn" data-act="importar">${I.subir} Importar carpeta del equipo</button>
+        <button class="btn" data-act="nuevoMto" data-t="metrologia">${I.mas} Metrología</button><button class="btn" data-act="ia">${I.ia} Redactar con IA</button><button class="btn" data-act="google">${I.ia} Buscar con Google: ficha, guía, registro, manuales</button><button class="btn" data-act="estado">${I.on} Cambiar estado</button><button class="btn" data-act="importar">${I.subir} Importar carpeta del equipo</button>
         <button class="btn danger" data-act="borrarEq">${I.del} Eliminar equipo</button></div></section>` : ''}`;
     A.acts({
       carpeta: (d) => go('carpeta', { ent: eq.entidad_id, eq: id, k: d.k }),
@@ -416,6 +416,7 @@ window.APP = (() => {
       editHV: () => A.formHojaVida(eq, cons),
       importar: () => A.importarCarpeta({ ent, eq }),
       ia: () => A.asistenteIA({ ent, eq }),
+      google: () => A.buscarGoogleEquipo(eq, ent),
       nuevoMto: (d) => A.formMto({ eq, ent, cons: c, tipo: d.t }),
       estado: () => modal({ titulo: 'Cambiar estado del equipo', size: 'sm', cuerpo: `<div class="form">${f.sel('estado', 'Estado operativo', CAT.ESTADOS, eq.estado)}</div>`, acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { await S.update('equipos', id, leer(m.body)); toast('Estado actualizado'); A.recargar(); } }] }),
       borrarEq: async () => {
@@ -455,12 +456,12 @@ window.APP = (() => {
     const def = (eq ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD).find((c) => c.k === k);
     const ruta = [...A.rutaEnt(ent), ...(eq ? [['3. Información del equipo', 'areas', { id: ent.id }], [eq.nombre.toUpperCase(), 'equipo', { id: eq.id }]] : []), def.n];
     content().innerHTML = `${migas(ruta)}
-      <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : 'Carpeta de la entidad'}</span><h1>${h(def.n)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions"><button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
+      <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : 'Carpeta de la entidad'}</span><h1>${h(def.n)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
       ${k === 'inventarios' ? '<section class="panel" id="archivos"></section>' : ''}
       ${def.gen ? '<div id="gen" style="display:grid;gap:18px"></div>' : ''}
       ${k === 'inventarios' ? '' : '<section class="panel" id="archivos"></section>'}`;
     const ctx = { ent, eq, k, def };
-    A.acts({ ia: () => A.asistenteIA({ ent, eq, carpeta: k }) });
+    A.acts({ ia: () => A.asistenteIA({ ent, eq, carpeta: k }), google: () => A.buscarGoogleEquipo(eq, ent) });
     if (def.gen) {
       const [tipo, sub] = def.gen.split(':');
       await A.G[tipo](document.getElementById('gen'), ctx, sub);

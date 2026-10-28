@@ -91,6 +91,7 @@
       return usar.map((x) => `[pág. ${x.p}] ${x.t}`).join('\n').slice(0, max);
     } catch (e) { return `(${d.nombre}: no se pudo abrir)`; }
   }
+  A.textoDocIA = textoDoc;
   const GRUPOS = [
     ['manual', 'Manuales', (d) => d.carpeta === 'manual' && !/FICHA/.test(nrm(d.nombre))],
     ['ficha', 'Fichas técnicas', (d) => d.carpeta === 'manual' && /FICHA/.test(nrm(d.nombre))],
@@ -100,7 +101,7 @@
 
   // ------------------------------------------------------------ hoja de vida: campos que la IA puede llenar
   const LISTAS = { fuente: ['Electricidad', 'Batería', 'Aceite', 'Agua', 'Aire', 'Gas', 'Vapor', 'Oxígeno', 'Otro'], tecnologia: ['Eléctrico', 'Electrónico', 'Electromecánico', 'Mecánico', 'Hidráulico', 'Neumático', 'Acústico', 'Vapor', 'Solar'],
-    clasif_biomedica: ['Diagnóstico', 'Prevención', 'Rehabilitación', 'Tratamiento y mantenimiento de la vida', 'Análisis de laboratorio y apoyo'], manuales: ['Operación', 'Mantenimiento', 'Partes', 'Despiece'], planos: ['Electrónico', 'Eléctrico', 'Mecánico', 'Neumático'] };
+    clasif_biomedica: ['Diagnóstico', 'Prevención', 'Rehabilitación', 'Tratamiento y mantenimiento de la vida', 'Análisis de laboratorio y apoyo'], manuales: ['Operación', 'Mantenimiento', 'Guía rápida', 'Ficha técnica'], planos: ['Electrónico', 'Eléctrico', 'Mecánico', 'Neumático'] };
   const CAMPOS_HV = [
     ['fabricante', '3.3 Fabricante', 'eq'], ['registro_sanitario', '1.1 Registro sanitario', 'eq'], ['fecha_venc_rs', 'Vencimiento del registro (AAAA-MM-DD)', 'eq'], ['clase_riesgo', '6.4 Clasificación de riesgo (I, IIa, IIb, III)', 'eq'],
     ['ecri', '1.2 Código ECRI (del listado oficial)', 'hv', 'local'], ['tipo_registro', 'Tipo de registro (RS, PC, NA, NR)', 'hv'], ['funcion', '2.1 Función del equipo', 'hv'], ['movil', '2.9/2.10 Móvil o Fijo', 'hv'],

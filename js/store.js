@@ -87,6 +87,17 @@ window.Store = (() => {
         if (data?.error) throw new Error(data.error);
         return data.texto || '';
       },
+      async buscar(body) {
+        const { data, error } = await sb.functions.invoke('buscar-equipo', { body });
+        if (error) {
+          let msg = error.message || 'Error en la búsqueda';
+          try { const j = await error.context?.json?.(); if (j?.error) msg = j.error; } catch {}
+          if (/Failed to send|not found|404/i.test(msg)) msg = 'La búsqueda con Google aún no está instalada en Supabase (función "buscar-equipo").';
+          throw new Error(msg);
+        }
+        if (data?.error) throw new Error(data.error);
+        return data;
+      },
       async cambiarMiClave(clave) { chk(await sb.auth.updateUser({ password: clave })); },
     };
   }
@@ -245,6 +256,7 @@ window.Store = (() => {
       },
       async rpc(fn) { throw new Error(`Función ${fn} no disponible en modo demostración`); },
       async ia() { throw new Error('El asistente de IA funciona solo con la nube conectada (no en modo demostración).'); },
+      async buscar() { throw new Error('La búsqueda con Google funciona solo con la nube conectada (no en modo demostración).'); },
       reiniciarDemo() { try { localStorage.removeItem(LS); sessionStorage.removeItem(SS); } catch {} location.reload(); },
     };
   }

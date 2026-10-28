@@ -180,7 +180,8 @@
     const bloque = (num, titulo, dato, carpeta, lista, extra = '') => `<div class="hvd-card"><header><div><span class="eyebrow">${num}</span><h4>${titulo}</h4>${dato ? `<span class="muted mono">${dato}</span>` : ''}</div><div class="actions">${subir(carpeta)}</div></header>
       ${lista.length ? lista.map(fila).join('') : vacio(esProp() ? 'Sin documento cargado. Use “Cargar” para agregarlo.' : 'Sin documento cargado.')}${extra}</div>`;
     const rs = A.val(eq, 'registro_sanitario');
-    el.innerHTML = `${compacto ? '' : '<header><div><h2>Documentos consultables desde la hoja de vida</h2><span class="muted" style="font-size:.85rem">Toque “Consultar” para abrir el soporte de cada casilla de la hoja de vida.</span></div></header>'}
+    const gBtn = esProp() ? `<button type="button" class="btn" data-hvd="google">${I.ia} Buscar con Google</button>` : '';
+    el.innerHTML = `${compacto ? (gBtn ? `<div class="actions" style="justify-content:flex-end">${gBtn}</div>` : '') : `<header><div><h2>Documentos consultables desde la hoja de vida</h2><span class="muted" style="font-size:.85rem">Toque “Consultar” para abrir el soporte de cada casilla de la hoja de vida.${esProp() ? ' “Buscar con Google” trae ficha técnica, guía rápida, registro sanitario y manuales.' : ''}</span></div><div class="actions">${gBtn}</div></header>`}
       <div class="hvd-grid">
         ${bloque('1.1', 'Registro sanitario o permiso', `${h(rs || 'NR')}${eq.fecha_venc_rs ? ' · vence ' + UI.fecha(eq.fecha_venc_rs) : ''}`, 'registro_sanitario', de('registro_sanitario'))}
         ${bloque('3.1 · 8.3', 'Factura o contrato', h(eq.hv?.factura ? 'Factura N° ' + eq.hv.factura : eq.hv?.contrato ? 'Contrato ' + eq.hv.contrato : 'NR'), 'factura', de('factura'))}
@@ -199,6 +200,7 @@
           if (b.dataset.hvd === 'ver') await A.abrirDoc(doc(b.dataset.id));
           if (b.dataset.hvd === 'bajar') { const d = doc(b.dataset.id); UI.descargar(await S.fileBlob(d.archivo), d.nombre); S.log('DESCARGA', 'documentos', d.id, d.nombre); }
           if (b.dataset.hvd === 'metro') await A.verMto(mtos[0], eq, ent, cons);
+          if (b.dataset.hvd === 'google') await A.buscarGoogleEquipo(eq, ent);
         } catch (er) { toast(er.message, true); }
       };
     });

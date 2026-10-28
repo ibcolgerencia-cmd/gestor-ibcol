@@ -54,7 +54,7 @@
       <div class="tbl-tools"><div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}</option>`).join('')}</select></div>
         <input type="search" data-q placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar en el inventario">
         <span class="muted" data-cuenta></span>
-        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
+        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
       ${esProp() ? '<p class="muted edit-hint" data-hint hidden>Modo edición: cambie cualquier dato y presione Enter o salga de la casilla para guardar. Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista.</p>' : ''}
       ${A.datalistNR}
       <div class="tbl-wrap"><table class="tbl tbl-eq"><thead><tr>${A.COLS_EQ.map((c) => `<th style="min-width:${c.w}px">${c.t}</th>`).join('')}<th>Estado</th></tr></thead><tbody></tbody></table></div></section>`;
@@ -64,6 +64,7 @@
     A.acts({
       editTabla: () => { editar = !editar; const hn = el.querySelector('[data-hint]'); if (hn) hn.hidden = !editar; pintar(); },
       llenarNR: () => A.completarNR(visibles(), pintar),
+      googleInv: () => A.buscarGoogleInventario(ent, visibles()),
       abrirEq: (d) => A.go('equipo', { id: d.id }),
       nuevoEq: () => A.formEquipo({ entidad_id: ent.id, consultorio_id: filtro || cons[0]?.id }, cons),
       cargarInv: () => A.cargarInventario(ent),
@@ -489,7 +490,13 @@
     const d = m?.datos || {};
     const fp = st.fmt.mto_preventivo;
     let fRecibe = m?.firma_recibe || null, fRealizo = m?.firma_realizo || st.firma || null, recibeNueva = false;
-    const actsTodas = [...new Set([...(fp.actividades || []), ...(d.actividades || [])])];
+    // protocolo del equipo (Google + IA o manuales): pre-llena los reportes nuevos
+    const pm = !m && tipo === 'preventivo' ? eq.hv?.protocolo_mto : null;
+    const pruebasIni = d.pruebas || (pm?.pruebas?.length ? pm.pruebas : fp.pruebas || []).map((p) => ({ item: p, r: 'Pasa' }));
+    const actsSel = d.actividades || (pm?.actividades?.length ? pm.actividades : fp.actividades);
+    const actsTodas = [...new Set([...(fp.actividades || []), ...(pm?.actividades || []), ...(d.actividades || [])])];
+    const herrSel = d.herramientas || (pm?.herramientas?.length ? (fp.herramientas || []).filter((x) => pm.herramientas.some((y) => y.toLowerCase().includes(x.toLowerCase()) || x.toLowerCase().includes(y.toLowerCase()))) : []);
+    const obsIni = d.observaciones ?? (pm?.observaciones || '');
     const val = d.valoracion || (m ? [] : ['Equipo queda en funcionamiento', 'Equipo encontrado en servicio', 'Servicio concluido']);
     const titulo = { preventivo: 'Mantenimiento preventivo', correctivo: 'Mantenimiento correctivo', metrologia: 'Metrología / calibración' }[tipo];
     let cert = null;
@@ -498,16 +505,18 @@
         ${tipo === 'preventivo' ? `${f.sel('frecuencia', 'Frecuencia', Object.keys(CAT.PERIODICIDAD), d.frecuencia || eq.periodicidad_mto)}${f.input('tiempo', 'Tiempo empleado (hh:mm)', d.tiempo || '01:00')}` : ''}
         ${tipo === 'correctivo' ? `${f.input('fecha_reporte', 'Fecha de reporte de la falla', d.fecha_reporte || UI.hoy(), { type: 'date' })}${f.input('horas', 'Horas de trabajo', d.horas, { type: 'number', attrs: 'step="0.5" min="0"' })}` : ''}
       </div>
-      ${tipo === 'preventivo' ? `<fieldset><legend>2. Puntos de inspección</legend><span class="lbl">Pruebas cualitativas</span>${rep('pruebas', [{ k: 'item', ph: 'Prueba', w: '3fr' }, { k: 'r', ph: 'Resultado', opts: ['Pasa', 'No pasa', 'N/A'] }], d.pruebas || (fp.pruebas || []).map((p) => ({ item: p, r: 'Pasa' })))}
-        ${f.checks('actividades', 'Actividades de mantenimiento', actsTodas, d.actividades || fp.actividades)}${f.area('otras_act', 'Otras actividades (una por línea)', '', { rows: 2 })}</fieldset>` : ''}
+      ${tipo === 'preventivo' ? `<fieldset><legend>2. Puntos de inspección</legend>
+        ${esProp() ? `<div class="ia-mto"><button type="button" class="btn" data-iamto>${I.ia} Completar con IA (manuales + Google)</button><span class="muted" data-iamto-est>${pm ? `Pre-llenado con el protocolo del equipo (${h(pm.origen || 'IA')}, ${UI.fecha(pm.fecha)}).` : 'Lee los manuales, fichas técnicas y guías del equipo y busca en Google para proponer pruebas, actividades y observaciones.'}</span></div>` : ''}
+        <span class="lbl">Pruebas cualitativas (máximo 12 en el formato)</span><div data-pruebas-box>${rep('pruebas', [{ k: 'item', ph: 'Prueba', w: '3fr' }, { k: 'r', ph: 'Resultado', opts: ['Pasa', 'No pasa', 'N/A'] }], pruebasIni)}</div>
+        <div data-acts-box>${f.checks('actividades', 'Actividades de mantenimiento (máximo 12 en el formato)', actsTodas, actsSel)}</div>${f.area('otras_act', 'Otras actividades (una por línea)', '', { rows: 2 })}</fieldset>` : ''}
       ${tipo === 'correctivo' ? `<fieldset><legend>Falla y reparación</legend><div class="fields">${f.area('falla', 'Falla reportada *', d.falla, { rows: 2 })}${f.area('diagnostico', 'Diagnóstico', d.diagnostico, { rows: 2 })}${f.sel('causa', 'Causa', ['Desgaste', 'Mal uso', 'Falla eléctrica', 'Falla de fábrica', 'Accidente', 'Falta de mantenimiento', 'Otra'], d.causa)}
         ${f.area('actividades_txt', 'Actividades realizadas (una por línea)', (d.actividades || []).join('\n'), { rows: 3 })}</div></fieldset>` : ''}
       ${tipo === 'metrologia' ? `<fieldset><legend>Calibración</legend><div class="fields">${f.input('laboratorio', 'Laboratorio', d.laboratorio, { full: true })}${f.input('certificado', 'Certificado N°', d.certificado)}${f.input('magnitud', 'Magnitud', d.magnitud)}
         ${f.sel('resultado', 'Resultado', ['Conforme', 'No conforme'], d.resultado)}${f.area('mediciones', 'Resultados de la verificación / mediciones', d.mediciones, { rows: 3 })}${f.input('proxima', 'Próxima calibración', d.proxima || UI.sumarMeses(UI.hoy(), CAT.PERIODICIDAD[eq.periodicidad_metro] || 12), { type: 'date' })}
         <div class="field full"><span class="lbl">Adjuntar certificado (PDF) — se guarda en la carpeta Metrología con alerta de vencimiento</span><input type="file" accept="application/pdf,image/*" data-cert></div></div></fieldset>` : ''}
       ${tipo !== 'metrologia' ? `<fieldset><legend>3. Estado de valoración</legend>${f.checks('valoracion', '', CAT.VALORACION, val)}</fieldset>
-        <fieldset><legend>4. Herramienta, insumos y repuestos</legend>${tipo === 'preventivo' ? f.checks('herramientas', 'Herramientas e insumos', fp.herramientas || [], d.herramientas || []) : ''}<span class="lbl">Partes utilizadas (insumos o repuestos)</span>${rep('repuestos', [{ k: 'd', ph: 'Descripción', w: '3fr' }, { k: 'c', ph: 'Cant.', type: 'number' }], d.repuestos || [])}</fieldset>` : ''}
-      <div class="fields">${f.area('observaciones', '5. Observaciones generales', d.observaciones, { rows: 3 })}</div>
+        <fieldset><legend>4. Herramienta, insumos y repuestos</legend>${tipo === 'preventivo' ? `<div data-herr-box>${f.checks('herramientas', 'Herramientas e insumos', fp.herramientas || [], herrSel)}</div>` : ''}<span class="lbl">Partes utilizadas (insumos o repuestos)</span>${rep('repuestos', [{ k: 'd', ph: 'Descripción', w: '3fr' }, { k: 'c', ph: 'Cant.', type: 'number' }], d.repuestos || [])}</fieldset>` : ''}
+      <div class="fields">${f.area('observaciones', '5. Observaciones generales', tipo === 'preventivo' ? obsIni : d.observaciones, { rows: 3 })}</div>
       ${tipo !== 'metrologia' ? `<fieldset><legend>Firmas</legend><div class="fields">${f.input('recibe_nombre', 'Recibido a satisfacción: nombre', d.recibe_nombre)}${f.input('recibe_cargo', 'Cargo', d.recibe_cargo)}</div>
         <div class="grid2">${firmaBtn('Firma de quien recibe', fRecibe)}${firmaBtn(`Firma de quien realizó (${h(st.emp.responsable)})`, fRealizo)}</div>
         <label class="checks" style="margin-top:8px"><input type="checkbox" name="firmar_digital" data-single ${m && !d.firma_digital ? '' : 'checked'}> <b>Firmar digitalmente</b> <span class="muted">— estampa la firma en “REALIZÓ” y genera un código de verificación del reporte</span></label></fieldset>` : ''}
@@ -518,6 +527,27 @@
         repBind(mm.body);
         firmaBind(mm.body, null, (i, dd) => { if (i === 0) { fRecibe = dd; recibeNueva = true; } else fRealizo = dd; }, { titulos: ['Firma de quien recibe', 'Firma de quien realizó'], actual: [null, st.firma] });
         const c = mm.body.querySelector('[data-cert]'); if (c) c.onchange = (e) => { cert = e.target.files[0] || null; };
+        // Completar con IA: manuales / fichas / guías del equipo + Google
+        const bia = mm.body.querySelector('[data-iamto]');
+        if (bia) bia.onclick = async () => {
+          const est = mm.body.querySelector('[data-iamto-est]'); bia.disabled = true;
+          try {
+            const x = await A.iaMantenimiento(eq, { onEstado: (t) => { est.textContent = t; } });
+            if (!x.pruebas.length && !x.actividades.length) throw new Error('La IA no encontró pruebas ni actividades para este equipo');
+            const ACT_LBL = 'Actividades de mantenimiento (máximo 12 en el formato)';
+            if (x.pruebas.length) mm.body.querySelector('[data-pruebas-box]').innerHTML = rep('pruebas', [{ k: 'item', ph: 'Prueba', w: '3fr' }, { k: 'r', ph: 'Resultado', opts: ['Pasa', 'No pasa', 'N/A'] }], x.pruebas.map((p) => ({ item: p, r: 'Pasa' })));
+            if (x.actividades.length) {
+              const todas = [...new Set([...x.actividades, ...(fp.actividades || [])])];
+              mm.body.querySelector('[data-acts-box]').innerHTML = f.checks('actividades', ACT_LBL, todas, x.actividades);
+            }
+            const hb = mm.body.querySelector('[data-herr-box]');
+            if (hb && x.herramientas.length) hb.querySelectorAll('input[name=herramientas]').forEach((i) => { if (x.herramientas.some((y) => y.toLowerCase().includes(i.value.toLowerCase()) || i.value.toLowerCase().includes(y.toLowerCase()))) i.checked = true; });
+            const ob = mm.body.querySelector('[name=observaciones]');
+            if (x.observaciones) ob.value = ob.value.trim() && ob.value.trim() !== (pm?.observaciones || '').trim() && !ob.value.includes(x.observaciones) ? `${ob.value.trim()}\n${x.observaciones}` : x.observaciones;
+            est.innerHTML = `Completado con ${x.docs.length ? `${x.docs.length} documento(s) del equipo` : 'Google'}${x.fuentes.length ? ` y ${x.fuentes.length} fuentes de Google` : ''}. Revise antes de guardar; quedó como protocolo del equipo para los próximos reportes.`;
+            toast('Pruebas, actividades y observaciones completadas con IA');
+          } catch (er) { est.textContent = ''; toast(er.message, true); } finally { bia.disabled = false; }
+        };
       },
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar y ver PDF', cls: 'pri', fn: async (mm) => {
         const v = leer(mm.body);
