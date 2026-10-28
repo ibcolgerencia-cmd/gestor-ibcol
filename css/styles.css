@@ -391,3 +391,20 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .lc-sw.fds { background: #eef0f2; } .lc-sw.fest { background: #fde6dc; } .lc-sw.hoy { box-shadow: inset 0 0 0 2px var(--accent); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lc-tbl .fds { background: #2a3036; } :root:not([data-theme="light"]) .lc-tbl .fest { background: #4a2e26; } }
 :root[data-theme="dark"] .lc-tbl .fds { background: #2a3036; } :root[data-theme="dark"] .lc-tbl .fest { background: #4a2e26; }
+
+/* ---------- v30: visor PDF con zoom ---------- */
+.vz-body { display: flex; flex-direction: column; gap: 8px; }
+.vz-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; position: sticky; top: 0; z-index: 2; background: var(--surface); padding-bottom: 4px; }
+.vz-bar select { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 5px 8px; font: inherit; font-size: .88rem; min-width: 170px; }
+.vz-bar [data-z=mas], .vz-bar [data-z=menos] { min-width: 38px; font-size: 1.1rem; font-weight: 700; justify-content: center; }
+.vz-sp { flex: 1; } .vz-pag { font-size: .84rem; }
+.vz-body .viewer { display: block; height: min(74vh, 1100px); overflow: auto; padding: 14px; touch-action: pan-x pan-y; overscroll-behavior: contain; }
+.vz-body .viewer .pg { margin: 0 auto 14px; width: max-content; max-width: none; }
+.vz-body .viewer canvas { max-width: none; display: block; }
+.vz-body .viewer.zoomed .pg { margin-left: 0; }
+.modal.pdfm { width: min(1240px, 100%); }
+.modal.vz-full { width: 100vw !important; max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; margin: 0; }
+.modal.vz-full .body { flex: 1; }
+.modal.vz-full .vz-body .viewer { height: calc(100vh - 175px); }
+@media (max-width: 640px) { .vz-bar select { min-width: 0; flex: 1; } .vz-bar [data-z=full] { display: none; } .vz-body .viewer { height: 68vh; padding: 6px; } }
+.modal-bg:has(.vz-full) { padding: 0; }
