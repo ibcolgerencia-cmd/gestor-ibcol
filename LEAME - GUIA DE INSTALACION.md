@@ -1,6 +1,6 @@
 # Gestor Biomédico IBCOL — Guía de instalación gratuita en la nube
 
-> **Estado actual (28/10/2026, versión 23):** la app se publica en **GitHub Pages: https://ibcolgerencia-cmd.github.io/gestor-ibcol/** (repositorio `ibcolgerencia-cmd/gestor-ibcol`, cuenta GitHub de IBCOL). Para actualizar: en el repositorio → carpeta correspondiente → *Add file → Upload files* → *Commit changes*; GitHub publica solo en 1-2 minutos y sin límite de publicaciones. Al cambiar archivos de `js/` o `css/`, subir también `index.html` con el número `?v=` aumentado (ej. v=21 → v=22) para que los navegadores tomen la versión nueva de inmediato. Base de datos: Supabase `gestor-ibcol`. La dirección anterior de Netlify (gestor-ibcol.netlify.app, cuenta de Diana Pistala) queda con la versión del 27/10 a las 7:28 p. m. y ya no se actualiza: el plan gratis agotó sus créditos.
+> **Estado actual (28/10/2026, versión 24):** la app se publica en **GitHub Pages: https://ibcolgerencia-cmd.github.io/gestor-ibcol/** (repositorio `ibcolgerencia-cmd/gestor-ibcol`, cuenta GitHub de IBCOL). Para actualizar: en el repositorio → carpeta correspondiente → *Add file → Upload files* → *Commit changes*; GitHub publica solo en 1-2 minutos y sin límite de publicaciones. Al cambiar archivos de `js/` o `css/`, subir también `index.html` con el número `?v=` aumentado (ej. v=21 → v=22) para que los navegadores tomen la versión nueva de inmediato. Base de datos: Supabase `gestor-ibcol`. La dirección anterior de Netlify (gestor-ibcol.netlify.app, cuenta de Diana Pistala) queda con la versión del 27/10 a las 7:28 p. m. y ya no se actualiza: el plan gratis agotó sus créditos.
 
 **IBCOL Ingeniería Biomédica de Colombia** · Carrera 39 No. 6B-22 B/ Colombia II Etapa · Popayán - Cauca · Contacto: 3146872775 · ibcolgerencia@gmail.com
 
@@ -87,16 +87,16 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 **Hoja de vida: RS / PC / NA / NR y código ECRI.** En *Editar hoja de vida → Identificación* se marca a mano RS, PC, NA o NR (sale con X en el formato). La hoja de vida tiene la pestaña **Código ECRI**: muestra el código asignado, sugerencias según el nombre del equipo y un buscador en todo el listado; *Asignar* lo pone en la casilla 1.2 (luego *Guardar hoja de vida*). El campo *1.2 Código ECRI (UMDNS)* de la pestaña Identificación también tiene *Buscar en listado ECRI* (4.907 códigos del listado ECRI español-inglés, búsqueda por nombre o código) y sugerencias según el nombre del equipo.
 
-## Versión 23 (28/10/2026): COMITÉS · Formato acta de reunión FAR-013
+## Versión 23-24 (28/10/2026): Comité de tecnovigilancia · Formato acta de reunión FAR-013
 
-Nueva carpeta **COMITÉS** en cada entidad (junto a *Programa de tecnovigilancia*). *Nueva acta de comité* abre el formato FAR-013 con todas sus indicaciones:
+En cada entidad: **PROGRAMA DE TECNOVIGILANCIA → panel “Comité de tecnovigilancia · Actas FAR-013” → Nueva acta de comité (FAR-013)**. El PDF se guarda en la subcarpeta de comités de esa carpeta (la que ya existe, ej. *3. COMITES*; si no hay, se crea *3. COMITES*). El formulario trae todas las indicaciones del formato:
 - **1. Encuentro:** fecha, tipo (reunión / capacitación / comité, sale con X), hora inicial y final, metodología presencial o virtual, tema, coordinador (por defecto “Ingeniera biomédica - Referente de Tecnovigilancia”), empresa, área o servicio, pre-test y post-test (aplica / no aplica).
 - **2. Desarrollo:** *Acta No.* sugerido y editable a mano; objetivo con los **meses** a elegir (el texto se arma solo y se puede editar); orden del día editable (trae los 7 puntos del formato); desarrollo de la reunión con *Traer datos de la app* (alertas sanitarias, eventos adversos y cumplimiento de mantenimiento del periodo) y *Redactar con IA*.
 - **3. Asistentes:** nombre, cargo y **firma** (dibujarla en pantalla o cargarla como imagen). Los mismos asistentes salen en la tabla de asistentes y en la **lista de asistencia**.
 - **4. Compromisos y cierre:** compromisos por **trimestre** y **año** (listas desplegables), con responsable, actividad y **fecha límite** (calendario); próxima reunión con **fecha y hora**; conclusiones generales.
 - **5. Evidencia y anexos:** **fotos** de la reunión; **anexo de alertas sanitarias** del INVIMA por meses, con las consultas registradas en *5. Alertas sanitarias* y la opción de **cargar alertas e informes de seguridad** (PDF o imagen), que se anexan al final del acta.
 
-*Guardar y ver PDF* genera el acta con el diseño del Word (logo IBCOL, “FORMATO ACTA DE REUNIÓN”, logo de la empresa, pie con FAR-013 – Versión 002 – F. ACT 09/01/2024; código, versión y fecha se cambian en *Formatos*) y la guarda en *COMITÉS › AÑO-ACTAS DE COMITÉ*. Cada acta se puede reabrir, editar (vuelve a generar el PDF), copiar como base de la siguiente o eliminar. El cliente ve y descarga las actas de su entidad.
+*Guardar y ver PDF* genera el acta con el diseño del Word (logo IBCOL, “FORMATO ACTA DE REUNIÓN”, logo de la empresa, pie con FAR-013 – Versión 002 – F. ACT 09/01/2024; código, versión y fecha se cambian en *Formatos*) y la guarda en *PROGRAMA DE TECNOVIGILANCIA › 3. COMITES*. Cada acta se puede reabrir, editar (vuelve a generar el PDF), copiar como base de la siguiente o eliminar. El cliente ve y descarga las actas de su entidad.
 
 **Instalación (una vez):** Supabase → *SQL Editor* → pegar y ejecutar `supabase/comites.sql` (crea la tabla `actas_comite` con las mismas reglas de acceso y auditoría que las demás).
 
