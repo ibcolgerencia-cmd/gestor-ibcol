@@ -1,6 +1,6 @@
 # Gestor Biomédico IBCOL — Guía de instalación gratuita en la nube
 
-> **Estado actual (28/10/2026, versión 21):** la app se publica en **GitHub Pages: https://ibcolgerencia-cmd.github.io/gestor-ibcol/** (repositorio `ibcolgerencia-cmd/gestor-ibcol`, cuenta GitHub de IBCOL). Para actualizar: en el repositorio → carpeta correspondiente → *Add file → Upload files* → *Commit changes*; GitHub publica solo en 1-2 minutos y sin límite de publicaciones. Al cambiar archivos de `js/` o `css/`, subir también `index.html` con el número `?v=` aumentado (ej. v=21 → v=22) para que los navegadores tomen la versión nueva de inmediato. Base de datos: Supabase `gestor-ibcol`. La dirección anterior de Netlify (gestor-ibcol.netlify.app, cuenta de Diana Pistala) queda con la versión del 27/10 a las 7:28 p. m. y ya no se actualiza: el plan gratis agotó sus créditos.
+> **Estado actual (28/10/2026, versión 22):** la app se publica en **GitHub Pages: https://ibcolgerencia-cmd.github.io/gestor-ibcol/** (repositorio `ibcolgerencia-cmd/gestor-ibcol`, cuenta GitHub de IBCOL). Para actualizar: en el repositorio → carpeta correspondiente → *Add file → Upload files* → *Commit changes*; GitHub publica solo en 1-2 minutos y sin límite de publicaciones. Al cambiar archivos de `js/` o `css/`, subir también `index.html` con el número `?v=` aumentado (ej. v=21 → v=22) para que los navegadores tomen la versión nueva de inmediato. Base de datos: Supabase `gestor-ibcol`. La dirección anterior de Netlify (gestor-ibcol.netlify.app, cuenta de Diana Pistala) queda con la versión del 27/10 a las 7:28 p. m. y ya no se actualiza: el plan gratis agotó sus créditos.
 
 **IBCOL Ingeniería Biomédica de Colombia** · Carrera 39 No. 6B-22 B/ Colombia II Etapa · Popayán - Cauca · Contacto: 3146872775 · ibcolgerencia@gmail.com
 
@@ -86,6 +86,24 @@ Para actualizar la app más adelante, vuelva a arrastrar la carpeta en *Deploys*
 Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola con otros modelos Gemini disponibles.
 
 **Hoja de vida: RS / PC / NA / NR y código ECRI.** En *Editar hoja de vida → Identificación* se marca a mano RS, PC, NA o NR (sale con X en el formato). La hoja de vida tiene la pestaña **Código ECRI**: muestra el código asignado, sugerencias según el nombre del equipo y un buscador en todo el listado; *Asignar* lo pone en la casilla 1.2 (luego *Guardar hoja de vida*). El campo *1.2 Código ECRI (UMDNS)* de la pestaña Identificación también tiene *Buscar en listado ECRI* (4.907 códigos del listado ECRI español-inglés, búsqueda por nombre o código) y sugerencias según el nombre del equipo.
+
+## Versión 22 (28/10/2026): búsqueda con Google + IA de Google para cada equipo
+
+**Qué hace.** Con los datos del inventario (equipo, marca, modelo, registro sanitario), la IA de Google (Gemini con *Búsqueda de Google*) busca en internet y prepara:
+- **Ficha técnica** → PDF con formato IBCOL en *7. Manual o ficha técnica › FICHA TÉCNICA*.
+- **Guía rápida de uso** → PDF en *7. › GUÍA RÁPIDA* (marca el anexo 8.7 de la hoja de vida).
+- **Registro sanitario INVIMA** → número, titular, vencimiento y estado; PDF de la consulta en *5. Registro sanitario*. Siempre confirme en consultaregistro.invima.gov.co y guarde el soporte oficial.
+- **Manuales del fabricante** → descarga los PDF públicos que encuentre a *7. › OPERACIÓN / MANTENIMIENTO*. Si un sitio no permite la descarga, la app muestra el enlace para bajarlo a mano.
+- **Protocolo de mantenimiento preventivo** → pruebas cualitativas, actividades, herramientas y observaciones, guardado en el equipo.
+- Opcional: **completa solo los datos vacíos** del inventario y la hoja de vida (fabricante, registro y vencimiento, riesgo, datos técnicos, accesorios, recomendaciones). Nunca reemplaza un dato que ya tenga valor.
+
+**Dónde.** Por equipo: botón *Buscar con Google* en la página del equipo, en sus carpetas y en *Documentos consultables desde la hoja de vida* (se pueden corregir los datos de búsqueda y editar el texto antes de guardar). Para todo el inventario: *1. Inventarios → Buscar con Google*; los equipos con igual nombre, marca y modelo comparten una búsqueda; puede omitir los ya buscados y detener en cualquier momento.
+
+**Reporte de mantenimiento preventivo (FMB-004).** Los reportes nuevos salen pre-llenados con el protocolo del equipo. El botón *Completar con IA (manuales + Google)* lee los manuales, fichas técnicas, guías y la hoja de vida cargados en el equipo (los mismos documentos que usa *Revisar documentos (IA)*), busca en Google y propone pruebas cualitativas, actividades (máx. 12, frases cortas que caben en el formato) y observaciones generales. Revise antes de guardar.
+
+**Instalación (una vez).** Función de Supabase `buscar-equipo` (código en `supabase/functions/buscar-equipo/index.ts`): Supabase → *Edge Functions → Deploy a new function → Via Editor*, nombre `buscar-equipo`, pegar el código, *Deploy*. Usa el mismo secreto `GEMINI_API_KEY` del asistente. Opcional `IA_MODELO_BUSQUEDA` (por defecto `gemini-3.8-flash,gemini-3.6-flash,gemini-2.5-flash,gemini-2.0-flash`). Solo el propietario puede usarla.
+
+**Costo y límites.** La Búsqueda de Google en Gemini tiene una cuota gratuita mensual (en los modelos Gemini 3 o superiores, las primeras 5.000 búsquedas al mes; luego tiene costo por búsqueda) y límites por minuto: la app espera y reintenta sola. Revise el uso en aistudio.google.com. Cada búsqueda tarda 20–60 segundos.
 
 ## Versión 21 (28/10/2026): datos editables, buscador de mes, 9.5, firma digital y documentos desde la hoja de vida
 
