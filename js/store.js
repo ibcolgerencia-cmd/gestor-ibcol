@@ -4,6 +4,13 @@
 window.Store = (() => {
   const C = window.IBCOL_CONFIG || {};
   const nube = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY && window.supabase);
+  // Si la app está configurada para la nube pero la librería no cargó, NO se abre el modo demostración
+  if (C.SUPABASE_URL && C.SUPABASE_ANON_KEY && !window.supabase) {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('root').innerHTML = '<div style="max-width:420px;margin:15vh auto;padding:24px;font-family:sans-serif;text-align:center"><h2>No se pudo conectar con el servidor</h2><p>Revise su conexión a internet y vuelva a cargar la página.</p><button onclick="location.reload()" style="padding:10px 18px;border-radius:8px;border:0;background:#0d6e8c;color:#fff;font-size:1rem;cursor:pointer">Volver a cargar</button></div>';
+    });
+    throw new Error('Librería de Supabase no disponible');
+  }
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(16).slice(2));
   const ahora = () => new Date().toISOString();
   const aCorreo = (u) => (u.includes('@') ? u.trim().toLowerCase() : `${u.trim().toLowerCase()}@${C.DOMINIO_USUARIOS || 'ibcol.app'}`);
