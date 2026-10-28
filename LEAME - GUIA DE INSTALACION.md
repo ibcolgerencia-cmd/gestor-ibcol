@@ -1,6 +1,6 @@
 # Gestor Biomédico IBCOL — Guía de instalación gratuita en la nube
 
-> **Estado actual (27/10/2026):** ya instalado. Página: **https://gestor-ibcol.netlify.app** · Base de datos Supabase: proyecto `gestor-ibcol` (organización IBCOL). Para actualizar la app: Netlify → proyecto gestor-ibcol → Deploys → arrastrar el .zip.
+> **Estado actual (27/10/2026):** la app se publica en **GitHub Pages: https://ibcolgerencia-cmd.github.io/gestor-ibcol/** (repositorio `ibcolgerencia-cmd/gestor-ibcol`, cuenta GitHub de IBCOL). Para actualizar: en el repositorio → carpeta correspondiente → *Add file → Upload files* → *Commit changes*; GitHub publica solo en 1-2 minutos y sin límite de publicaciones. Base de datos: Supabase `gestor-ibcol`. La dirección anterior de Netlify (gestor-ibcol.netlify.app, cuenta de Diana Pistala) queda con la versión del 27/10 a las 7:28 p. m. y ya no se actualiza: el plan gratis agotó sus créditos.
 
 **IBCOL Ingeniería Biomédica de Colombia** · Carrera 39 No. 6B-22 B/ Colombia II Etapa · Popayán - Cauca · Contacto: 3146872775 · ibcolgerencia@gmail.com
 
@@ -84,6 +84,8 @@ Para actualizar la app más adelante, vuelva a arrastrar la carpeta en *Deploys*
 
 **Hoja de vida con IA:** en un equipo → *Redactar con IA* → "Hoja de vida del equipo (FHVEB-001)". En *Fuentes del equipo* aparecen sus manuales, fichas técnicas, registro sanitario y hoja de vida anterior (marque los que la IA debe leer). La IA devuelve los datos encontrados (fabricante, registro y vencimiento, riesgo, datos técnicos, fuentes de alimentación, accesorios, recomendaciones…) en una tabla; se marcan los que se quieren pasar y *Pasar a la hoja de vida*. Las demás plantillas del equipo (guía rápida, protocolo, recomendaciones) también leen esos documentos.
 Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola con otros modelos Gemini disponibles.
+
+**Hoja de vida: RS / PC / NA / NR y código ECRI.** En *Editar hoja de vida → Identificación* se marca a mano RS, PC, NA o NR (sale con X en el formato). El campo *1.2 Código ECRI (UMDNS)* tiene *Buscar en listado ECRI* (4.907 códigos del listado ECRI español-inglés, búsqueda por nombre o código) y sugerencias según el nombre del equipo.
 
 ## Formatos exactos
 
