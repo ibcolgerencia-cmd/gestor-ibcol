@@ -201,7 +201,7 @@ window.Store = (() => {
       },
       async get(t, id) { const r = tabla(t).find((x) => x[key(t)] === id); return r && visible(t, r) ? JSON.parse(JSON.stringify(r)) : null; },
       async insert(t, o) {
-        if (!esProp()) noPermiso();
+        if (!esProp() && !(t === 'listas_limpieza' && o.entidad_id === perfil?.entidad_id)) noPermiso();
         if (t === 'equipos' && tabla(t).some((x) => x.entidad_id === o.entidad_id && x.codigo_inv === o.codigo_inv)) throw new Error('Ya existe un equipo con ese código de inventario en esta entidad');
         const r = { id: uid(), created_at: ahora(), updated_at: ahora(), ...sinExcel(t, o) };
         tabla(t).push(r); auditar('INSERT', t, r[key(t)], null, r);
@@ -212,8 +212,8 @@ window.Store = (() => {
         guardar(); return JSON.parse(JSON.stringify(r));
       },
       async update(t, id, o) {
-        if (!esProp()) noPermiso();
         const r = tabla(t).find((x) => x[key(t)] === id); if (!r) throw new Error('Registro no encontrado');
+        if (!esProp() && !(t === 'listas_limpieza' && r.entidad_id === perfil?.entidad_id)) noPermiso();
         const antes = JSON.parse(JSON.stringify(r)); Object.assign(r, o, { updated_at: ahora() });
         auditar('UPDATE', t, id, antes, r); guardar(); return JSON.parse(JSON.stringify(r));
       },
