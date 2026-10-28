@@ -92,7 +92,7 @@ window.Store = (() => {
         if (error) {
           let msg = error.message || 'Error en la búsqueda';
           try { const j = await error.context?.json?.(); if (j?.error) msg = j.error; } catch {}
-          if (/Failed to send|not found|404/i.test(msg)) msg = 'La búsqueda con Google aún no está instalada en Supabase (función "buscar-equipo").';
+          if (/Failed to send/i.test(msg) && !error.context?.status) msg = 'No se pudo conectar con la función "buscar-equipo" de Supabase (revise la conexión a internet o vuelva a intentar).';
           throw new Error(msg);
         }
         if (data?.error) throw new Error(data.error);
