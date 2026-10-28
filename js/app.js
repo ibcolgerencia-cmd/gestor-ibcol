@@ -104,7 +104,7 @@ window.APP = (() => {
         <div class="brand"><img src="${window.IBCOL_LOGO}" alt=""><div><b>Gestor biomédico</b><small>IBCOL</small></div></div>
         <nav class="nav">${nav.map(([k, t, icn]) => (k === 'grp' ? `<div class="grp">${t}</div>` : `<button data-nav="${k}">${icn}<span>${t}</span></button>`)).join('')}</nav>
         <div class="who"><div><b>${h(p.nombre || p.usuario)}</b><br><span class="rol">${p.rol}</span> <span class="mono" style="opacity:.7">${h(p.usuario || '')}</span></div>
-          <div class="nav"><button data-tema>${I.luna}<span>Cambiar tema</span></button><button data-salir>${I.salir}<span>Cerrar sesión</span></button></div></div>
+          <div class="nav"><button data-tema>${I.luna}<span>Cambiar tema</span></button><button data-salir>${I.salir}<span>Cerrar sesión</span></button></div><div style="font-size:.7rem;opacity:.55;padding:4px 14px">Versión ${h(window.IBCOL_VERSION || '')}</div></div>
       </aside>
       <div class="main">
         <div class="topbar"><button data-menu aria-label="Abrir menú">${I.menu}</button><b>Gestor biomédico IBCOL</b></div>
