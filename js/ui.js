@@ -168,17 +168,96 @@ window.UI = (() => {
     const acciones = [...extras];
     if (firmar) acciones.push({ t: `${I.firma} Firmar`, fn: () => { modoFirma = !modoFirma; m.body.querySelector('.viewer').classList.toggle('signing', modoFirma); if (modoFirma) toast('Toque en la página el lugar donde irá la firma'); return false; } });
     acciones.push({ t: `${I.bajar} Descargar`, cls: 'pri', fn: () => { descargar(blob, nombre || 'documento.pdf'); alDescargar?.(); return false; } });
-    const m = modal({ titulo, size: 'wide', cuerpo: '<div class="viewer"><div class="loading">Abriendo documento…</div></div>', acciones });
-    const v = m.body.querySelector('.viewer');
+    const m = modal({ titulo, size: 'wide pdfm', cuerpo: `<div class="vz-bar" role="toolbar" aria-label="Zoom del documento">
+        <button type="button" class="btn sm" data-z="menos" aria-label="Alejar" title="Alejar (Ctrl -)">−</button>
+        <select data-z="nivel" aria-label="Nivel de zoom"><option value="ancho">Ajustar al ancho</option><option value="pagina">Página completa</option>${[50, 75, 100, 125, 150, 200, 300, 400].map((n) => `<option value="${n}">${n} %</option>`).join('')}</select>
+        <button type="button" class="btn sm" data-z="mas" aria-label="Acercar" title="Acercar (Ctrl +)">+</button>
+        <span class="vz-sp"></span><span class="muted vz-pag" data-z="pag"></span>
+        <button type="button" class="btn sm" data-z="full" title="Pantalla completa">⤢ Pantalla completa</button></div>
+      <div class="viewer"><div class="loading">Abriendo documento…</div></div>`, acciones });
+    const v = m.body.querySelector('.viewer'), sel = m.body.querySelector('[data-z=nivel]'), lblPag = m.body.querySelector('[data-z=pag]');
+    m.body.classList.add('vz-body');
+    let pdf = null, paginas = [], modo = 'ancho', escala = 1, tRender = null;
+    const anchoUtil = () => Math.max(200, v.clientWidth - 28), altoUtil = () => Math.max(200, v.clientHeight - 28);
+    // tamaño en pantalla (px CSS) de cada página según el modo de zoom
+    const calcEscala = () => {
+      if (!paginas.length) return 1;
+      const p0 = paginas[0].vp1;
+      if (modo === 'ancho') return anchoUtil() / p0.width;
+      if (modo === 'pagina') return Math.min(anchoUtil() / p0.width, altoUtil() / p0.height);
+      return (+modo / 100) * (96 / 72); // 100 % = tamaño real del papel
+    };
+    const aplicar = (render = true) => {
+      escala = calcEscala();
+      const pct = Math.round((escala * 72 / 96) * 100);
+      if (modo === 'ancho' || modo === 'pagina') { sel.value = modo; sel.options[sel.selectedIndex].textContent = `${modo === 'ancho' ? 'Ajustar al ancho' : 'Página completa'} (${pct} %)`; }
+      else { if (![...sel.options].some((o) => o.value === String(modo))) sel.insertAdjacentHTML('beforeend', `<option value="${modo}">${modo} %</option>`); sel.value = String(modo); }
+      [...sel.options].forEach((o) => { if (o.value === 'ancho' && modo !== 'ancho') o.textContent = 'Ajustar al ancho'; if (o.value === 'pagina' && modo !== 'pagina') o.textContent = 'Página completa'; });
+      v.classList.toggle('zoomed', escala * paginas[0]?.vp1.width > anchoUtil() + 2);
+      paginas.forEach((pg) => { pg.c.style.width = `${pg.vp1.width * escala}px`; pg.c.style.height = `${pg.vp1.height * escala}px`; });
+      if (render) { clearTimeout(tRender); tRender = setTimeout(renderTodas, 160); }
+    };
+    const pctActual = () => Math.round((escala * 72 / 96) * 100);
+    const pasos = [25, 33, 50, 67, 75, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400, 500];
+    const zoomA = (nuevo, foco) => {
+      const antes = escala; const sx = v.scrollLeft, sy = v.scrollTop;
+      modo = Math.max(25, Math.min(500, Math.round(nuevo))); aplicar();
+      const k = escala / antes, fx = foco ? foco.x : v.clientWidth / 2, fy = foco ? foco.y : v.clientHeight / 2;
+      v.scrollLeft = (sx + fx) * k - fx; v.scrollTop = (sy + fy) * k - fy;
+    };
+    const mas = (foco) => zoomA(pasos.find((x) => x > pctActual() + 1) || 500, foco);
+    const menos = (foco) => zoomA([...pasos].reverse().find((x) => x < pctActual() - 1) || 25, foco);
+    // nitidez: cada página se vuelve a dibujar a la resolución del zoom
+    let generacion = 0;
+    const renderTodas = async () => {
+      const gen = ++generacion; const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      const visibles = paginas.map((pg) => { const r = pg.c.getBoundingClientRect(), rv = v.getBoundingClientRect(); return { pg, d: r.bottom < rv.top ? rv.top - r.bottom : r.top > rv.bottom ? r.top - rv.bottom : 0 }; }).sort((a, b) => a.d - b.d).map((x) => x.pg);
+      for (const pg of visibles) {
+        if (gen !== generacion) return;
+        const esc = Math.min(escala * dpr, 6), w = Math.round(pg.vp1.width * esc);
+        if (pg.dib === w) continue;
+        const vp = pg.page.getViewport({ scale: esc });
+        const off = document.createElement('canvas'); off.width = vp.width; off.height = vp.height;
+        try { await pg.page.render({ canvasContext: off.getContext('2d'), viewport: vp }).promise; } catch (e) { continue; }
+        if (gen !== generacion) return;
+        pg.c.width = off.width; pg.c.height = off.height; pg.c.getContext('2d').drawImage(off, 0, 0); pg.dib = w;
+      }
+    };
+    m.body.querySelector('[data-z=mas]').onclick = () => mas();
+    m.body.querySelector('[data-z=menos]').onclick = () => menos();
+    sel.onchange = () => { modo = sel.value === 'ancho' || sel.value === 'pagina' ? sel.value : +sel.value; aplicar(); };
+    m.body.querySelector('[data-z=full]').onclick = (e) => {
+      const on = !m.el.classList.contains('vz-full'); m.el.classList.toggle('vz-full', on);
+      e.currentTarget.textContent = on ? '⤡ Salir de pantalla completa' : '⤢ Pantalla completa';
+      setTimeout(() => aplicar(), 50);
+    };
+    // Ctrl + rueda del mouse, Ctrl +/- y gesto de pellizco en pantallas táctiles
+    v.addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); const r = v.getBoundingClientRect(); const f = { x: e.clientX - r.left, y: e.clientY - r.top }; if (e.deltaY < 0) zoomA(pctActual() * 1.12, f); else zoomA(pctActual() / 1.12, f); }, { passive: false });
+    const teclas = (e) => {
+      if (!document.body.contains(m.el)) { document.removeEventListener('keydown', teclas); return; }
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === '+' || e.key === '=') { e.preventDefault(); mas(); } else if (e.key === '-') { e.preventDefault(); menos(); } else if (e.key === '0') { e.preventDefault(); modo = 'ancho'; aplicar(); }
+    };
+    document.addEventListener('keydown', teclas);
+    const toques = new Map(); let pinch = null;
+    v.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'touch') return; toques.set(e.pointerId, e); if (toques.size === 2) { const [a, b] = [...toques.values()]; pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), pct: pctActual() }; } });
+    v.addEventListener('pointermove', (e) => {
+      if (!toques.has(e.pointerId)) return; toques.set(e.pointerId, e);
+      if (pinch && toques.size === 2) { e.preventDefault(); const [a, b] = [...toques.values()]; const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); const r = v.getBoundingClientRect(); zoomA(pinch.pct * (d / pinch.d), { x: (a.clientX + b.clientX) / 2 - r.left, y: (a.clientY + b.clientY) / 2 - r.top }); }
+    }, { passive: false });
+    const fin = (e) => { toques.delete(e.pointerId); if (toques.size < 2) pinch = null; };
+    v.addEventListener('pointerup', fin); v.addEventListener('pointercancel', fin);
+    // página visible
+    v.addEventListener('scroll', () => { if (!paginas.length) return; const rv = v.getBoundingClientRect(); let act = 1; paginas.forEach((pg, i) => { if (pg.c.getBoundingClientRect().top < rv.top + rv.height / 2) act = i + 1; }); lblPag.textContent = `Página ${act} de ${paginas.length}`; clearTimeout(tRender); tRender = setTimeout(renderTodas, 200); });
+    window.addEventListener('resize', () => { if (document.body.contains(m.el) && (modo === 'ancho' || modo === 'pagina')) aplicar(); });
     try {
-      const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+      pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
       v.innerHTML = '';
       for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i); const vp = page.getViewport({ scale: 1.6 });
+        const page = await pdf.getPage(i); const vp1 = page.getViewport({ scale: 1 });
         const wrap = document.createElement('div'); wrap.className = 'pg'; wrap.dataset.p = i - 1;
-        const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; c.style.width = Math.min(vp.width / 1.6 * 1.25, 980) + 'px';
-        wrap.appendChild(c); v.appendChild(wrap);
-        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+        const c = document.createElement('canvas'); wrap.appendChild(c); v.appendChild(wrap);
+        paginas.push({ page, vp1, c, dib: 0 });
         wrap.onclick = async (e) => {
           if (!modoFirma || !firmar) return;
           const r = c.getBoundingClientRect(); const xRel = (e.clientX - r.left) / r.width, yRel = (e.clientY - r.top) / r.height;
@@ -187,6 +266,8 @@ window.UI = (() => {
           if (ok) m.cerrar(); else mk.remove();
         };
       }
+      lblPag.textContent = `Página 1 de ${paginas.length}`;
+      aplicar(false); await renderTodas();
     } catch (e) {
       console.error(e);
       v.innerHTML = `<div class="empty">No se pudo mostrar la vista previa en este dispositivo. Use “Descargar” para abrir el archivo.</div>`;
