@@ -3,6 +3,10 @@
 // =====================================================================
 window.Store = (() => {
   const C = window.IBCOL_CONFIG || {};
+  // Los formatos en Excel nunca quedan visibles para las entidades (la regla de la base de datos exige visible_cliente)
+  const ES_EXCEL = /\.(xlsx|xlsm|xls|xltx|xltm|xlsb|csv|ods)$/i;
+  const sinExcel = (t, o) => (t === 'documentos' && o && ES_EXCEL.test(o.nombre || o.archivo || '') ? { ...o, visible_cliente: false } : o);
+  window.IBCOL_ES_EXCEL = (n) => ES_EXCEL.test(n || '');
   const nube = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY && window.supabase);
   // Si la app está configurada para la nube pero la librería no cargó, NO se abre el modo demostración
   if (C.SUPABASE_URL && C.SUPABASE_ANON_KEY && !window.supabase) {
@@ -51,8 +55,8 @@ window.Store = (() => {
         return chk(await q.limit(5000));
       },
       async get(t, id) { return chk(await sb.from(t).select('*').eq(KEYS[t] || 'id', id).maybeSingle()); },
-      async insert(t, o) { return chk(await sb.from(t).insert(o).select().single()); },
-      async update(t, id, o) { return chk(await sb.from(t).update(o).eq(KEYS[t] || 'id', id).select().single()); },
+      async insert(t, o) { return chk(await sb.from(t).insert(sinExcel(t, o)).select().single()); },
+      async update(t, id, o) { return chk(await sb.from(t).update(sinExcel(t, o)).eq(KEYS[t] || 'id', id).select().single()); },
       async upsert(t, o) { return chk(await sb.from(t).upsert(o).select().single()); },
       async remove(t, id) { chk(await sb.from(t).delete().eq(KEYS[t] || 'id', id)); },
       async upload(path, blob) {
@@ -199,7 +203,7 @@ window.Store = (() => {
       async insert(t, o) {
         if (!esProp()) noPermiso();
         if (t === 'equipos' && tabla(t).some((x) => x.entidad_id === o.entidad_id && x.codigo_inv === o.codigo_inv)) throw new Error('Ya existe un equipo con ese código de inventario en esta entidad');
-        const r = { id: uid(), created_at: ahora(), updated_at: ahora(), ...o };
+        const r = { id: uid(), created_at: ahora(), updated_at: ahora(), ...sinExcel(t, o) };
         tabla(t).push(r); auditar('INSERT', t, r[key(t)], null, r);
         if (t === 'eventos' && r.equipo_id && ['Muerte', 'Deterioro grave'].includes(r.consecuencia)) {
           const eq = tabla('equipos').find((x) => x.id === r.equipo_id);

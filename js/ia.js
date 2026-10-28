@@ -32,6 +32,7 @@
       ['Análisis de evento adverso', 'Analiza el siguiente evento o incidente adverso con dispositivo médico: clasificación (serio/no serio), causas probables (equipo, usuario, entorno), acciones inmediatas, acciones correctivas y preventivas, y si debe reportarse al INVIMA y en qué plazo. EVENTO: '],
     ],
     equipo: [
+      ['Reporte de mantenimiento preventivo (FMB-004)', 'Completa el REPORTE DE MANTENIMIENTO PREVENTIVO (FMB-004) de este equipo con la información de sus manuales, fichas técnicas y guías (y Google): pruebas cualitativas, actividades de mantenimiento, herramientas y observaciones generales. Al terminar se abre el reporte FMB-004 ya diligenciado para revisarlo, firmarlo y guardarlo.', 'mto'],
       ['Hoja de vida del equipo (FHVEB-001)', 'Completa la HOJA DE VIDA de este equipo con la información de los documentos anexos (manual, ficha técnica, registro sanitario y hoja de vida anterior). Extrae solo datos que aparezcan en los documentos o en los datos del equipo; lo que no aparezca déjalo vacío para que IBCOL lo complete.', 'hv'],
       ['Recomendaciones del fabricante para la hoja de vida', 'Redacta las RECOMENDACIONES DEL FABRICANTE Y DE USO SEGURO para la sección 10 de la hoja de vida de este equipo (máximo 12 viñetas, sin títulos): verificación antes del uso, limpieza, almacenamiento, alimentación eléctrica y precauciones. Si no conoces el modelo exacto, usa recomendaciones generales del tipo de equipo.'],
       ['Guía rápida de operación', 'Redacta una GUÍA RÁPIDA DE OPERACIÓN de este equipo: encendido, verificación inicial, uso paso a paso, apagado, limpieza y qué hacer ante una falla.'],
@@ -160,6 +161,36 @@
       }).join('') || '<span class="muted">Este equipo aún no tiene manuales, fichas técnicas ni registro sanitario cargados. Súbalos en sus carpetas para que la IA los use.</span>');
     })();
     const modoHV = () => opciones[+$('[name=plantilla]').value][2] === 'hv';
+    const modoMto = () => opciones[+$('[name=plantilla]').value][2] === 'mto';
+    // FMB-004: la IA propone pruebas, actividades y observaciones y se abre el reporte diligenciado
+    const reporteMto = async () => {
+      body.querySelectorAll('[data-ia]').forEach((b) => (b.disabled = true));
+      try {
+        let x = null;
+        try { x = await A.iaMantenimiento(eq, { onEstado: (t) => { estado.textContent = t; } }); }
+        catch (e1) {
+          // respaldo: asistente de IA con los documentos marcados como fuente
+          estado.textContent = 'Usando el asistente de IA con los manuales del equipo…';
+          const ctx = await contexto({ ent, eq, inventario: false }); const fu = await textoFuentes(40000);
+          const fp = st.fmt.mto_preventivo || {};
+          const txt = await S.ia({ instruccion: `${$('[name=instruccion]').value}\nUsa la redacción de estas listas del formato cuando aplique. Pruebas: ${(fp.pruebas || []).join('; ')}. Actividades: ${(fp.actividades || []).join('; ')}. Herramientas: ${(fp.herramientas || []).join('; ')}.\nResponde SOLO con JSON sin Markdown: {"pruebas": [hasta 12, máximo 60 caracteres cada una], "actividades": [hasta 12, máximo 60 caracteres], "herramientas": [], "observaciones": "2 a 4 frases"}`, contexto: (ctx + '\n\n' + fu).slice(0, 58000), historial: [] });
+          let j = null; try { j = JSON.parse((txt.match(/\{[\s\S]*\}/) || ['{}'])[0]); } catch { j = null; }
+          if (!j || !(j.pruebas || []).length) throw new Error(`${e1.message} · El asistente tampoco devolvió el reporte. Intente de nuevo.`);
+          const corta = (l) => (Array.isArray(l) ? l : []).map((v) => String(v).replace(/\s+/g, ' ').trim().slice(0, 70)).filter(Boolean).slice(0, 12);
+          x = { pruebas: corta(j.pruebas), actividades: corta(j.actividades), herramientas: Array.isArray(j.herramientas) ? j.herramientas : [], observaciones: String(j.observaciones || '').trim() };
+          const act = await S.get('equipos', eq.id);
+          await S.update('equipos', eq.id, { hv: { ...(act.hv || {}), protocolo_mto: { ...x, fecha: UI.hoy(), origen: 'Manuales + IA' } } });
+        }
+        estado.textContent = 'Listo. Abriendo el reporte FMB-004…';
+        const e2 = await S.get('equipos', eq.id);
+        const cons = (await S.list('consultorios', { entidad_id: e2.entidad_id })).find((c) => c.id === e2.consultorio_id) || null;
+        const ent2 = ent || (await S.get('entidades', e2.entidad_id));
+        m.cerrar();
+        await A.formMto({ eq: e2, ent: ent2, cons, tipo: 'preventivo' });
+        toast(`Reporte FMB-004 diligenciado con IA: ${x.pruebas.length} pruebas y ${x.actividades.length} actividades. Revise, firme y guarde.`);
+      } catch (e) { estado.textContent = ''; toast(e.message, true); }
+      finally { body.querySelectorAll('[data-ia]').forEach((b) => (b.disabled = false)); }
+    };
     const textoFuentes = async (presupuesto) => {
       const sel = [...body.querySelectorAll('[data-doc]:checked')].map((x) => docsEq.find((d) => d.id === x.dataset.doc)).filter(Boolean);
       if (!sel.length) return '';
@@ -233,6 +264,7 @@
         toast(`${n} datos pasados a la hoja de vida`); A.recargar(); return;
       }
       if (a === 'verhv') { const e2 = await S.get('equipos', eq.id); const cons = (await S.list('consultorios', { entidad_id: e2.entidad_id })).find((c) => c.id === e2.consultorio_id); return UI.verPDF({ titulo: `Hoja de vida · ${e2.nombre}`, blob: await FMT.hojaVida({ eq: e2, ent, cons, fmt: st.fmt.hoja_vida }), nombre: `HV_${e2.codigo_inv}.pdf` }); }
+      if (a === 'redactar' && modoMto()) return reporteMto();
       if (a === 'redactar') { const t = $('[name=instruccion]').value.trim(); if (!t) return toast('Escriba qué documento necesita', true); historial = []; return pedir(t, false); }
       if (a === 'ajustar') { const t = $('[name=ajuste]').value.trim(); if (!t) return toast('Escriba el ajuste', true); historial[historial.length - 1] = { rol: 'ia', texto: $('[name=resultado]').value }; $('[name=ajuste]').value = ''; return pedir(t, true); }
       const texto = $('[name=resultado]').value;

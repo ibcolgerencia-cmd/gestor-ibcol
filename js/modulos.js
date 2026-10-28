@@ -50,7 +50,7 @@
     };
     el.innerHTML = `<section class="panel"><header><div><h2>Equipos registrados por servicio</h2><span class="muted" style="font-size:.85rem">Se crean al cargar el inventario. Cada equipo queda dentro de su servicio en “3. Información del equipo”.</span></div><div class="actions">
         ${esProp() ? `<button class="btn pri" data-act="cargarInv">${I.subir} Cargar inventario (PDF o Excel)</button>` : ''}
-        <button class="btn" data-act="invPDF">${I.pdf} PDF (FMB-001)</button><button class="btn" data-act="invXLS">${I.excel} Excel</button>${esProp() ? `<button class="btn" data-act="nuevoEq">${I.mas} Equipo</button>` : ''}</div></header>
+        <button class="btn" data-act="invPDF">${I.pdf} PDF (FMB-001)</button>${esProp() ? `<button class="btn" data-act="invXLS">${I.excel} Excel</button>` : ''}${esProp() ? `<button class="btn" data-act="nuevoEq">${I.mas} Equipo</button>` : ''}</div></header>
       <div class="tbl-tools"><div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}</option>`).join('')}</select></div>
         <input type="search" data-q placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar en el inventario">
         <span class="muted" data-cuenta></span>
@@ -75,6 +75,7 @@
         UI.verPDF({ titulo: 'Inventario', blob, nombre: `Inventario_${ent.razon_social}.pdf` });
       },
       invXLS: () => {
+        if (!esProp()) return;
         const lista = visibles(); const V = FMT.val;
         const aoa = [[`INVENTARIO · ${st.fmt.inventario.codigo} · Versión ${st.fmt.inventario.version}`], [ent.razon_social], [`NIT: ${ent.nit || ''}`, '', `REPS: ${ent.reps || ''}`], [],
           ['ÍTEM', 'CÓDIGO DE INV.', 'N° DE A.F.', 'EQUIPO', 'MARCA', 'MODELO', 'SERIE', 'UBICACIÓN / ÁREA', 'CLASIFICACIÓN POR RIESGO SANITARIO', 'REGISTRO SANITARIO O PERMISO DE COMERCIALIZACIÓN', 'ESTADO'],

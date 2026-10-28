@@ -481,6 +481,7 @@ window.APP = (() => {
     const recargar = () => A.archivos(cont, opts);
     const filtros = { carpeta, entidad_id: entidad_id || null };
     let docs = await S.list('documentos', filtros, '-created_at');
+    if (!esProp()) docs = docs.filter((d) => !window.IBCOL_ES_EXCEL(d.nombre));
     if (relEquipo) docs = docs.filter((d) => d.equipo_id === relEquipo || (d.equipos_rel || []).includes(relEquipo));
     else if (!todos) docs = docs.filter((d) => (d.equipo_id || null) === (equipo_id || null));
     const llave = `${entidad_id}|${equipo_id || relEquipo || ''}|${carpeta}`;
@@ -567,7 +568,7 @@ window.APP = (() => {
         modal({
           titulo: 'Modificar documento',
           cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre', d.nombre, { full: true })}${f.input('subcarpeta', 'Subcarpeta', d.subcarpeta || '', { full: true })}${f.input('fecha_documento', 'Fecha del documento', d.fecha_documento, { type: 'date' })}${f.input('fecha_vencimiento', 'Fecha de vencimiento (genera alerta)', d.fecha_vencimiento, { type: 'date' })}
-            <div class="field full"><label class="checks"><input type="checkbox" name="visible_cliente" data-single ${d.visible_cliente !== false ? 'checked' : ''}> Visible para el cliente</label></div>
+            <div class="field full">${window.IBCOL_ES_EXCEL(d.nombre) ? '<span class="muted">Formato en Excel: solo lo ve IBCOL (las entidades no tienen acceso).</span>' : `<label class="checks"><input type="checkbox" name="visible_cliente" data-single ${d.visible_cliente !== false ? 'checked' : ''}> Visible para el cliente</label>`}</div>
             <div class="field full"><span class="lbl">Reemplazar archivo (la versión anterior se conserva)</span><input type="file" data-rep></div></div></form>`,
           acciones: [{ t: 'Cancelar' }, { t: 'Guardar cambios', cls: 'pri', fn: async (m) => {
             const v = leer(m.body); const cambios = { nombre: v.nombre || d.nombre, subcarpeta: v.subcarpeta || null, fecha_documento: v.fecha_documento || null, fecha_vencimiento: v.fecha_vencimiento || null, visible_cliente: v.visible_cliente };
