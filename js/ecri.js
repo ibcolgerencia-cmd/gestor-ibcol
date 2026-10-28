@@ -9,7 +9,7 @@
   let lista = null;
   const nrm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   // equivalencias de nombres comunes en las IPS → término UMDNS
-  const SINON = { pulsioximetro: 'oximetros', oximetro: 'oximetros', tensiometro: 'esfigmomanometros', fonendoscopio: 'estetoscopios', glucometro: 'glucosa', termohigrometro: 'higrometros',
+  const SINON = { pulsioximetro: 'oximetros de pulsos', oximetro: 'oximetros de pulsos', tensiometro: 'esfigmomanometros', fonendoscopio: 'estetoscopios', glucometro: 'glucosa', termohigrometro: 'higrometros',
     bascula: 'basculas', 'pieza de alta': 'piezas de mano', 'contra angulo': 'piezas de mano', micromotor: 'piezas de mano', 'pieza recta': 'piezas de mano', scaler: 'escarificadores',
     'fotocurado': 'luces activador dental', 'lampara de fotocurado': 'luces activador dental', 'unidad odontologica': 'tratamiento dental', 'equipo organos': 'otoscopios', ecografo: 'exploracion ultrasonido', ecografia: 'exploracion ultrasonido', nevera: 'refrigeradores',
     'termometro max': 'termometros', incubadora: 'incubadoras', cubadora: 'incubadoras', autoclave: 'esterilizadores', electrocardiografo: 'electrocardiografos', centrifuga: 'centrifugas', nebulizador: 'nebulizadores', compresor: 'compresores' };
