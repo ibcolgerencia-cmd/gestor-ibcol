@@ -198,7 +198,7 @@
       const card = (k, titulo, cuerpo, on = true) => `<section class="g-card"><header><label class="g-save"><input type="checkbox" data-gs="${k}" ${on ? 'checked' : ''}> Guardar</label><h4>${titulo}</h4></header>${cuerpo}</section>`;
       const txt = (k, md) => `<textarea data-gtxt="${k}" rows="9" class="mono" aria-label="${k}">${h(md)}</textarea>`;
       const rg = x.registro || {};
-      res.innerHTML = `<div class="g-head">${x.identificado ? '<span class="pill ok">Modelo identificado</span>' : '<span class="pill warn">Modelo no identificado con certeza</span>'}${x.nota ? `<span class="muted">${h(x.nota)}</span>` : ''}</div>
+      res.innerHTML = `<div class="g-head">${x.identificado ? '<span class="pill ok">Modelo identificado</span>' : '<span class="pill warn">Modelo no identificado con certeza</span>'}${r.sin_busqueda ? '<span class="pill bad">Sin búsqueda en Google: la clave de Gemini no permitió buscar; datos de la IA, verifíquelos</span>' : ''}${x.nota ? `<span class="muted">${h(x.nota)}</span>` : ''}</div>
         ${iframeSug(r.sugerencias)}
         ${que.includes('ficha') && x.ficha ? card('ficha', 'Ficha técnica', txt('ficha', mdFicha(e2, r))) : ''}
         ${que.includes('guia') && x.guia ? card('guia', 'Guía rápida de uso', txt('guia', mdGuia(e2, r))) : ''}
