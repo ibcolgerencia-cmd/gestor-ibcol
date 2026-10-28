@@ -7,7 +7,7 @@
 //  Para regenerar fondos y mapas: tools/build_formatos.py
 // =====================================================================
 window.FMT = (() => {
-  const VER = 'f4';
+  const VER = 'f5';
   const cache = {};
   const cargar = (k) => (cache[k] = cache[k] || Promise.all([
     fetch(`formatos/${k}.pdf?${VER}`).then((r) => { if (!r.ok) throw new Error('No se encontró el formato ' + k); return r.arrayBuffer(); }),
@@ -117,6 +117,23 @@ window.FMT = (() => {
   const lista = (l) => (Array.isArray(l) ? l : l ? [l] : []).map((x) => String(x).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase());
   const ap = (l, v) => (lista(l).includes(v) ? 'APLICA' : 'NA');
   const X = (b) => (b ? 'X' : '');
+  // Valor de un dato del equipo: respeta la marca "NO REGISTRA" (eq.hv.nr) y el ítem manual (eq.hv.item)
+  const NOREG = 'NO REGISTRA';
+  const val = (e, k) => { if (!e) return ''; if (e.hv?.nr?.[k]) return NOREG; if (k === 'item') return e.hv?.item ?? ''; return e[k] ?? ''; };
+  const riesgoTxt = (e) => (e?.hv?.nr?.clase_riesgo ? NOREG : e?.clase_riesgo ? `CLASE ${String(e.clase_riesgo).toUpperCase()}` : 'NR');
+  // 9.5 Recomendaciones para mediciones: tabla parámetro / cantidad / unidad
+  const textoMediciones = (hv = {}) => {
+    if (hv.mediciones_aplica === 'No aplica') return 'NO APLICA';
+    const filas = (hv.mediciones_tabla || []).filter((r) => r.p || r.c || r.u).map((r) => `${r.p ? U(r.p) + ': ' : ''}${[r.c, r.u].filter(Boolean).join(' ')}`.trim());
+    return [filas.join('  |  '), hv.mediciones || ''].filter(Boolean).join('\n');
+  };
+  // Línea de firma digital de los reportes
+  const lineaFirma = (m) => {
+    const fd = m.datos?.firma_digital; if (!fd || !m.firma_realizo) return '';
+    const fh = new Date(fd.fecha); const t = isNaN(fh) ? fd.fecha : `${fD(fd.fecha)} ${String(fh.getHours()).padStart(2, '0')}:${String(fh.getMinutes()).padStart(2, '0')}`;
+    const rec = m.firma_recibe && m.datos?.firma_recibe_fecha ? `  ·  Recibido y firmado por ${m.datos.recibe_nombre || 'el usuario'} el ${fD(m.datos.firma_recibe_fecha)}` : '';
+    return `FIRMADO DIGITALMENTE por ${fd.nombre || ''}${fd.cargo ? ' - ' + fd.cargo : ''} el ${t}${rec}.  Código de verificación: ${fd.hash}  (cualquier cambio posterior al reporte invalida este código)`;
+  };
   const cabEntidad = (ent, cons) => ({
     ent_nombre: ent?.razon_social ? U(ent.razon_social) : undefined,
     ent_dir: [ent?.direccion, ent?.ciudad].filter(Boolean).length ? U([ent.direccion, ent.ciudad].filter(Boolean).join(', ')) : undefined,
@@ -137,10 +154,10 @@ window.FMT = (() => {
     const hv = eq.hv || {}; const v = { ...cabEntidad(ent, cons) };
     v.ent_contacto = [ent?.representante, ent?.telefono].filter(Boolean).length ? `CONTACTO: ${[ent.representante, ent.telefono].filter(Boolean).join(' - ')}` : undefined;
     const tr = hv.tipo_registro || (eq.registro_sanitario ? 'RS' : 'NR');
-    Object.assign(v, { rs: nr(eq.registro_sanitario), mk_rs: X(tr === 'RS'), mk_pc: X(tr === 'PC'), mk_na: X(tr === 'NA'), mk_nr: X(tr === 'NR'),
-      ecri: nr(hv.ecri), reps: nr(ent?.reps), distintivo: nr(hv.distintivo), equipo: U(eq.nombre), foto: hv.foto || null, funcion: nr(hv.funcion),
-      marca: nr(eq.marca), af: nr(eq.activo_fijo), modelo: nr(eq.modelo), servicio: nr(cons?.servicio || cons?.nombre), serie: nr(eq.serie), ubicacion: nr(eq.ubicacion),
-      inventario: nr(eq.codigo_inv), movil: X(hv.movil !== 'Fijo'), fijo: X(hv.movil === 'Fijo') });
+    Object.assign(v, { rs: nr(val(eq, 'registro_sanitario')), mk_rs: X(tr === 'RS'), mk_pc: X(tr === 'PC'), mk_na: X(tr === 'NA'), mk_nr: X(tr === 'NR'),
+      ecri: nr(hv.ecri), reps: nr(ent?.reps), distintivo: nr(hv.distintivo), equipo: U(val(eq, 'nombre')), foto: hv.foto || null, funcion: nr(hv.funcion),
+      marca: nr(val(eq, 'marca')), af: nr(val(eq, 'activo_fijo')), modelo: nr(val(eq, 'modelo')), servicio: nr(cons?.servicio || cons?.nombre), serie: nr(val(eq, 'serie')), ubicacion: nr(val(eq, 'ubicacion')),
+      inventario: nr(val(eq, 'codigo_inv')), movil: X(hv.movil !== 'Fijo'), fijo: X(hv.movil === 'Fijo') });
     const adq = lista(hv.adquisicion || 'Compra')[0];
     ['compra', 'donacion', 'asignacion', 'comodato', 'alquiler'].forEach((k) => { v[`adq_${k}`] = X(adq === k); });
     Object.assign(v, { garantia: nr(hv.garantia || (eq.fecha_fin_garantia ? 'Hasta ' + fD(eq.fecha_fin_garantia) : '')), costo: hv.costo ? '$ ' + Math.round(Number(hv.costo)).toLocaleString('es-CO') : 'NR',
@@ -157,7 +174,8 @@ window.FMT = (() => {
     Object.assign(v, { cb_diagnostico: ap(cb, 'diagnostico'), cb_prevencion: ap(cb, 'prevencion'), cb_rehabilitacion: ap(cb, 'rehabilitacion'),
       cb_tto: cb.some((x) => x.startsWith('tratamiento')) ? 'APLICA' : 'NA', cb_laboratorio: cb.some((x) => x.startsWith('analisis')) ? 'APLICA' : 'NA' });
     ['I', 'IIa', 'IIb', 'III'].forEach((r) => { v[`r_${r}`] = eq.clase_riesgo === r ? 'APLICA' : 'NA'; });
-    ['operacion', 'partes', 'mantenimiento', 'despiece'].forEach((k) => { v[`ma_${k}`] = ap(hv.manuales, k); });
+    // 6.5 Manuales (formato v.002 ajustado): Operación, Mantenimiento, Guía rápida, Ficha técnica
+    Object.assign(v, { ma_operacion: ap(hv.manuales, 'operacion'), ma_mantenimiento: ap(hv.manuales, 'mantenimiento'), ma_partes: ap(hv.manuales, 'guia rapida'), ma_despiece: ap(hv.manuales, 'ficha tecnica') });
     ['electronico', 'mecanico', 'electrico', 'neumatico'].forEach((k) => { v[`pl_${k}`] = ap(hv.planos, k); });
     const acc = (hv.accesorios || []).filter((a) => a.nombre);
     for (let i = 0; i < 4; i++) { const a = acc[i] || {}; ['nombre', 'marca', 'modelo', 'serie', 'desc'].forEach((k) => { v[`acc${i}_${k}`] = nr(a[k]); }); }
@@ -165,12 +183,12 @@ window.FMT = (() => {
     ['reg_sanitario', 'importacion', 'factura', 'acta_recibido', 'crono_garantia', 'protocolo', 'guia'].forEach((k, i) => {
       const s = anexos[k] || 'No aplica';
       v[`an${i}_si`] = X(s === 'Anexo'); v[`an${i}_no`] = X(s === 'No anexo'); v[`an${i}_na`] = X(s === 'No aplica');
-      v[`an${i}_obs`] = i === 0 ? nr(eq.registro_sanitario) : (hv.anexos_obs || {})[k] || '';
+      v[`an${i}_obs`] = i === 0 ? nr(val(eq, 'registro_sanitario')) : (hv.anexos_obs || {})[k] || '';
     });
     const mtoAp = eq.periodicidad_mto && eq.periodicidad_mto !== 'No aplica', metAp = eq.periodicidad_metro && eq.periodicidad_metro !== 'No aplica';
     Object.assign(v, { mto_si: X(mtoAp), mto_no: X(!mtoAp), periodicidad_mto: mtoAp ? U(eq.periodicidad_mto) : 'NA', metro_si: X(metAp), metro_no: X(!metAp),
-      periodicidad_metro: metAp ? U(eq.periodicidad_metro) : 'NA', mediciones: hv.mediciones || '',
-      equipo_2: U(eq.nombre), marca_2: nr(eq.marca), modelo_2: nr(eq.modelo), serie_2: nr(eq.serie), recomendaciones: hv.recomendaciones || '' });
+      periodicidad_metro: metAp ? U(eq.periodicidad_metro) : 'NA', mediciones: textoMediciones(hv),
+      equipo_2: U(val(eq, 'nombre')), marca_2: nr(val(eq, 'marca')), modelo_2: nr(val(eq, 'modelo')), serie_2: nr(val(eq, 'serie')), recomendaciones: hv.recomendaciones || '' });
     const cod = fmt.codigo ? `Código: ${fmt.codigo}` : undefined, fec = fmt.fecha ? `Fecha Act: ${fD(fmt.fecha)}` : undefined, ver = fmt.version ? `Versión: ${fmt.version}` : undefined;
     Object.assign(v, { fmt_codigo: cod, fmt_fecha: fec, fmt_version: ver, fmt_codigo_2: cod, fmt_fecha_2: fec, fmt_version_2: ver });
     return render('hoja_vida', [v]);
@@ -179,12 +197,12 @@ window.FMT = (() => {
   // Campos comunes de los reportes FMB-004 / 005 / 006
   function mtoComun({ m, eq, ent, cons, fmt = {} }) {
     const d = m.datos || {};
-    const v = { equipo: U(eq.nombre), numero: m.numero || '', entidad: ent?.razon_social || '', sede: cons?.sede || '', servicio: cons?.nombre || '', marca: nr(eq.marca), modelo: nr(eq.modelo), serie: nr(eq.serie),
-      frecuencia: d.frecuencia || eq.periodicidad_mto || '', fecha: fD(m.fecha), cod_inv: nr(eq.codigo_inv), cod_af: nr(eq.activo_fijo), obs: d.observaciones || '',
-      firma_recibe: m.firma_recibe || null, recibe_nombre: `NOMBRE: ${d.recibe_nombre || ''}${d.recibe_cargo ? `\nCARGO: ${d.recibe_cargo}` : ''}`,
+    const v = { equipo: U(val(eq, 'nombre')), numero: m.numero || '', entidad: ent?.razon_social || '', sede: cons?.sede || '', servicio: cons?.nombre || '', marca: nr(val(eq, 'marca')), modelo: nr(val(eq, 'modelo')), serie: nr(val(eq, 'serie')),
+      frecuencia: d.frecuencia || eq.periodicidad_mto || '', fecha: fD(m.fecha), cod_inv: nr(val(eq, 'codigo_inv')), cod_af: nr(val(eq, 'activo_fijo')), obs: d.observaciones || '',
+      firma_recibe: m.firma_recibe || null, firma_realizo: m.firma_realizo || null, firma_digital: lineaFirma(m), recibe_nombre: `NOMBRE: ${d.recibe_nombre || ''}${d.recibe_cargo ? `\nCARGO: ${d.recibe_cargo}` : ''}`,
       fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined };
-    const val = d.valoracion || [];
-    CAT.VALORACION.forEach((x, i) => { v[`v${i}`] = val.includes(x) ? '✓' : 'x'; });
+    const valo = d.valoracion || [];
+    CAT.VALORACION.forEach((x, i) => { v[`v${i}`] = valo.includes(x) ? '✓' : 'x'; });
     const rp = (d.repuestos || []).filter((r) => r.d);
     for (let i = 0; i < 8; i++) v[`rp${i}`] = rp[i] ? `${rp[i].c && rp[i].c != 1 ? rp[i].c + ' ' : ''}${rp[i].d}` : 'NA';
     return v;
@@ -207,15 +225,15 @@ window.FMT = (() => {
   // ------------------------------------------------------------------ MANTENIMIENTO PREVENTIVO (FMB-004)
   async function mtoPreventivo({ m, eq, ent, cons, fmt = {} }) {
     const d = m.datos || {};
-    const v = { equipo: U(eq.nombre), numero: m.numero || '', entidad: ent?.razon_social || '', sede: cons?.sede || '', servicio: cons?.nombre || '', marca: nr(eq.marca), modelo: nr(eq.modelo), serie: nr(eq.serie),
+    const v = { equipo: U(val(eq, 'nombre')), numero: m.numero || '', entidad: ent?.razon_social || '', sede: cons?.sede || '', servicio: cons?.nombre || '', marca: nr(val(eq, 'marca')), modelo: nr(val(eq, 'modelo')), serie: nr(val(eq, 'serie')),
       frecuencia: d.frecuencia || eq.periodicidad_mto || '', fecha: fD(m.fecha), tiempo: d.tiempo ? (/^\d{1,2}:\d{2}$/.test(d.tiempo) ? d.tiempo + ':00' : d.tiempo) : undefined,
-      cod_inv: nr(eq.codigo_inv), cod_af: nr(eq.activo_fijo), obs: d.observaciones || '',
-      firma_recibe: m.firma_recibe || null, recibe_nombre: `NOMBRE: ${d.recibe_nombre || ''}${d.recibe_cargo ? `\nCARGO: ${d.recibe_cargo}` : ''}`,
+      cod_inv: nr(val(eq, 'codigo_inv')), cod_af: nr(val(eq, 'activo_fijo')), obs: d.observaciones || '',
+      firma_recibe: m.firma_recibe || null, firma_realizo: m.firma_realizo || null, firma_digital: lineaFirma(m), recibe_nombre: `NOMBRE: ${d.recibe_nombre || ''}${d.recibe_cargo ? `\nCARGO: ${d.recibe_cargo}` : ''}`,
       fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined };
     (d.pruebas || []).slice(0, 12).forEach((p, i) => { v[`p${i}`] = p.item || ''; v[`pa${i}`] = X(p.r === 'Pasa'); v[`np${i}`] = X(p.r === 'No pasa'); });
     (d.actividades || []).slice(0, 12).forEach((a, i) => { v[`ac${i}`] = a; v[`ok${i}`] = '✓'; });
-    const val = d.valoracion || [];
-    CAT.VALORACION.forEach((x, i) => { v[`v${i}`] = val.includes(x) ? '✓' : 'x'; });
+    const valo = d.valoracion || [];
+    CAT.VALORACION.forEach((x, i) => { v[`v${i}`] = valo.includes(x) ? '✓' : 'x'; });
     const rp = (d.repuestos || []).filter((r) => r.d);
     for (let i = 0; i < 8; i++) v[`rp${i}`] = rp[i] ? `${rp[i].c && rp[i].c != 1 ? rp[i].c + ' ' : ''}${rp[i].d}` : 'NA';
     return render('mto_preventivo', [v]);
@@ -235,8 +253,9 @@ window.FMT = (() => {
       const v = { ...base };
       grupo.forEach((c, i) => {
         const e = eqs(c.equipo_id);
-        Object.assign(v, { [`r${i}_item`]: String(h * cap + i + 1), [`r${i}_cod`]: e.codigo_inv || '', [`r${i}_af`]: e.activo_fijo || '', [`r${i}_equipo`]: tipo === 'capacitacion' ? c.tema || e.nombre || '' : e.nombre || '',
-          [`r${i}_marca`]: e.marca || '', [`r${i}_modelo`]: e.modelo || '', [`r${i}_serie`]: e.serie || '' });
+        const it = e.hv?.nr?.item ? 'NR' : val(e, 'item');
+        Object.assign(v, { [`r${i}_item`]: String(it || h * cap + i + 1), [`r${i}_cod`]: val(e, 'codigo_inv'), [`r${i}_af`]: val(e, 'activo_fijo'), [`r${i}_equipo`]: tipo === 'capacitacion' ? c.tema || e.nombre || '' : val(e, 'nombre'),
+          [`r${i}_marca`]: val(e, 'marca'), [`r${i}_modelo`]: val(e, 'modelo'), [`r${i}_serie`]: val(e, 'serie') });
         Object.entries(c.plan || {}).forEach(([k, val]) => { if (val) v[`r${i}_w${k}`] = { fill: val }; });
       });
       return v;
@@ -253,9 +272,9 @@ window.FMT = (() => {
       fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined };
     const hojas = partes(equipos, cap).map((grupo, h) => {
       const v = { ...base };
-      grupo.forEach((e, i) => Object.assign(v, { [`r${i}_item`]: String(h * cap + i + 1), [`r${i}_cod`]: e.codigo_inv || '', [`r${i}_af`]: e.activo_fijo || '', [`r${i}_equipo`]: e.nombre || '',
-        [`r${i}_marca`]: e.marca || '', [`r${i}_modelo`]: e.modelo || '', [`r${i}_serie`]: e.serie || 'NR', [`r${i}_ubicacion`]: U(e.ubicacion || cn(e.consultorio_id)),
-        [`r${i}_riesgo`]: e.clase_riesgo ? `CLASE ${e.clase_riesgo.toUpperCase()}` : 'NR', [`r${i}_rs`]: e.registro_sanitario || 'NR' }));
+      grupo.forEach((e, i) => Object.assign(v, { [`r${i}_item`]: String((e.hv?.nr?.item ? 'NR' : val(e, 'item')) || h * cap + i + 1), [`r${i}_cod`]: val(e, 'codigo_inv'), [`r${i}_af`]: val(e, 'activo_fijo'), [`r${i}_equipo`]: val(e, 'nombre'),
+        [`r${i}_marca`]: val(e, 'marca'), [`r${i}_modelo`]: val(e, 'modelo'), [`r${i}_serie`]: val(e, 'serie') || 'NR', [`r${i}_ubicacion`]: U(val(e, 'ubicacion') || cn(e.consultorio_id)),
+        [`r${i}_riesgo`]: riesgoTxt(e), [`r${i}_rs`]: val(e, 'registro_sanitario') || 'NR' }));
       return v;
     });
     return render('inventario', hojas);
@@ -292,5 +311,5 @@ window.FMT = (() => {
     return render('cuenta_cobro', [v]);
   }
 
-  return { render, cuentaCobro, hojaVida, mtoPreventivo, mtoCorrectivo, metrologia, cronograma, inventario, alertas, cargar };
+  return { val, NOREG, textoMediciones, render, cuentaCobro, hojaVida, mtoPreventivo, mtoCorrectivo, metrologia, cronograma, inventario, alertas, cargar };
 })();

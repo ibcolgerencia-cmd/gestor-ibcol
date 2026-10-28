@@ -160,12 +160,12 @@ window.UI = (() => {
   }
 
   // ------------------------------------------------------------ Visor PDF (pdf.js)
-  async function verPDF({ titulo, blob, nombre, alDescargar, firmar }) {
+  async function verPDF({ titulo, blob, nombre, alDescargar, firmar, extras = [] }) {
     if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
     let modoFirma = false;
-    const acciones = [];
+    const acciones = [...extras];
     if (firmar) acciones.push({ t: `${I.firma} Firmar`, fn: () => { modoFirma = !modoFirma; m.body.querySelector('.viewer').classList.toggle('signing', modoFirma); if (modoFirma) toast('Toque en la página el lugar donde irá la firma'); return false; } });
     acciones.push({ t: `${I.bajar} Descargar`, cls: 'pri', fn: () => { descargar(blob, nombre || 'documento.pdf'); alDescargar?.(); return false; } });
     const m = modal({ titulo, size: 'wide', cuerpo: '<div class="viewer"><div class="loading">Abriendo documento…</div></div>', acciones });

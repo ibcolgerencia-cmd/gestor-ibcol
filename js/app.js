@@ -444,7 +444,8 @@ window.APP = (() => {
   A.verHojaVida = async (eq, ent, cons, mtos) => {
     const blob = await FMT.hojaVida({ eq, ent, cons, fmt: st.fmt.hoja_vida });
     S.log('CONSULTA', 'equipos', eq.id, `Hoja de vida ${eq.codigo_inv}`);
-    UI.verPDF({ titulo: `Hoja de vida · ${eq.nombre}`, blob, nombre: `HV_${eq.codigo_inv}_${eq.nombre}.pdf`, alDescargar: () => S.log('DESCARGA', 'equipos', eq.id, `Hoja de vida ${eq.codigo_inv}`) });
+    UI.verPDF({ titulo: `Hoja de vida · ${eq.nombre}`, blob, nombre: `HV_${eq.codigo_inv}_${eq.nombre}.pdf`, alDescargar: () => S.log('DESCARGA', 'equipos', eq.id, `Hoja de vida ${eq.codigo_inv}`),
+      extras: [{ t: `${I.ver} Documentos de soporte`, fn: () => { A.modalDocsHV(eq, ent, cons); return false; } }] });
   };
 
   // ---------------------------------------------------------------- Carpeta (genérica)

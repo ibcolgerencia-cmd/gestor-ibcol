@@ -6,6 +6,7 @@
   const { h, I, toast, modal, confirmar, leer, f } = UI;
   const esProp = A.esProp;
   const anioAct = new Date().getFullYear();
+  const nrmQ = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
   // ------------------------------------------------------------ filas repetibles
   const rep = (id, cols, filas) => `<div class="repeat" data-rep="${id}">
@@ -37,34 +38,46 @@
   // ------------------------------------------------------------ Inventario
   A.G.inventario = async (el, { ent }) => {
     const [eqs, cons] = await Promise.all([S.list('equipos', { entidad_id: ent.id }, 'codigo_inv'), S.list('consultorios', { entidad_id: ent.id })]).then(([e, c]) => { const co = A.ordenar(c); const idx = (x) => co.findIndex((k) => k.id === x.consultorio_id); return [[...e].sort((a, b) => (idx(a) - idx(b)) || ((a.orden ?? 9999) - (b.orden ?? 9999)) || String(a.codigo_inv).localeCompare(String(b.codigo_inv))), co]; });
-    let filtro = '';
+    let filtro = '', q = '', editar = false;
     const cn = (id) => cons.find((c) => c.id === id)?.nombre || '—';
+    const visibles = () => eqs.filter((e) => (!filtro || e.consultorio_id === filtro) && (!q || nrmQ([e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, cn(e.consultorio_id)].join(' ')).includes(q)));
     const pintar = () => {
-      const lista = eqs.filter((e) => !filtro || e.consultorio_id === filtro);
-      el.querySelector('tbody').innerHTML = lista.map((e, i) => `<tr class="clic" data-act="abrirEq" data-id="${e.id}"><td class="num">${i + 1}</td><td class="mono">${h(e.codigo_inv)}</td><td class="mono">${h(e.activo_fijo || '')}</td><td><b>${h(e.nombre)}</b></td><td>${h(e.marca || '')}</td><td>${h(e.modelo || '')}</td><td class="mono">${h(e.serie || '')}</td><td>${h(cn(e.consultorio_id))}${e.ubicacion ? ' / ' + h(e.ubicacion) : ''}</td><td>${A.riesgo(e.clase_riesgo)}</td><td class="mono">${h(e.registro_sanitario || '')}</td><td>${A.estadoPill(e.estado)}</td></tr>`).join('') || '<tr><td colspan="11" class="empty">Sin equipos.</td></tr>';
+      const lista = visibles();
+      el.querySelector('[data-edit]')?.classList.toggle('pri', editar);
+      el.querySelector('tbody').innerHTML = lista.map((e, i) => `<tr ${editar ? '' : `class="clic" data-act="abrirEq" data-id="${e.id}"`}>${A.COLS_EQ.map((c) => `<td class="${c.mono && !editar ? 'mono' : ''} ${c.k === 'item' ? 'num' : ''}">${editar ? A.celdaEdit(e, c.k, i, cons) : A.celdaVer(e, c.k, i, cons)}</td>`).join('')}<td>${A.estadoPill(e.estado)}</td></tr>`).join('') || '<tr><td colspan="11" class="empty">Sin equipos.</td></tr>';
+      el.querySelector('[data-cuenta]').textContent = `${lista.length} de ${eqs.length} equipos`;
+      if (editar) A.bindCeldas(el.querySelector('tbody'), eqs);
     };
     el.innerHTML = `<section class="panel"><header><div><h2>Equipos registrados por servicio</h2><span class="muted" style="font-size:.85rem">Se crean al cargar el inventario. Cada equipo queda dentro de su servicio en “3. Información del equipo”.</span></div><div class="actions">
         ${esProp() ? `<button class="btn pri" data-act="cargarInv">${I.subir} Cargar inventario (PDF o Excel)</button>` : ''}
-        <div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}</option>`).join('')}</select></div>
         <button class="btn" data-act="invPDF">${I.pdf} PDF (FMB-001)</button><button class="btn" data-act="invXLS">${I.excel} Excel</button>${esProp() ? `<button class="btn" data-act="nuevoEq">${I.mas} Equipo</button>` : ''}</div></header>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Ítem</th><th>Código inv.</th><th>N° A.F.</th><th>Equipo</th><th>Marca</th><th>Modelo</th><th>Serie</th><th>Ubicación / área</th><th>Riesgo</th><th>Registro sanitario</th><th>Estado</th></tr></thead><tbody></tbody></table></div></section>`;
+      <div class="tbl-tools"><div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}</option>`).join('')}</select></div>
+        <input type="search" data-q placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar en el inventario">
+        <span class="muted" data-cuenta></span>
+        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
+      ${esProp() ? '<p class="muted edit-hint" data-hint hidden>Modo edición: cambie cualquier dato y presione Enter o salga de la casilla para guardar. Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista.</p>' : ''}
+      ${A.datalistNR}
+      <div class="tbl-wrap"><table class="tbl tbl-eq"><thead><tr>${A.COLS_EQ.map((c) => `<th style="min-width:${c.w}px">${c.t}</th>`).join('')}<th>Estado</th></tr></thead><tbody></tbody></table></div></section>`;
     pintar();
     el.querySelector('[data-filtro]').onchange = (e) => { filtro = e.target.value; pintar(); };
+    let tq; el.querySelector('[data-q]').oninput = (e) => { clearTimeout(tq); tq = setTimeout(() => { q = nrmQ(e.target.value); pintar(); }, 150); };
     A.acts({
+      editTabla: () => { editar = !editar; const hn = el.querySelector('[data-hint]'); if (hn) hn.hidden = !editar; pintar(); },
+      llenarNR: () => A.completarNR(visibles(), pintar),
       abrirEq: (d) => A.go('equipo', { id: d.id }),
       nuevoEq: () => A.formEquipo({ entidad_id: ent.id, consultorio_id: filtro || cons[0]?.id }, cons),
       cargarInv: () => A.cargarInventario(ent),
       invPDF: async () => {
-        const lista = A.ordenar(eqs.filter((e) => !filtro || e.consultorio_id === filtro));
+        const lista = visibles();
         const blob = await FMT.inventario({ ent, equipos: lista, consultorios: cons, fmt: st.fmt.inventario, cons: cons.find((c) => c.id === filtro) });
         S.log('CONSULTA', 'equipos', ent.id, 'Inventario PDF');
         UI.verPDF({ titulo: 'Inventario', blob, nombre: `Inventario_${ent.razon_social}.pdf` });
       },
       invXLS: () => {
-        const lista = eqs.filter((e) => !filtro || e.consultorio_id === filtro);
+        const lista = visibles(); const V = FMT.val;
         const aoa = [[`INVENTARIO · ${st.fmt.inventario.codigo} · Versión ${st.fmt.inventario.version}`], [ent.razon_social], [`NIT: ${ent.nit || ''}`, '', `REPS: ${ent.reps || ''}`], [],
           ['ÍTEM', 'CÓDIGO DE INV.', 'N° DE A.F.', 'EQUIPO', 'MARCA', 'MODELO', 'SERIE', 'UBICACIÓN / ÁREA', 'CLASIFICACIÓN POR RIESGO SANITARIO', 'REGISTRO SANITARIO O PERMISO DE COMERCIALIZACIÓN', 'ESTADO'],
-          ...lista.map((e, i) => [i + 1, e.codigo_inv, e.activo_fijo || '', e.nombre, e.marca || '', e.modelo || '', e.serie || '', `${cn(e.consultorio_id)}${e.ubicacion ? ' / ' + e.ubicacion : ''}`, e.clase_riesgo || '', e.registro_sanitario || '', e.estado])];
+          ...lista.map((e, i) => [(e.hv?.nr?.item ? FMT.NOREG : e.hv?.item) || i + 1, V(e, 'codigo_inv'), V(e, 'activo_fijo'), V(e, 'nombre'), V(e, 'marca'), V(e, 'modelo'), V(e, 'serie'), e.hv?.nr?.ubicacion ? FMT.NOREG : `${cn(e.consultorio_id)}${e.ubicacion ? ' / ' + e.ubicacion : ''}`, e.hv?.nr?.clase_riesgo ? FMT.NOREG : e.clase_riesgo || '', V(e, 'registro_sanitario'), e.estado])];
         const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = [6, 14, 12, 28, 16, 16, 16, 26, 12, 24, 14].map((w) => ({ wch: w }));
         const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'FMB-001');
         UI.descargar(new Blob([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Inventario_${ent.razon_social}.xlsx`);
@@ -77,39 +90,86 @@
   A.planDesde = (per, mesIni = 1, semana = 2) => { const p = {}, paso = CAT.PERIODICIDAD[per] || 0; if (!paso) return p; for (let m = +mesIni; m <= 12; m += paso) p[`${m}-${semana}`] = 'P'; return p; };
   A.G.crono = async (el, { ent }, tipo) => {
     let anio = st.cronoAnio || anioAct;
-    const eqs = await S.list('equipos', { entidad_id: ent.id }, 'codigo_inv');
+    const [eqs, consAll] = await Promise.all([S.list('equipos', { entidad_id: ent.id }, 'codigo_inv'), S.list('consultorios', { entidad_id: ent.id })]);
+    const cons = A.ordenar(consAll);
     const titulo = { mantenimiento: 'Cronograma de mantenimiento preventivo', metrologia: 'Cronograma de metrología y calibración', capacitacion: 'Cronograma de capacitación' }[tipo];
+    const cap = tipo === 'capacitacion';
+    const fk = `${ent.id}|${tipo}`; st.cronoF = st.cronoF || {}; const F = (st.cronoF[fk] = st.cronoF[fk] || { mes: 0, q: '', estado: '', editar: false });
+    const eqd = (id) => eqs.find((e) => e.id === id) || {};
+    const ordenEq = (() => { const idx = (x) => cons.findIndex((k) => k.id === x.consultorio_id); return (a, b) => (idx(a) - idx(b)) || ((a.orden ?? 9999) - (b.orden ?? 9999)) || String(a.codigo_inv || '').localeCompare(String(b.codigo_inv || '')); })();
+    const mesDe = (c, m) => Object.entries(c.plan || {}).filter(([k, v]) => v && +k.split('-')[0] === m).map(([k, v]) => ({ k, v }));
     const pintar = async () => {
       st.cronoAnio = anio;
-      const cronos = (await S.list('cronogramas', { entidad_id: ent.id, tipo, anio })).sort((a, b) => ((eqs.find((e) => e.id === a.equipo_id)?.codigo_inv || a.tema || '') > (eqs.find((e) => e.id === b.equipo_id)?.codigo_inv || b.tema || '') ? 1 : -1));
+      const cronos = (await S.list('cronogramas', { entidad_id: ent.id, tipo, anio })).sort((a, b) => (cap ? String(a.tema || '').localeCompare(String(b.tema || '')) : ordenEq(eqd(a.equipo_id), eqd(b.equipo_id))));
       const mesAct = new Date().getMonth() + 1;
-      const eqd = (id) => eqs.find((e) => e.id === id) || {};
-      const cap = tipo === 'capacitacion';
+      const texto = (c) => { const e = eqd(c.equipo_id); return nrmQ([c.tema, e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, cons.find((x) => x.id === e.consultorio_id)?.nombre].join(' ')); };
+      const visibles = cronos.filter((c) => (!F.q || texto(c).includes(F.q)) && (!F.mes || mesDe(c, F.mes).some((x) => !F.estado || x.v === F.estado)));
+      const enMes = F.mes ? cronos.flatMap((c) => mesDe(c, F.mes)) : [];
+      const movibles = F.mes ? visibles.filter((c) => mesDe(c, F.mes).some((x) => x.v !== 'E')).length : 0;
+      const nFil = F.mes ? new Set(cronos.filter((c) => mesDe(c, F.mes).length).map((c) => c.id)).size : 0;
+      const resumen = F.mes ? `<div class="mes-res"><b>${CAT.MESES[F.mes - 1]} ${anio}:</b> <button class="btn sm" data-act="anio12">${F.anio12 ? 'Ver solo ' + CAT.MESES[F.mes - 1] : 'Ver todo el año'}</button> <span class="pill">${nFil} ${cap ? (nFil === 1 ? 'capacitación' : 'capacitaciones') : (nFil === 1 ? 'equipo' : 'equipos')}</span><span class="pill warn">${enMes.filter((x) => x.v === 'P').length} programados</span><span class="pill ok">${enMes.filter((x) => x.v === 'E').length} ejecutados</span><span class="pill bad">${enMes.filter((x) => x.v === 'N').length} no ejecutados</span>
+        ${esProp() && !cap ? `<span class="sp"></span><span class="muted">Mover lo programado de ${CAT.MESES[F.mes - 1]} a</span><select data-mover-mes aria-label="Mes destino">${CAT.MESES.map((m, i) => `<option value="${i + 1}" ${i + 1 === (F.mes % 12) + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select><select data-mover-sem aria-label="Semana destino">${[1, 2, 3, 4].map((s) => `<option ${s === 2 ? 'selected' : ''}>${s}</option>`).join('')}</select><button class="btn sm" data-act="moverMes" ${movibles ? '' : 'disabled title="No hay semanas programadas sin ejecutar en este mes"'}>Mover (${movibles})</button>` : ''}</div>` : '';
+      const colsInfo = cap ? [] : A.COLS_EQ;
+      const mesesVis = F.mes && !F.anio12 ? [F.mes - 1] : [...Array(12).keys()];
+      const editar = F.editar && esProp() && !cap;
       el.innerHTML = `<section class="panel"><header><h2>${titulo}</h2><div class="actions">
           <button class="btn sm" data-act="anio" data-d="-1" aria-label="Año anterior">‹</button><b class="num" style="align-self:center">${anio}</b><button class="btn sm" data-act="anio" data-d="1" aria-label="Año siguiente">›</button>
-          <button class="btn" data-act="cronoPDF">${I.pdf} PDF</button>
+          <button class="btn" data-act="cronoPDF">${I.pdf} PDF${F.mes || F.q ? ' (filtrado)' : ''}</button>
           ${esProp() ? `${cap ? '' : `<button class="btn" data-act="generar">${I.cal} Generar desde periodicidad</button>`}<button class="btn pri" data-act="agregar">${I.mas} ${cap ? 'Capacitación' : 'Equipo'}</button>` : ''}</div></header>
-        <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span>${esProp() ? '<span>Toque una semana para cambiar su estado.</span>' : ''}</div>
-        ${cronos.length ? `<div class="crono-wrap"><table class="crono ${esProp() ? 'edit' : ''}"><thead><tr><th rowspan="2">Ítem</th>${cap ? '<th rowspan="2">Tema</th><th rowspan="2">Equipo</th>' : '<th rowspan="2">Cód. inv.</th><th rowspan="2">Equipo</th><th rowspan="2">Marca</th><th rowspan="2">Serie</th>'}${CAT.MESES.map((m) => `<th colspan="4">${m.slice(0, 3)}</th>`).join('')}${esProp() ? '<th rowspan="2"></th>' : ''}</tr>
-          <tr>${CAT.MESES.map(() => [1, 2, 3, 4].map((s) => `<th style="font-size:.66rem;padding:2px">${s}</th>`).join('')).join('')}</tr></thead><tbody>
-          ${cronos.map((c, i) => { const e = eqd(c.equipo_id); return `<tr><td class="num">${i + 1}</td>${cap ? `<td>${h(c.tema || '')}</td><td>${h(e.nombre || '—')}</td>` : `<td class="mono">${h(e.codigo_inv || '')}</td><td>${h(e.nombre || '')}</td><td>${h(e.marca || '')}</td><td class="mono">${h(e.serie || '')}</td>`}
-            ${Array.from({ length: 12 }, (_, m) => [1, 2, 3, 4].map((s) => { const v = (c.plan || {})[`${m + 1}-${s}`] || ''; return `<td class="w ${v} ${anio === anioAct && m + 1 === mesAct ? 'now' : ''}" ${esProp() ? `data-act="celda" data-id="${c.id}" data-k="${m + 1}-${s}"` : ''} title="${CAT.MESES[m]} semana ${s}">${v}</td>`; }).join('')).join('')}
-            ${esProp() ? `<td><button class="icon-btn bad" data-act="quitar" data-id="${c.id}" aria-label="Quitar fila">${I.del}</button></td>` : ''}</tr>`; }).join('')}
-          </tbody></table></div>` : `<div class="empty">No hay cronograma para ${anio}.${esProp() && !cap ? ' Use “Generar desde periodicidad” para crearlo automáticamente con la frecuencia de cada equipo.' : ''}</div>`}</section>`;
+        <div class="tbl-tools">
+          <div class="field"><select data-mes aria-label="Buscar por mes"><option value="0">Buscar por mes: todos</option>${CAT.MESES.map((m, i) => `<option value="${i + 1}" ${F.mes === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+          ${F.mes ? `<div class="field"><select data-estado aria-label="Estado en el mes"><option value="">Cualquier estado</option><option value="P" ${F.estado === 'P' ? 'selected' : ''}>Programado</option><option value="E" ${F.estado === 'E' ? 'selected' : ''}>Ejecutado</option><option value="N" ${F.estado === 'N' ? 'selected' : ''}>No ejecutado</option></select></div>` : ''}
+          <input type="search" data-q value="${h(F.qRaw || '')}" placeholder="Buscar código, equipo, serie…" aria-label="Buscar en el cronograma">
+          <span class="muted">${visibles.length} de ${cronos.length}</span>
+          ${esProp() && !cap ? `<span class="sp"></span><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
+        ${resumen}
+        <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span>${esProp() ? `<span>Toque una semana para cambiar su estado${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses'}.</span>` : ''}</div>
+        ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista.</p>' : ''}
+        ${A.datalistNR}
+        ${visibles.length ? `<div class="crono-wrap"><table class="crono ${esProp() ? 'edit' : ''} ${editar ? 'editando' : ''}"><thead><tr>${cap ? '<th rowspan="2">Ítem</th><th rowspan="2">Tema</th><th rowspan="2">Equipo</th>' : colsInfo.map((c) => `<th rowspan="2" style="min-width:${editar ? c.w : 0}px">${c.t}</th>`).join('')}${mesesVis.map((i) => { const m = CAT.MESES[i]; return `<th colspan="4" class="${F.mes === i + 1 ? 'mes-sel' : ''}" data-act="verMes" data-m="${i + 1}" style="cursor:pointer" title="${F.mes === i + 1 ? 'Quitar filtro' : 'Filtrar ' + m}">${mesesVis.length === 1 ? m.toUpperCase() : m.slice(0, 3)}</th>`; }).join('')}${esProp() ? '<th rowspan="2"></th>' : ''}</tr>
+          <tr>${mesesVis.map((m) => [1, 2, 3, 4].map((s) => `<th class="${F.mes === m + 1 ? 'mes-sel' : ''}" style="font-size:.66rem;padding:2px">${s}</th>`).join('')).join('')}</tr></thead><tbody>
+          ${visibles.map((c) => { const e = eqd(c.equipo_id); const i = cronos.indexOf(c); return `<tr>${cap ? `<td class="num">${i + 1}</td><td>${h(c.tema || '')}</td><td>${h(e.nombre || '—')}</td>` : colsInfo.map((col) => `<td class="${col.mono && !editar ? 'mono' : ''}">${e.id ? (editar ? A.celdaEdit(e, col.k, i, cons) : A.celdaVer(e, col.k, i, cons)) : ''}</td>`).join('')}
+            ${mesesVis.map((m) => [1, 2, 3, 4].map((s) => { const v = (c.plan || {})[`${m + 1}-${s}`] || ''; return `<td class="w ${v} ${anio === anioAct && m + 1 === mesAct ? 'now' : ''} ${F.mes === m + 1 ? 'mes-sel' : ''}" ${esProp() ? `data-act="celda" data-id="${c.id}" data-k="${m + 1}-${s}"` : ''} title="${CAT.MESES[m]} semana ${s}">${v}</td>`; }).join('')).join('')}
+            ${esProp() ? `<td style="white-space:nowrap">${cap ? '' : `<button class="icon-btn" data-act="meses" data-id="${c.id}" aria-label="Cambiar meses" title="Cambiar meses">${I.edit}</button>`}<button class="icon-btn bad" data-act="quitar" data-id="${c.id}" aria-label="Quitar fila">${I.del}</button></td>` : ''}</tr>`; }).join('')}
+          </tbody></table></div>` : `<div class="empty">${cronos.length ? 'Ningún registro coincide con la búsqueda.' : `No hay cronograma para ${anio}.${esProp() && !cap ? ' Use “Generar desde periodicidad” para crearlo automáticamente con la frecuencia de cada equipo.' : ''}`}</div>`}</section>`;
+      el.querySelector('[data-mes]').onchange = (ev) => { F.mes = +ev.target.value; if (!F.mes) F.estado = ''; pintar(); };
+      const es = el.querySelector('[data-estado]'); if (es) es.onchange = (ev) => { F.estado = ev.target.value; pintar(); };
+      let tq; const qi = el.querySelector('[data-q]'); qi.oninput = () => { clearTimeout(tq); tq = setTimeout(() => { F.qRaw = qi.value; F.q = nrmQ(qi.value); pintar().then(() => { const n = el.querySelector('[data-q]'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }, 250); };
+      if (editar) A.bindCeldas(el.querySelector('tbody'), eqs);
+      if (F.mes && F.anio12) { const th = el.querySelector('th.mes-sel'); const w = el.querySelector('.crono-wrap'); if (th && w) w.scrollLeft = Math.max(0, th.offsetLeft - w.clientWidth / 2); }
       A.acts({
         anio: (d) => { anio += +d.d; pintar(); },
+        verMes: (d) => { F.mes = F.mes === +d.m ? 0 : +d.m; if (!F.mes) F.estado = ''; pintar(); },
+        editTabla: () => { F.editar = !F.editar; pintar(); },
+        anio12: () => { F.anio12 = !F.anio12; pintar(); },
+        llenarNR: () => A.completarNR([...new Set(visibles.map((c) => eqd(c.equipo_id)).filter((e) => e.id))], pintar),
         celda: async (d, b) => {
           const c = cronos.find((x) => x.id === d.id); const orden = ['', 'P', 'E', 'N'];
           const nv = orden[(orden.indexOf(c.plan?.[d.k] || '') + 1) % 4];
           const plan = { ...(c.plan || {}) }; if (nv) plan[d.k] = nv; else delete plan[d.k];
-          c.plan = plan; b.className = `w ${nv}`; b.textContent = nv;
+          c.plan = plan; b.className = `w ${nv} ${b.classList.contains('now') ? 'now' : ''} ${b.classList.contains('mes-sel') ? 'mes-sel' : ''}`; b.textContent = nv;
           await S.update('cronogramas', c.id, { plan });
+        },
+        meses: (d) => A.cambiarMeses(cronos.find((x) => x.id === d.id), eqd(cronos.find((x) => x.id === d.id).equipo_id), tipo, pintar),
+        moverMes: async () => {
+          const destino = +el.querySelector('[data-mover-mes]').value, sem = +el.querySelector('[data-mover-sem]').value;
+          if (destino === F.mes) { toast('Elija un mes distinto', true); return; }
+          const afect = visibles.filter((c) => mesDe(c, F.mes).some((x) => x.v !== 'E'));
+          if (!afect.length) { toast('No hay semanas programadas o no ejecutadas para mover en ese mes', true); return; }
+          if (!(await confirmar(`Se moverá lo programado (no ejecutado) de ${CAT.MESES[F.mes - 1]} a ${CAT.MESES[destino - 1]} semana ${sem} en ${afect.length} ${afect.length === 1 ? 'fila' : 'filas'}. Lo ejecutado no se toca.`, 'Mover'))) return;
+          for (const c of afect) {
+            const plan = { ...(c.plan || {}) };
+            mesDe(c, F.mes).filter((x) => x.v !== 'E').forEach((x) => delete plan[x.k]);
+            if (!mesDe({ plan }, destino).length) plan[`${destino}-${sem}`] = 'P';
+            await S.update('cronogramas', c.id, { plan });
+          }
+          toast(`Programación movida a ${CAT.MESES[destino - 1]}`); F.mes = destino; pintar();
         },
         quitar: async (d) => { if (await confirmar('¿Quitar esta fila del cronograma?')) { await S.remove('cronogramas', d.id); pintar(); } },
         cronoPDF: async () => {
-          const blob = await FMT.cronograma({ ent, tipo, anio, cronos, equipos: eqs, fmt: st.fmt.cronograma, titulo, consultorios: await S.list('consultorios', { entidad_id: ent.id }) });
-          S.log('CONSULTA', 'cronogramas', ent.id, `${titulo} ${anio}`);
-          UI.verPDF({ titulo: `${titulo} ${anio}`, blob, nombre: `Cronograma_${tipo}_${anio}.pdf` });
+          const blob = await FMT.cronograma({ ent, tipo, anio, cronos: visibles, equipos: eqs, fmt: st.fmt.cronograma, titulo, consultorios: cons });
+          S.log('CONSULTA', 'cronogramas', ent.id, `${titulo} ${anio}${F.mes ? ' · ' + CAT.MESES[F.mes - 1] : ''}`);
+          UI.verPDF({ titulo: `${titulo} ${anio}${F.mes ? ' · ' + CAT.MESES[F.mes - 1] : ''}`, blob, nombre: `Cronograma_${tipo}_${anio}${F.mes ? '_' + CAT.MESES[F.mes - 1] : ''}.pdf` });
         },
         generar: () => modal({
           titulo: 'Generar cronograma automáticamente', size: 'sm',
@@ -138,6 +198,39 @@
     await pintar();
   };
 
+  // Cambiar los meses programados de una fila del cronograma
+  A.cambiarMeses = (c, e, tipo, alGuardar) => {
+    const meses = (p) => new Set(Object.entries(p || {}).filter(([, v]) => v).map(([k]) => +k.split('-')[0]));
+    const act = meses(c.plan);
+    const perAct = tipo === 'metrologia' ? e.periodicidad_metro : e.periodicidad_mto;
+    const estadoMes = (m) => { const x = Object.entries(c.plan || {}).find(([k, v]) => v && +k.split('-')[0] === m); return x ? { P: 'Programado', E: 'Ejecutado', N: 'No ejecutado' }[x[1]] + ` · sem ${x[0].split('-')[1]}` : ''; };
+    modal({
+      titulo: `Cambiar meses · ${e.codigo_inv || ''} ${e.nombre || ''}`, size: 'sm',
+      cuerpo: `<div class="form"><p class="muted">Marque los meses en que se hará ${tipo === 'metrologia' ? 'la calibración' : 'el mantenimiento'}. Los meses ya ejecutados conservan su estado.</p>
+        <div class="mes-grid">${CAT.MESES.map((m, i) => `<label class="mes-chk ${act.has(i + 1) ? 'on' : ''}"><input type="checkbox" name="mes" value="${i + 1}" ${act.has(i + 1) ? 'checked' : ''}><b>${m}</b><small>${h(estadoMes(i + 1))}</small></label>`).join('')}</div>
+        <div class="fields">${f.sel('sem', 'Semana para los meses nuevos', [1, 2, 3, 4], 2)}</div>
+        <fieldset><legend>O calcular con una periodicidad</legend><div class="fields">${f.sel('per', 'Periodicidad', Object.keys(CAT.PERIODICIDAD).filter((p) => CAT.PERIODICIDAD[p]), CAT.PERIODICIDAD[perAct] ? perAct : 'Semestral')}${f.sel('ini', 'Mes de inicio', CAT.MESES.map((m, i) => [i + 1, m]), Math.min(...[...act, 13]) <= 12 ? Math.min(...act) : 1)}</div>
+        <button type="button" class="btn sm" data-calc>Marcar meses con esta periodicidad</button><label class="checks" style="margin-top:6px"><input type="checkbox" name="guardar_per" data-single> Guardar también esta periodicidad en el equipo</label></fieldset></div>`,
+      alAbrir: (m) => {
+        const sync = () => m.body.querySelectorAll('.mes-chk').forEach((l) => l.classList.toggle('on', l.querySelector('input').checked));
+        m.body.addEventListener('change', sync);
+        m.body.querySelector('[data-calc]').onclick = () => {
+          const per = m.body.querySelector('[name=per]').value, ini = +m.body.querySelector('[name=ini]').value, paso = CAT.PERIODICIDAD[per];
+          m.body.querySelectorAll('[name=mes]').forEach((x) => { const n = +x.value; x.checked = n >= ini && (n - ini) % paso === 0; });
+          sync();
+        };
+      },
+      acciones: [{ t: 'Cancelar' }, { t: 'Guardar meses', cls: 'pri', fn: async (m) => {
+        const d = leer(m.body); const sel = new Set(d.mes.map(Number)); const plan = {};
+        Object.entries(c.plan || {}).forEach(([k, v]) => { if (v && sel.has(+k.split('-')[0])) plan[k] = v; });
+        sel.forEach((n) => { if (!Object.keys(plan).some((k) => +k.split('-')[0] === n)) plan[`${n}-${d.sem}`] = 'P'; });
+        await S.update('cronogramas', c.id, { plan }); c.plan = plan;
+        if (d.guardar_per && e.id) await S.update('equipos', e.id, { [tipo === 'metrologia' ? 'periodicidad_metro' : 'periodicidad_mto']: d.per });
+        toast('Meses actualizados'); alGuardar?.();
+      } }],
+    });
+  };
+
   // Marca como ejecutada la semana del cronograma correspondiente a una fecha
   A.marcarCrono = async (eq, tipo, fecha) => {
     const d = new Date(fecha + 'T12:00:00'), anio = d.getFullYear(), mes = d.getMonth() + 1, sem = Math.min(4, Math.ceil(d.getDate() / 7));
@@ -154,8 +247,10 @@
     const [cons, mtos] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('mantenimientos', { equipo_id: eq.id }, '-fecha')]);
     const c = cons.find((x) => x.id === eq.consultorio_id);
     el.innerHTML = `<section class="panel"><header><h2>Hoja de vida ${h(st.fmt.hoja_vida.codigo)}</h2><div class="actions"><button class="btn" data-act="pdfHV">${I.pdf} Ver hoja de vida</button>${esProp() ? `<button class="btn pri" data-act="editHV">${I.edit} Editar hoja de vida</button>` : ''}</div></header>
-      <p class="muted">Documento de identidad del equipo: identificación, registro histórico de adquisición, datos técnicos de instalación y funcionamiento, apoyo técnico, accesorios, anexos y programación de mantenimiento y metrología. Se actualiza automáticamente con cada intervención registrada (${mtos.length} en el historial).</p></section>`;
+      <p class="muted">Documento de identidad del equipo: identificación, registro histórico de adquisición, datos técnicos de instalación y funcionamiento, apoyo técnico, accesorios, anexos y programación de mantenimiento y metrología. Se actualiza automáticamente con cada intervención registrada (${mtos.length} en el historial).</p></section>
+      <section class="panel" data-hvdocs><div class="loading">Cargando documentos…</div></section>`;
     A.acts({ pdfHV: () => A.verHojaVida(eq, ent, c, mtos), editHV: () => A.formHojaVida(eq, cons) });
+    await A.panelDocsHV(el.querySelector('[data-hvdocs]'), { ent, eq, cons: c });
   };
 
   // ------------------------------------------------------------ Mantenimientos (carpeta)
@@ -163,16 +258,20 @@
     const [cons, mtos] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('mantenimientos', { equipo_id: eq.id, tipo }, '-fecha')]);
     const c = cons.find((x) => x.id === eq.consultorio_id);
     const nom = { preventivo: 'Reportes de mantenimiento preventivo', correctivo: 'Reportes de mantenimiento correctivo', metrologia: 'Registros de metrología y calibración' }[tipo];
+    const firmable = tipo !== 'metrologia';
+    const valida = firmable ? await Promise.all(mtos.map((m) => A.verificarFirma(m))) : [];
+    const pillFirma = (m, i) => (!firmable ? '' : valida[i] === true ? `<span class="pill ok" title="Código ${h(m.datos.firma_digital.hash)}">Firmado digitalmente</span>` : valida[i] === false ? '<span class="pill warn" title="El reporte cambió después de firmarse">Firma desactualizada</span>' : '<span class="pill">Sin firma digital</span>');
     el.innerHTML = `<section class="panel"><header><h2>${nom}</h2>${esProp() ? `<button class="btn pri" data-act="nuevo_${tipo}">${I.mas} Nuevo reporte</button>` : ''}</header>
-      ${mtos.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Reporte N°</th><th>Fecha</th><th>${tipo === 'metrologia' ? 'Certificado / resultado' : 'Resumen'}</th><th>Estado final</th><th></th></tr></thead><tbody>
-        ${mtos.map((m) => `<tr class="clic" data-act="ver_${tipo}" data-id="${m.id}"><td class="mono">${h(m.numero || '')}</td><td class="num">${UI.fecha(m.fecha)}</td><td>${h(tipo === 'metrologia' ? `${m.datos?.certificado || ''} · ${m.datos?.resultado || ''}` : (m.datos?.falla || m.datos?.observaciones || '').slice(0, 90))}</td>
-          <td>${(m.datos?.valoracion || []).includes('No usar, retirar del servicio') ? '<span class="pill bad">Retirar del servicio</span>' : m.datos?.resultado === 'No conforme' ? '<span class="pill bad">No conforme</span>' : '<span class="pill ok">En funcionamiento</span>'}</td>
-          <td><div class="row-actions"><button class="icon-btn" data-act="ver_${tipo}" data-id="${m.id}" aria-label="Ver PDF">${I.pdf}</button>${esProp() ? `<button class="icon-btn" data-act="edit_${tipo}" data-id="${m.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-act="del_${tipo}" data-id="${m.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`).join('')}
+      ${mtos.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Reporte N°</th><th>Fecha</th><th>${tipo === 'metrologia' ? 'Certificado / resultado' : 'Resumen'}</th><th>Estado final</th>${firmable ? '<th>Firma</th>' : ''}<th></th></tr></thead><tbody>
+        ${mtos.map((m, i) => `<tr class="clic" data-act="ver_${tipo}" data-id="${m.id}"><td class="mono">${h(m.numero || '')}</td><td class="num">${UI.fecha(m.fecha)}</td><td>${h(tipo === 'metrologia' ? `${m.datos?.certificado || ''} · ${m.datos?.resultado || ''}` : (m.datos?.falla || m.datos?.observaciones || '').slice(0, 90))}</td>
+          <td>${(m.datos?.valoracion || []).includes('No usar, retirar del servicio') ? '<span class="pill bad">Retirar del servicio</span>' : m.datos?.resultado === 'No conforme' ? '<span class="pill bad">No conforme</span>' : '<span class="pill ok">En funcionamiento</span>'}</td>${firmable ? `<td>${pillFirma(m, i)}</td>` : ''}
+          <td><div class="row-actions"><button class="icon-btn" data-act="ver_${tipo}" data-id="${m.id}" aria-label="Ver PDF">${I.pdf}</button>${esProp() && firmable ? `<button class="icon-btn" data-act="firmar_${tipo}" data-id="${m.id}" aria-label="Firmar digitalmente" title="Firmar digitalmente">${I.firma}</button>` : ''}${esProp() ? `<button class="icon-btn" data-act="edit_${tipo}" data-id="${m.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-act="del_${tipo}" data-id="${m.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`).join('')}
       </tbody></table></div>` : '<div class="empty">Aún no hay reportes registrados.</div>'}</section>`;
     A.acts({
       [`nuevo_${tipo}`]: () => A.formMto({ eq, ent, cons: c, tipo }),
       [`ver_${tipo}`]: (d) => A.verMto(mtos.find((m) => m.id === d.id), eq, ent, c),
       [`edit_${tipo}`]: (d) => A.formMto({ eq, ent, cons: c, tipo, m: mtos.find((m) => m.id === d.id) }),
+      [`firmar_${tipo}`]: (d) => A.firmarReporte(mtos.find((m) => m.id === d.id), eq, ent, c),
       [`del_${tipo}`]: async (d) => { if (await confirmar('¿Eliminar este reporte?')) { await S.remove('mantenimientos', d.id); toast('Reporte eliminado'); A.recargar(); } },
     });
   };
@@ -314,11 +413,15 @@
     const hv = eq.hv || {}, x = (k) => `hv_${k}`; let foto = hv.foto || null;
     const chk = (k, l, opts) => f.checks(x(k), l, opts, Array.isArray(hv[k]) ? hv[k] : hv[k] ? [hv[k]] : []);
     const anexos = [['reg_sanitario', '8.1 Registro sanitario o permiso'], ['importacion', '8.2 Registro de importación'], ['factura', '8.3 Factura o contrato'], ['acta_recibido', '8.4 Ingreso almacén / acta de recibido'], ['crono_garantia', '8.5 Cronograma en garantía'], ['protocolo', '8.6 Protocolo del fabricante'], ['guia', '8.7 Guía rápida de operación']];
-    const T = ['Identificación', 'Código ECRI', 'Adquisición', 'Proveedor y fabricante', 'Datos técnicos', 'Apoyo técnico', 'Accesorios', 'Anexos', 'Recomendaciones'];
+    const T = ['Identificación', 'Código ECRI', 'Adquisición', 'Proveedor y fabricante', 'Datos técnicos', 'Apoyo técnico', 'Accesorios', 'Anexos', '9.5 Mediciones y recomendaciones'];
+    const MED_COLS = [{ k: 'p', ph: 'Parámetro / magnitud', w: '1.6fr' }, { k: 'c', ph: 'Cantidad (valor o rango)' }, { k: 'u', ph: 'Unidad (mmHg, °C, kg…)', w: '.8fr' }];
+    const sugMed = A.sugerirMediciones(eq.nombre);
+    const medFilas = (hv.mediciones_tabla || []).length ? hv.mediciones_tabla : sugMed;
+    const medAplica = hv.mediciones_aplica || ((hv.mediciones_tabla || []).length || sugMed.length || hv.mediciones ? 'Aplica' : 'No aplica');
     modal({
       titulo: `Hoja de vida · ${eq.codigo_inv}`, size: 'wide',
       cuerpo: `<form class="form" onsubmit="return false">${tabs(T)}
-        <div data-panel="0"><div class="fields">${camposEquipo(eq, cons)}<div class="field full"><span class="lbl">1.1 Registro sanitario o permiso de comercialización: marque una opción</span><div class="actions" style="gap:6px;flex-wrap:wrap">${[['RS', 'Registro sanitario'], ['PC', 'Permiso de comercialización'], ['NA', 'No aplica'], ['NR', 'No registra']].map(([v, t]) => `<label class="btn sm" style="gap:6px;cursor:pointer"><input type="radio" name="${x('tipo_registro')}" value="${v}" ${(hv.tipo_registro || (eq.registro_sanitario ? 'RS' : 'NR')) === v ? 'checked' : ''}> <b>${v}</b> <span class="muted">${t}</span></label>`).join('')}</div></div>
+        <div data-panel="0"><div class="fields">${camposEquipo({ ...eq, ...Object.fromEntries(Object.keys(hv.nr || {}).filter((k) => hv.nr[k] && !['item', 'clase_riesgo'].includes(k)).map((k) => [k, FMT.NOREG])) }, cons)}<div class="field full"><span class="lbl">1.1 Registro sanitario o permiso de comercialización: marque una opción</span><div class="actions" style="gap:6px;flex-wrap:wrap">${[['RS', 'Registro sanitario'], ['PC', 'Permiso de comercialización'], ['NA', 'No aplica'], ['NR', 'No registra']].map(([v, t]) => `<label class="btn sm" style="gap:6px;cursor:pointer"><input type="radio" name="${x('tipo_registro')}" value="${v}" ${(hv.tipo_registro || (eq.registro_sanitario ? 'RS' : 'NR')) === v ? 'checked' : ''}> <b>${v}</b> <span class="muted">${t}</span></label>`).join('')}</div></div>
           <div class="field full"><label for="f_hv_ecri">1.2 Código ECRI (UMDNS)</label><div class="actions" style="gap:6px;flex-wrap:nowrap"><input id="f_hv_ecri" name="${x('ecri')}" value="${h(hv.ecri || '')}" placeholder="ej: 12-853 Oxímetros" style="flex:1"><button type="button" class="btn sm" data-ecri>Buscar en listado ECRI</button></div><div class="actions" data-ecri-sug style="gap:6px;margin-top:6px"></div></div>
           ${f.input(x('distintivo'), '1.4 Distintivo de habilitación', hv.distintivo)}${f.input(x('funcion'), '2.1 Función del equipo', hv.funcion)}${f.sel(x('movil'), '2.9 / 2.10 Tipo', ['Móvil', 'Fijo'], hv.movil || 'Móvil')}
           <div class="field"><span class="lbl">Foto del equipo (sale en la hoja de vida)</span><div class="actions" style="align-items:center"><img data-fprev src="${hv.foto || ''}" alt="" style="max-height:60px;${hv.foto ? '' : 'display:none'}"><label class="btn sm">${I.subir} Cargar foto<input type="file" accept="image/*" hidden data-foto></label></div></div></div></div>
@@ -335,12 +438,24 @@
           <fieldset><legend>3.3 Fabricante</legend><div class="fields">${['ciudad:Ciudad / país', 'dir:Dirección', 'tel:Tel / cel', 'correo:Correo', 'web:Página web'].map((p) => { const [k, l] = p.split(':'); return f.input(x('fab_' + k), l, hv['fab_' + k], { full: true }); }).join('')}</div></fieldset></div></div>
         <div data-panel="4" hidden><div class="fields">${[['voltaje', 'Voltaje (V)'], ['corriente', 'Corriente (A)'], ['potencia', 'Potencia (W)'], ['frecuencia', 'Frecuencia (Hz)'], ['presion', 'Presión (psi, mmHg)'], ['rpm', 'Velocidad (RPM)'], ['capacidad', 'Capacidad'], ['presion_atm', 'Presión atm (Pa)'], ['temperatura', 'Temperatura (°C)'], ['humedad', 'Humedad (%HR)'], ['peso', 'Peso (g, kg)'], ['dimensiones', 'Dimensiones (cm)'], ['rangos', 'Rangos de operación'], ['otros_tec', 'Otros']].map(([k, l]) => f.input(x(k), l, hv[k])).join('')}</div></div>
         <div data-panel="5" hidden><div class="fields">${chk('fuente', '6.1 Fuentes de alimentación', ['Electricidad', 'Batería', 'Aceite', 'Agua', 'Aire', 'Gas', 'Vapor', 'Oxígeno', 'Otro'])}${chk('tecnologia', '6.2 Tecnología predominante', ['Eléctrico', 'Electrónico', 'Electromecánico', 'Mecánico', 'Hidráulico', 'Neumático', 'Acústico', 'Vapor', 'Solar'])}
-          ${chk('clasif_biomedica', '6.3 Clasificación biomédica', ['Diagnóstico', 'Prevención', 'Rehabilitación', 'Tratamiento y mantenimiento de la vida', 'Análisis de laboratorio y apoyo'])}${chk('manuales', '6.5 Manuales', ['Operación', 'Mantenimiento', 'Partes', 'Despiece'])}${chk('planos', '6.6 Planos', ['Electrónico', 'Eléctrico', 'Mecánico', 'Neumático'])}</div></div>
+          ${chk('clasif_biomedica', '6.3 Clasificación biomédica', ['Diagnóstico', 'Prevención', 'Rehabilitación', 'Tratamiento y mantenimiento de la vida', 'Análisis de laboratorio y apoyo'])}${chk('manuales', '6.5 Manuales (se consultan desde la hoja de vida)', ['Operación', 'Mantenimiento', 'Guía rápida', 'Ficha técnica'])}${chk('planos', '6.6 Planos', ['Electrónico', 'Eléctrico', 'Mecánico', 'Neumático'])}</div></div>
         <div data-panel="6" hidden><span class="lbl">7. Componentes y/o accesorios</span>${rep('acc', [{ k: 'nombre', ph: 'Nombre', w: '1.4fr' }, { k: 'marca', ph: 'Marca' }, { k: 'modelo', ph: 'Modelo' }, { k: 'serie', ph: 'Serie' }, { k: 'desc', ph: 'Descripción', w: '1.4fr' }], hv.accesorios || [])}</div>
         <div data-panel="7" hidden><div class="fields">${anexos.map(([k, l]) => f.sel(x('anexo_' + k), l, ['Anexo', 'No anexo', 'No aplica'], (hv.anexos || {})[k] || 'No aplica')).join('')}</div><p class="muted">Cargue los soportes (registro sanitario, factura, manual, certificado de importación…) en las carpetas del equipo.</p></div>
-        <div data-panel="8" hidden><div class="fields">${f.area(x('mediciones'), '9.5 Recomendaciones para mediciones (cantidad / unidad)', hv.mediciones, { rows: 2 })}${f.area(x('recomendaciones'), '10. Recomendaciones del fabricante', hv.recomendaciones, { rows: 5 })}</div></div>
+        <div data-panel="8" hidden><fieldset><legend>9.5 Recomendaciones para mediciones (cantidad / unidad)</legend>
+          <div class="fields">${f.sel(x('mediciones_aplica'), '¿El equipo requiere mediciones?', ['Aplica', 'No aplica'], medAplica)}</div>
+          <div data-med-box ${medAplica === 'No aplica' ? 'hidden' : ''}><div class="actions" style="justify-content:space-between;align-items:center"><span class="lbl">Parámetro o magnitud · cantidad (valor o rango) · unidad de medida</span><button type="button" class="btn sm" data-med-sug>${I.ia} Sugerir según el equipo</button></div>
+            <div data-med-rep>${rep('med', MED_COLS, medFilas)}</div>
+            ${f.area(x('mediciones'), 'Notas adicionales (opcional)', hv.mediciones, { rows: 2 })}</div>
+          <div class="med-prev"><span class="lbl">Así sale en la casilla 9.5 de la hoja de vida</span><div data-med-prev></div></div></fieldset>
+          <div class="fields">${f.area(x('recomendaciones'), '10. Recomendaciones del fabricante', hv.recomendaciones, { rows: 5 })}</div></div>
       </form>`,
       alAbrir: (m) => { tabBind(m.body); repBind(m.body);
+        // 9.5 mediciones: vista previa, mostrar / ocultar y sugerencias
+        const medPrev = () => { const ap = m.body.querySelector('[name=hv_mediciones_aplica]').value; m.body.querySelector('[data-med-box]').hidden = ap === 'No aplica';
+          m.body.querySelector('[data-med-prev]').textContent = FMT.textoMediciones({ mediciones_aplica: ap, mediciones_tabla: repLeer(m.body, 'med'), mediciones: m.body.querySelector('[name=hv_mediciones]').value }) || 'NR'; };
+        m.body.querySelector('[data-panel="8"]').addEventListener('input', medPrev); m.body.querySelector('[data-panel="8"]').addEventListener('change', medPrev); m.body.querySelector('[data-panel="8"]').addEventListener('click', () => setTimeout(medPrev, 0));
+        m.body.querySelector('[data-med-sug]').onclick = () => { const l = A.sugerirMediciones(m.body.querySelector('[name=nombre]')?.value || eq.nombre); if (!l.length) { toast('No hay sugerencias para este tipo de equipo; escriba los parámetros a mano.', true); return; } m.body.querySelector('[data-med-rep]').innerHTML = rep('med', MED_COLS, l); medPrev(); toast('Parámetros sugeridos: revise cantidades y unidades según el manual del equipo.'); };
+        medPrev();
         const ec = m.body.querySelector('[name=hv_ecri]'), sg = m.body.querySelector('[data-ecri-sug]');
         // pestaña Código ECRI: buscador dentro de la hoja de vida
         const actual = m.body.querySelector('[data-ecri-actual]'), quitar = m.body.querySelector('[data-ecri-quitar]'), q = m.body.querySelector('[data-ecri-q]'), res = m.body.querySelector('[data-ecri-res]'), info = m.body.querySelector('[data-ecri-info]');
@@ -356,8 +471,10 @@
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar hoja de vida', cls: 'pri', fn: async (m) => {
         const d = leer(m.body); const cols = {}, nhv = { ...hv, anexos: {} };
         Object.entries(d).forEach(([k, v]) => { if (k.startsWith('hv_anexo_')) nhv.anexos[k.slice(9)] = v; else if (k.startsWith('hv_')) nhv[k.slice(3)] = v; else cols[k] = v; });
-        nhv.accesorios = repLeer(m.body, 'acc'); nhv.foto = foto;
+        nhv.accesorios = repLeer(m.body, 'acc'); nhv.foto = foto; nhv.mediciones_tabla = nhv.mediciones_aplica === 'No aplica' ? [] : repLeer(m.body, 'med');
         if (!cols.nombre || !cols.codigo_inv) { toast('Nombre y código de inventario son obligatorios', true); return false; }
+        nhv.nr = { ...(hv.nr || {}) }; Object.keys(nhv.nr).forEach((k) => { if (k in cols && cols[k] && !/^(no registra|nr)$/i.test(cols[k]) && cols[k] !== eq[k]) delete nhv.nr[k]; });
+        Object.keys(cols).forEach((k) => { if (/^(no registra)$/i.test(cols[k] || '') && !['codigo_inv', 'nombre'].includes(k)) { nhv.nr[k] = true; cols[k] = ''; } });
         await S.update('equipos', eq.id, { ...limpiarEquipo(cols), hv: nhv }); toast('Hoja de vida actualizada'); A.recargar();
       } }],
     });
@@ -371,7 +488,7 @@
     const numero = m?.numero || sugerido || A.consecutivo(todos.filter((x) => x.tipo === tipo), 'numero', '').padStart(5, '0');
     const d = m?.datos || {};
     const fp = st.fmt.mto_preventivo;
-    let fRecibe = m?.firma_recibe || null, fRealizo = m?.firma_realizo || st.firma || null;
+    let fRecibe = m?.firma_recibe || null, fRealizo = m?.firma_realizo || st.firma || null, recibeNueva = false;
     const actsTodas = [...new Set([...(fp.actividades || []), ...(d.actividades || [])])];
     const val = d.valoracion || (m ? [] : ['Equipo queda en funcionamiento', 'Equipo encontrado en servicio', 'Servicio concluido']);
     const titulo = { preventivo: 'Mantenimiento preventivo', correctivo: 'Mantenimiento correctivo', metrologia: 'Metrología / calibración' }[tipo];
@@ -392,13 +509,14 @@
         <fieldset><legend>4. Herramienta, insumos y repuestos</legend>${tipo === 'preventivo' ? f.checks('herramientas', 'Herramientas e insumos', fp.herramientas || [], d.herramientas || []) : ''}<span class="lbl">Partes utilizadas (insumos o repuestos)</span>${rep('repuestos', [{ k: 'd', ph: 'Descripción', w: '3fr' }, { k: 'c', ph: 'Cant.', type: 'number' }], d.repuestos || [])}</fieldset>` : ''}
       <div class="fields">${f.area('observaciones', '5. Observaciones generales', d.observaciones, { rows: 3 })}</div>
       ${tipo !== 'metrologia' ? `<fieldset><legend>Firmas</legend><div class="fields">${f.input('recibe_nombre', 'Recibido a satisfacción: nombre', d.recibe_nombre)}${f.input('recibe_cargo', 'Cargo', d.recibe_cargo)}</div>
-        <div class="grid2">${firmaBtn('Firma de quien recibe', fRecibe)}${firmaBtn(`Firma de quien realizó (${h(st.emp.responsable)})`, fRealizo)}</div></fieldset>` : ''}
+        <div class="grid2">${firmaBtn('Firma de quien recibe', fRecibe)}${firmaBtn(`Firma de quien realizó (${h(st.emp.responsable)})`, fRealizo)}</div>
+        <label class="checks" style="margin-top:8px"><input type="checkbox" name="firmar_digital" data-single ${m && !d.firma_digital ? '' : 'checked'}> <b>Firmar digitalmente</b> <span class="muted">— estampa la firma en “REALIZÓ” y genera un código de verificación del reporte</span></label></fieldset>` : ''}
     </form>`;
     modal({
       titulo: `${titulo} · ${eq.nombre}`, size: 'wide', cuerpo,
       alAbrir: (mm) => {
         repBind(mm.body);
-        firmaBind(mm.body, null, (i, dd) => { if (i === 0) fRecibe = dd; else fRealizo = dd; }, { titulos: ['Firma de quien recibe', 'Firma de quien realizó'], actual: [null, st.firma] });
+        firmaBind(mm.body, null, (i, dd) => { if (i === 0) { fRecibe = dd; recibeNueva = true; } else fRealizo = dd; }, { titulos: ['Firma de quien recibe', 'Firma de quien realizó'], actual: [null, st.firma] });
         const c = mm.body.querySelector('[data-cert]'); if (c) c.onchange = (e) => { cert = e.target.files[0] || null; };
       },
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar y ver PDF', cls: 'pri', fn: async (mm) => {
@@ -409,13 +527,17 @@
         if (tipo === 'correctivo') Object.assign(datos, { fecha_reporte: v.fecha_reporte, fecha_cierre: v.fecha, horas: v.horas, falla: v.falla, diagnostico: v.diagnostico, causa: v.causa, actividades: v.actividades_txt.split('\n').map((s) => s.trim()).filter(Boolean) });
         if (tipo === 'metrologia') Object.assign(datos, { mediciones: v.mediciones, laboratorio: v.laboratorio, certificado: v.certificado, magnitud: v.magnitud, resultado: v.resultado, proxima: v.proxima });
         if (tipo !== 'metrologia') Object.assign(datos, { valoracion: v.valoracion, repuestos: repLeer(mm.body, 'repuestos'), recibe_nombre: v.recibe_nombre, recibe_cargo: v.recibe_cargo });
+        if (tipo !== 'metrologia' && fRecibe) datos.firma_recibe_fecha = recibeNueva || !d.firma_recibe_fecha ? new Date().toISOString() : d.firma_recibe_fecha;
+        if (tipo !== 'metrologia' && v.firmar_digital && !fRealizo) { toast('Para firmar digitalmente capture la firma de quien realizó (o regístrela en “Mi empresa y firma”).', true); return false; }
         let numReg = null;
         if (!m && serieN) {
           numReg = await A.CONS.registrar({ serie: serieN, numero: v.numero, sugerido, entidad_id: ent.id, equipo_id: eq.id, fecha: v.fecha,
             observacion: `${titulo} · ${eq.nombre}${v.observaciones ? ' · ' + v.observaciones.slice(0, 160) : ''}` });
           v.numero = numReg.numero;
         }
-        const reg = { entidad_id: ent.id, equipo_id: eq.id, tipo, numero: v.numero, fecha: v.fecha, datos, firma_recibe: fRecibe, firma_realizo: tipo === 'metrologia' ? null : fRealizo };
+        const firmar = tipo !== 'metrologia' && v.firmar_digital;
+        const reg = { entidad_id: ent.id, equipo_id: eq.id, tipo, numero: v.numero, fecha: v.fecha, datos, firma_recibe: fRecibe, firma_realizo: firmar ? fRealizo : null };
+        if (firmar) datos.firma_digital = await A.firmarDigital(reg);
         let guardado;
         try { guardado = m ? await S.update('mantenimientos', m.id, reg) : await S.insert('mantenimientos', reg); }
         catch (e) { if (numReg) await A.CONS.liberar(numReg); throw e; }
