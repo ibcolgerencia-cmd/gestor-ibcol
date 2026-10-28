@@ -324,7 +324,7 @@
           <div class="field"><span class="lbl">Foto del equipo (sale en la hoja de vida)</span><div class="actions" style="align-items:center"><img data-fprev src="${hv.foto || ''}" alt="" style="max-height:60px;${hv.foto ? '' : 'display:none'}"><label class="btn sm">${I.subir} Cargar foto<input type="file" accept="image/*" hidden data-foto></label></div></div></div></div>
         <div data-panel="1" hidden>
           <div class="fields"><div class="field full"><span class="lbl">Código ECRI asignado a este equipo (sale en la casilla 1.2 de la hoja de vida)</span>
-            <div class="actions" style="gap:8px;align-items:center"><b class="mono" data-ecri-actual style="font-size:1.05rem">${h(hv.ecri || 'Sin asignar')}</b><button type="button" class="btn sm" data-ecri-quitar ${hv.ecri ? '' : 'hidden'}>Quitar</button></div></div>
+            <div class="actions" style="gap:8px;align-items:center"><b class="mono" data-ecri-actual style="font-size:1.05rem">${h(hv.ecri || 'Sin asignar')}</b><button type="button" class="btn sm" data-ecri-quitar style="${hv.ecri ? '' : 'display:none'}">Quitar</button></div></div>
           <div class="field full"><label for="ecri_buscar">Buscar en el listado ECRI (UMDNS) por nombre en español, inglés o por código</label><input id="ecri_buscar" data-ecri-q placeholder="ej: oxímetro, tensiómetro, autoclave, 12-853" autocomplete="off"></div></div>
           <p class="muted" data-ecri-info style="margin:6px 0">Cargando listado ECRI…</p>
           <div class="tbl-wrap" style="max-height:330px"><table class="tbl"><thead><tr><th>Código</th><th>Nombre (español)</th><th>Nombre (inglés)</th><th></th></tr></thead><tbody data-ecri-res></tbody></table></div></div>
@@ -344,10 +344,10 @@
         const ec = m.body.querySelector('[name=hv_ecri]'), sg = m.body.querySelector('[data-ecri-sug]');
         // pestaña Código ECRI: buscador dentro de la hoja de vida
         const actual = m.body.querySelector('[data-ecri-actual]'), quitar = m.body.querySelector('[data-ecri-quitar]'), q = m.body.querySelector('[data-ecri-q]'), res = m.body.querySelector('[data-ecri-res]'), info = m.body.querySelector('[data-ecri-info]');
-        const asignar = (v) => { ec.value = v; actual.textContent = v || 'Sin asignar'; quitar.hidden = !v; };
+        const asignar = (v) => { ec.value = v; actual.textContent = v || 'Sin asignar'; quitar.style.display = v ? '' : 'none'; };
         ec.addEventListener('input', () => asignar(ec.value));
         quitar.onclick = () => asignar('');
-        const pintarECRI = (l, t) => { info.textContent = t; res.innerHTML = l.map((z) => `<tr><td class="mono"><b>${h(z.c)}</b></td><td>${h(z.es)}</td><td class="muted">${h(z.en)}</td><td><button type="button" class="btn sm" data-ec-pick="${h(A.ECRI.texto(z))}">Asignar</button></td></tr>`).join('') || '<tr><td colspan="4" class="empty">Sin resultados. Pruebe con otra palabra.</td></tr>'; };
+        const pintarECRI = (l, t) => { info.textContent = t; res.innerHTML = l.map((z) => `<tr><td class="mono" style="white-space:nowrap"><b>${h(z.c)}</b></td><td>${h(z.es)}</td><td class="muted">${h(z.en)}</td><td><button type="button" class="btn sm" data-ec-pick="${h(A.ECRI.texto(z))}">Asignar</button></td></tr>`).join('') || '<tr><td colspan="4" class="empty">Sin resultados. Pruebe con otra palabra.</td></tr>'; };
         res.onclick = (e) => { const b = e.target.closest('[data-ec-pick]'); if (b) { asignar(b.dataset.ecPick); toast(`Código ECRI asignado: ${b.dataset.ecPick}. Guarde la hoja de vida para conservarlo.`); } };
         A.ECRI.sugerir(eq.nombre).then((l) => pintarECRI(l, l.length ? `Sugerencias para “${eq.nombre}”. Escriba arriba para buscar en todo el listado.` : 'Escriba arriba para buscar en todo el listado.')).catch(() => { info.textContent = 'No se pudo cargar el listado ECRI.'; });
         let tq = null; q.oninput = () => { clearTimeout(tq); tq = setTimeout(async () => { await A.ECRI.cargar(); const r = q.value.trim() ? A.ECRI.buscar(q.value) : await A.ECRI.sugerir(eq.nombre); pintarECRI(r, q.value.trim() ? `${r.length} resultado(s)${r.length === 60 ? ' (se muestran los primeros 60)' : ''}` : `Sugerencias para “${eq.nombre}”.`); }, 150); };
