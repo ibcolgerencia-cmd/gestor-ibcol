@@ -1,6 +1,6 @@
 # Gestor Biomédico IBCOL — Guía de instalación gratuita en la nube
 
-> **Estado actual (28/10/2026, versión 29):** la app se publica en **GitHub Pages: https://ibcolgerencia-cmd.github.io/gestor-ibcol/** (repositorio `ibcolgerencia-cmd/gestor-ibcol`, cuenta GitHub de IBCOL). Para actualizar: en el repositorio → carpeta correspondiente → *Add file → Upload files* → *Commit changes*; GitHub publica solo en 1-2 minutos y sin límite de publicaciones. Al cambiar archivos de `js/` o `css/`, subir también `index.html` con el número `?v=` aumentado (ej. v=21 → v=22) para que los navegadores tomen la versión nueva de inmediato. Base de datos: Supabase `gestor-ibcol`. La dirección anterior de Netlify (gestor-ibcol.netlify.app, cuenta de Diana Pistala) queda con la versión del 27/10 a las 7:28 p. m. y ya no se actualiza: el plan gratis agotó sus créditos.
+> **Estado actual (29/10/2026, versión 32):** la app se publica en **GitHub Pages: https://ibcolgerencia-cmd.github.io/gestor-ibcol/** (repositorio `ibcolgerencia-cmd/gestor-ibcol`, cuenta GitHub de IBCOL). Para actualizar: en el repositorio → carpeta correspondiente → *Add file → Upload files* → *Commit changes*; GitHub publica solo en 1-2 minutos y sin límite de publicaciones. Al cambiar archivos de `js/` o `css/`, subir también `index.html` con el número `?v=` aumentado (ej. v=21 → v=22) para que los navegadores tomen la versión nueva de inmediato. Base de datos: Supabase `gestor-ibcol`. La dirección anterior de Netlify (gestor-ibcol.netlify.app, cuenta de Diana Pistala) queda con la versión del 27/10 a las 7:28 p. m. y ya no se actualiza: el plan gratis agotó sus créditos.
 
 **IBCOL Ingeniería Biomédica de Colombia** · Carrera 39 No. 6B-22 B/ Colombia II Etapa · Popayán - Cauca · Contacto: 3146872775 · ibcolgerencia@gmail.com
 
@@ -86,6 +86,18 @@ Para actualizar la app más adelante, vuelva a arrastrar la carpeta en *Deploys*
 Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola con otros modelos Gemini disponibles.
 
 **Hoja de vida: RS / PC / NA / NR y código ECRI.** En *Editar hoja de vida → Identificación* se marca a mano RS, PC, NA o NR (sale con X en el formato). La hoja de vida tiene la pestaña **Código ECRI**: muestra el código asignado, sugerencias según el nombre del equipo y un buscador en todo el listado; *Asignar* lo pone en la casilla 1.2 (luego *Guardar hoja de vida*). El campo *1.2 Código ECRI (UMDNS)* de la pestaña Identificación también tiene *Buscar en listado ECRI* (4.907 códigos del listado ECRI español-inglés, búsqueda por nombre o código) y sugerencias según el nombre del equipo.
+
+## Versión 30-32 (28-29/10/2026): visor PDF con zoom · enviar por WhatsApp y correo
+
+**Zoom en todos los PDF:** barra con − / +, *Ajustar al ancho*, *Página completa*, porcentajes de 50 % a 400 %, *Pantalla completa*; Ctrl + rueda del mouse, Ctrl + / Ctrl − / Ctrl 0, y pellizco con dos dedos en celular. La página se vuelve a dibujar en cada zoom para que el texto se vea nítido.
+
+**Enviar documentos:** botón **Enviar** en el visor de todos los PDF (hojas de vida, reportes, cronogramas, inventarios, actas, listas de chequeo…) y en cada archivo de todas las carpetas (ícono de sobre).
+- Correo y WhatsApp del destinatario se llenan con los datos de la entidad (y recuerdan el último usado); mensaje editable; el enlace vence en 1, 7 o 30 días.
+- **WhatsApp**: abre wa.me con el número (agrega +57 a celulares de 10 dígitos) y el mensaje con el enlace.
+- **Gmail**: abre la redacción desde **ibcolgerencia@gmail.com** (cuenta de *Mi empresa*) con destinatario, asunto y mensaje. **Programa de correo**: abre Outlook/Correo del equipo.
+- **Compartir el PDF (celular)**: adjunta el archivo mismo a WhatsApp, correo, etc.
+- **Copiar enlace**.
+- El enlace es seguro y temporal (Supabase Storage): quien lo tenga puede abrir el documento sin usuario hasta que venza. Los PDF generados en pantalla se guardan en `entidad/compartidos/` para poder crear el enlace. Cada envío queda en la **auditoría** (acción ENVIO, canal y destinatario).
 
 ## Versión 29 (28/10/2026): Lista de chequeo diaria de limpieza y desinfección (FMB-006 v02)
 
