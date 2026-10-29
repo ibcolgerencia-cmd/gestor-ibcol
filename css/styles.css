@@ -421,3 +421,4 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .env-btns .env-mail { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .env-nota { font-size: .8rem; margin: 0; }
 @media (max-width: 480px) { .env-btns { grid-template-columns: 1fr; } }
+.env-de { margin: 0; font-size: .84rem; background: var(--accent-soft); border-radius: 6px; padding: 6px 10px; }
