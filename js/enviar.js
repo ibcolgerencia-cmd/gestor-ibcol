@@ -14,6 +14,10 @@
   const recordar = (k, v) => { try { const o = recordado(); o[k] = v; localStorage.setItem(LS, JSON.stringify(o)); } catch {} };
   // número de WhatsApp: deja solo dígitos y agrega el indicativo de Colombia a celulares de 10 dígitos
   const numeroWA = (t) => { let d = String(t || '').replace(/\D/g, ''); if (d.length === 10 && d.startsWith('3')) d = '57' + d; return d; };
+  // cuenta desde la que IBCOL envía los correos
+  const REMITENTE = 'ibcolgerencia@gmail.com';
+  const remitente = () => (st.perfil?.rol === 'propietario' ? (esCorreoR(st.emp?.email) ? st.emp.email.trim() : REMITENTE) : '');
+  const esCorreoR = (t) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(t || '').trim());
   const esCorreo = (t) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(t || '').trim());
 
   // entidad del documento: la que se está viendo en pantalla o la del usuario cliente
@@ -58,6 +62,7 @@
           ${puedeCompartirArchivo ? `<button type="button" class="btn" data-env="archivo">${I.subir} Compartir el PDF (celular)</button>` : ''}
           <button type="button" class="btn" data-env="copiar">Copiar enlace</button>
         </div>
+        ${remitente() ? `<p class="env-de">Se envía desde <b>${h(remitente())}</b> (Gmail abre esa cuenta; si no tiene la sesión abierta, le pide ingresar).</p>` : ''}
         <p class="muted env-nota" data-env-est>El destinatario abre el documento con el enlace, sin usuario ni contraseña, hasta que venza. ${puedeCompartirArchivo ? '“Compartir el PDF” adjunta el archivo directamente (WhatsApp, correo, etc.).' : ''}</p>
       </form>`,
       acciones: [{ t: 'Cerrar' }],
@@ -110,7 +115,7 @@
           registrar('WhatsApp', wa ? '+' + wa : 'contacto a elegir');
         } else if (canal === 'gmail') {
           recordar(ent?.id || 'general', { ...recordado()[ent?.id || 'general'], correo });
-          const dest = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(correo)}&su=${encodeURIComponent(asunto)}&body=${encodeURIComponent(mensaje(url))}`;
+          const dest = `https://mail.google.com/mail/?${remitente() ? `authuser=${encodeURIComponent(remitente())}&` : ''}view=cm&fs=1&to=${encodeURIComponent(correo)}&su=${encodeURIComponent(asunto)}&body=${encodeURIComponent(mensaje(url))}`;
           if (ventana) ventana.location.href = dest; else window.open(dest, '_blank');
           registrar('Correo (Gmail)', correo);
         } else if (canal === 'mail') {
