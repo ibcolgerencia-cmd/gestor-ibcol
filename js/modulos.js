@@ -38,9 +38,12 @@
   // ------------------------------------------------------------ Inventario
   A.G.inventario = async (el, { ent }) => {
     const [eqs, cons] = await Promise.all([S.list('equipos', { entidad_id: ent.id }, 'codigo_inv'), S.list('consultorios', { entidad_id: ent.id })]).then(([e, c]) => { const co = A.ordenar(c); const idx = (x) => co.findIndex((k) => k.id === x.consultorio_id); return [[...e].sort((a, b) => (idx(a) - idx(b)) || ((a.orden ?? 9999) - (b.orden ?? 9999)) || String(a.codigo_inv).localeCompare(String(b.codigo_inv))), co]; });
-    let filtro = '', q = '', editar = false;
+    let filtro = '', q = '', editar = false, sedeF = '';
     const cn = (id) => cons.find((c) => c.id === id)?.nombre || '—';
-    const visibles = () => eqs.filter((e) => (!filtro || e.consultorio_id === filtro) && (!q || nrmQ([e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, cn(e.consultorio_id)].join(' ')).includes(q)));
+    const sedeC = (c) => c?.sede || 'Sede principal';
+    const sedesL = [...new Set(cons.map(sedeC))];
+    const sedeDeEq = (e) => sedeC(cons.find((c) => c.id === e.consultorio_id));
+    const visibles = () => eqs.filter((e) => (!sedeF || sedeDeEq(e) === sedeF) && (!filtro || e.consultorio_id === filtro) && (!q || nrmQ([e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, cn(e.consultorio_id)].join(' ')).includes(q)));
     const pintar = () => {
       const lista = visibles();
       el.querySelector('[data-edit]')?.classList.toggle('pri', editar);
@@ -51,7 +54,7 @@
     el.innerHTML = `<section class="panel"><header><div><h2>Equipos registrados por servicio</h2><span class="muted" style="font-size:.85rem">Se crean al cargar el inventario. Cada equipo queda dentro de su servicio en “3. Información del equipo”.</span></div><div class="actions">
         ${esProp() ? `<button class="btn pri" data-act="cargarInv">${I.subir} Cargar inventario (PDF o Excel)</button>` : ''}
         <button class="btn" data-act="invPDF">${I.pdf} PDF (FMB-001)</button>${esProp() ? `<button class="btn" data-act="invXLS">${I.excel} Excel</button>` : ''}${esProp() ? `<button class="btn" data-act="nuevoEq">${I.mas} Equipo</button>` : ''}</div></header>
-      <div class="tbl-tools"><div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}</option>`).join('')}</select></div>
+      <div class="tbl-tools">${sedesL.length > 1 ? `<div class="field" style="min-width:170px"><select aria-label="Filtrar por sede" data-sedef><option value="">Todas las sedes</option>${sedesL.map((x) => `<option value="${h(x)}">${h(x)}</option>`).join('')}</select></div>` : ''}<div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}${sedesL.length > 1 ? ' · ' + h(sedeC(c)) : ''}</option>`).join('')}</select></div>
         <input type="search" data-q placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar en el inventario">
         <span class="muted" data-cuenta></span>
         ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
@@ -60,6 +63,8 @@
       <div class="tbl-wrap"><table class="tbl tbl-eq"><thead><tr>${A.COLS_EQ.map((c) => `<th style="min-width:${c.w}px">${c.t}</th>`).join('')}<th>Estado</th></tr></thead><tbody></tbody></table></div></section>`;
     pintar();
     el.querySelector('[data-filtro]').onchange = (e) => { filtro = e.target.value; pintar(); };
+    const sf = el.querySelector('[data-sedef]');
+    if (sf) sf.onchange = (e) => { sedeF = e.target.value; filtro = ''; const fs = el.querySelector('[data-filtro]'); fs.value = ''; [...fs.options].forEach((o) => { if (o.value) o.hidden = !!sedeF && sedeC(cons.find((c) => c.id === o.value)) !== sedeF; }); pintar(); };
     let tq; el.querySelector('[data-q]').oninput = (e) => { clearTimeout(tq); tq = setTimeout(() => { q = nrmQ(e.target.value); pintar(); }, 150); };
     A.acts({
       editTabla: () => { editar = !editar; const hn = el.querySelector('[data-hint]'); if (hn) hn.hidden = !editar; pintar(); },
@@ -70,9 +75,9 @@
       cargarInv: () => A.cargarInventario(ent),
       invPDF: async () => {
         const lista = visibles();
-        const blob = await FMT.inventario({ ent, equipos: lista, consultorios: cons, fmt: st.fmt.inventario, cons: cons.find((c) => c.id === filtro) });
+        const blob = await FMT.inventario({ ent, equipos: lista, consultorios: cons, fmt: st.fmt.inventario, cons: cons.find((c) => c.id === filtro) || (sedeF ? { sede: sedeF } : undefined) });
         S.log('CONSULTA', 'equipos', ent.id, 'Inventario PDF');
-        UI.verPDF({ titulo: 'Inventario', blob, nombre: `Inventario_${ent.razon_social}.pdf` });
+        UI.verPDF({ titulo: `Inventario${sedeF ? ' · ' + sedeF : ''}`, blob, nombre: `Inventario_${ent.razon_social}${sedeF ? '_' + sedeF : ''}.pdf` });
       },
       invXLS: () => {
         if (!esProp()) return;
@@ -104,7 +109,7 @@
       st.cronoAnio = anio;
       const cronos = (await S.list('cronogramas', { entidad_id: ent.id, tipo, anio })).sort((a, b) => (cap ? String(a.tema || '').localeCompare(String(b.tema || '')) : ordenEq(eqd(a.equipo_id), eqd(b.equipo_id))));
       const mesAct = new Date().getMonth() + 1;
-      const texto = (c) => { const e = eqd(c.equipo_id); return nrmQ([c.tema, e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, cons.find((x) => x.id === e.consultorio_id)?.nombre].join(' ')); };
+      const texto = (c) => { const e = eqd(c.equipo_id); return nrmQ([c.tema, e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, cons.find((x) => x.id === e.consultorio_id)?.nombre, cons.find((x) => x.id === e.consultorio_id)?.sede].join(' ')); };
       const visibles = cronos.filter((c) => (!F.q || texto(c).includes(F.q)) && (!F.mes || mesDe(c, F.mes).some((x) => !F.estado || x.v === F.estado)));
       const enMes = F.mes ? cronos.flatMap((c) => mesDe(c, F.mes)) : [];
       const movibles = F.mes ? visibles.filter((c) => mesDe(c, F.mes).some((x) => x.v !== 'E')).length : 0;

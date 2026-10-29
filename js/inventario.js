@@ -85,13 +85,20 @@
   A.parsearInventario = async (file) => (/\.pdf$/i.test(file.name) ? leerPDF(file) : leerExcel(file));
 
   // ---------------------------------------------------------------- aplicar inventario a la entidad
-  A.aplicarInventario = async (ent, filas, prog = () => {}) => {
-    const [cons, eqs] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id })]);
+  // opts.sede: el inventario es de UNA sede (sus servicios se crean y ordenan solo dentro de esa sede)
+  A.aplicarInventario = async (ent, filas, prog = () => {}, opts = {}) => {
+    const [consTodos, eqsTodos] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id })]);
+    const sede = opts.sede || null;
+    const deSede = (c) => !sede || norm(c.sede || 'Sede principal') === norm(sede);
+    const cons = consTodos.filter(deSede);
+    const idsSede = new Set(cons.map((c) => c.id));
+    // con sede: solo se comparan los equipos de esa sede (y los que aún no tienen servicio)
+    const eqs = sede ? eqsTodos.filter((e) => idsSede.has(e.consultorio_id) || !e.consultorio_id) : eqsTodos;
     let nS = 0, nE = 0, nA = 0, orden = cons.length;
     const servicio = async (nombre) => {
       const n = titulo(nombre || 'SIN SERVICIO');
       let c = cons.find((x) => norm(x.nombre) === norm(n));
-      if (!c) { c = await S.insert('consultorios', { entidad_id: ent.id, nombre: n, orden: ++orden, sede: 'Sede principal' }); cons.push(c); nS++; }
+      if (!c) { c = await S.insert('consultorios', { entidad_id: ent.id, nombre: n, orden: ++orden, sede: sede || 'Sede principal' }); cons.push(c); idsSede.add(c.id); nS++; }
       return c;
     };
     const vistos = new Set();
@@ -106,9 +113,9 @@
       if (e) { const nuevo = await S.update('equipos', e.id, { ...datos, codigo_inv: r.codigo || e.codigo_inv }); Object.assign(e, nuevo); nA++; }
       else {
         let cod = r.codigo || `${comp(datos.nombre).slice(0, 3)}-${String(i + 1).padStart(3, '0')}`;
-        while (eqs.some((x) => comp(x.codigo_inv) === comp(cod))) cod += '-B';
+        while (eqsTodos.some((x) => comp(x.codigo_inv) === comp(cod))) cod += '-B';
         e = await S.insert('equipos', { ...datos, entidad_id: ent.id, codigo_inv: cod, estado: 'Activo', periodicidad_mto: 'Semestral', periodicidad_metro: 'No aplica', hv: {} });
-        eqs.push(e); nE++;
+        eqs.push(e); eqsTodos.push(e); nE++;
       }
       vistos.add(e.id);
     }
@@ -120,7 +127,7 @@
     }
     // renumerar los servicios en el orden del inventario
     const ordenInv = [...enInv];
-    const consAhora = await S.list('consultorios', { entidad_id: ent.id });
+    const consAhora = (await S.list('consultorios', { entidad_id: ent.id })).filter(deSede);
     for (const c of consAhora) { const i = ordenInv.indexOf(norm(c.nombre)); if (i >= 0 && c.orden !== i + 1) await S.update('consultorios', c.id, { orden: i + 1 }); }
     return { nS: Math.max(0, nS), nE, nA };
   };
@@ -184,10 +191,10 @@
     let movidos = 0, borrados = 0;
     // 0) un mismo servicio repetido (ej. 6 veces "UNIDAD ODONTOLÓGICA") → uno solo con todos sus equipos
     const grupos = new Map();
-    A.ordenar(cons).forEach((c) => { const k = norm(c.nombre); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(c); });
-    let ordenSrv = 0;
+    A.ordenar(cons).forEach((c) => { const k = norm(c.sede || 'Sede principal') + '|' + norm(c.nombre); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(c); });
+    const ordenSede = new Map();
     for (const lista of grupos.values()) {
-      const [queda, ...sobran] = lista; ordenSrv++;
+      const [queda, ...sobran] = lista; const ks = norm(queda.sede || 'Sede principal'); const ordenSrv = (ordenSede.get(ks) || 0) + 1; ordenSede.set(ks, ordenSrv);
       if (queda.orden !== ordenSrv) await S.update('consultorios', queda.id, { orden: ordenSrv });
       for (const c of sobran) {
         for (const e of eqsTodos.filter((x) => x.consultorio_id === c.id)) { await S.update('equipos', e.id, { consultorio_id: queda.id }); e.consultorio_id = queda.id; }

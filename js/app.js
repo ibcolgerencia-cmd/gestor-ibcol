@@ -305,7 +305,8 @@ window.APP = (() => {
   };
 
   // ---------------------------------------------------------------- utilidades de orden y nombres
-  A.ordenar = (l) => [...l].sort((a, b) => ((a.orden ?? 9999) - (b.orden ?? 9999)) || String(a.created_at || '').localeCompare(String(b.created_at || '')) || String(a.nombre || '').localeCompare(String(b.nombre || '')));
+  const sedeK = (x) => ('sede' in x ? String(x.sede || 'Sede principal') : '');
+  A.ordenar = (l) => [...l].sort((a, b) => sedeK(a).localeCompare(sedeK(b), 'es', { numeric: true, sensitivity: 'base' }) || ((a.orden ?? 9999) - (b.orden ?? 9999)) || String(a.created_at || '').localeCompare(String(b.created_at || '')) || String(a.nombre || '').localeCompare(String(b.nombre || '')));
   A.sinNum = (t) => String(t || '').replace(/^\s*\d+(\.\d+)*\s*[.\-)]\s*/, '').trim();
   A.numDe = (t) => { const m = String(t || '').match(/^\s*(\d+)/); return m ? +m[1] : null; };
   A.numerado = (lista) => A.ordenar(lista).map((x, i) => ({ ...x, _n: i + 1 }));
@@ -344,6 +345,9 @@ window.APP = (() => {
   V.areas = async ({ id }) => {
     const [ent, consR, eqsR] = await Promise.all([S.get('entidades', id), S.list('consultorios', { entidad_id: id }), S.list('equipos', { entidad_id: id })]);
     const cons = A.numerado(consR);
+    const sedeC = (c) => c.sede || 'Sede principal';
+    const sedesL = [...new Set(A.ordenar(consR).map(sedeC))];
+    st.sedeSel = st.sedeSel || {}; const sedeSel = sedesL.includes(st.sedeSel[id]) ? st.sedeSel[id] : '';
     const titulo = CAT.CARPETAS_ENTIDAD.find((c) => c.k === CARP_EQ).n;
     const sinCons = A.numerado(eqsR.filter((e) => !cons.some((c) => c.id === e.consultorio_id)));
     const fila = (e) => `<button class="eq-row" data-act="abrirEq" data-id="${e.id}"><span class="cod">${e._n}. ${h(e.codigo_inv)}</span><span class="nm"><b>${h(e.nombre)}</b><small>${h([e.marca, e.modelo].filter(Boolean).join(' · '))}</small></span><span class="mm muted mono" style="font-size:.8rem">S/N ${h(e.serie || '—')}</span><span class="badges">${A.riesgo(e.clase_riesgo)}${A.estadoPill(e.estado)}</span></button>`;
@@ -353,10 +357,12 @@ window.APP = (() => {
     content().innerHTML = `${migas([...A.rutaEnt(ent), titulo])}
       <div class="page-head"><div><span class="eyebrow">Servicios o consultorios · carpeta por equipo</span><h1>${h(titulo)}</h1></div>
         ${esProp() ? `<div class="actions"><button class="btn" data-act="revisarDocs">${I.ia} Revisar documentos (IA)</button><button class="btn" data-act="importarDrive">${I.subir} Importar servicios y equipos</button><button class="btn" data-act="nuevoCons">${I.mas} Servicio / consultorio</button><button class="btn pri" data-act="nuevoEq">${I.mas} Equipo</button></div>` : ''}</div>
-      ${cons.map((c) => sala(c, A.numerado(eqsR.filter((e) => e.consultorio_id === c.id)))).join('')}
-      ${sinCons.length || !cons.length ? sala(null, sinCons) : ''}`;
+      ${sedesL.length > 1 ? `<div class="chips sede-chips" role="tablist" aria-label="Sedes"><button class="chip ${!sedeSel ? 'on' : ''}" data-act="verSede" data-s="">Todas las sedes</button>${sedesL.map((s) => `<button class="chip ${sedeSel === s ? 'on' : ''}" data-act="verSede" data-s="${h(s)}">${h(s)} <small>${eqsR.filter((e) => consR.some((c) => c.id === e.consultorio_id && sedeC(c) === s)).length}</small></button>`).join('')}</div>` : ''}
+      ${sedesL.filter((s) => !sedeSel || s === sedeSel).map((s) => `${sedesL.length > 1 ? `<h2 class="sede-tit">${h(s.toUpperCase())}</h2>` : ''}${A.numerado(cons.filter((c) => sedeC(c) === s)).map((c) => sala(c, A.numerado(eqsR.filter((e) => e.consultorio_id === c.id)))).join('')}`).join('')}
+      ${(sinCons.length || !cons.length) && !sedeSel ? sala(null, sinCons) : ''}`;
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
+      verSede: (d) => { st.sedeSel[id] = d.s; A.recargar(); },
       nuevoCons: () => A.formConsultorio(id, null, cons.length + 1),
       editCons: (d) => A.formConsultorio(id, cons.find((c) => c.id === d.id)),
       nuevoEq: (d) => A.formEquipo({ entidad_id: id, consultorio_id: d.cons || cons[0]?.id, orden: eqsR.filter((e) => e.consultorio_id === (d.cons || cons[0]?.id)).length + 1 }, cons),
@@ -656,70 +662,108 @@ window.APP = (() => {
 
   // Importa la carpeta COMPLETA de una entidad con la estructura de Drive:
   //  ENTIDAD / 1. INVENTARIO … / 3. HOJAS DE VIDA… / ÁREA / EQUIPO / 0. HOJA VIDA …
+  //  También por SEDES: ENTIDAD / A1. SEDE II / (A1. INVENTARIO, B2. CRONOGRAMAS, C3. HOJAS DE VIDA…)
+  //  Cada sede crea sus propios servicios (con el nombre de la sede) y sus documentos quedan
+  //  en la carpeta equivalente, dentro de una subcarpeta con el nombre de la sede.
+  A.limpiaSede = (t) => String(t || '').replace(/^\s*[A-ZÑ]?\d+(\.\d+)*\s*[.\-)]?\s+/i, '').trim();
+  const sedeDe = (c) => c?.sede || 'Sede principal';
   A.importarEntidad = (ent, soloEquipos = false) => {
     const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.webkitdirectory = true;
     inp.onchange = async () => {
       const files = A.filtrarOcultos([...inp.files]); if (!files.length) return toast('La carpeta no tiene archivos', true);
-      const raizNombre = files[0].webkitRelativePath.split('/')[0];
+      const partes = (fl) => fl.webkitRelativePath.split('/');
+      const raizNombre = partes(files[0])[0];
       // Si se eligió directamente la carpeta "3. HOJAS DE VIDA…", tratarla como tal
       const raizEsEquipos = soloEquipos || A.adivinarEnt(raizNombre) === CARP_EQ;
-      const top = {};
+      // ¿Qué subcarpetas de la raíz son SEDES? (tienen dentro inventario / cronogramas / hojas de vida)
+      const hijos = {};
+      if (!raizEsEquipos) files.forEach((fl) => { const p = partes(fl); if (p.length > 3) (hijos[p[1]] = hijos[p[1]] || new Set()).add(p[2]); });
+      const ESTRUCT = ['inventarios', 'cronogramas', CARP_EQ];
+      const sedes = Object.keys(hijos).filter((k) => !ESTRUCT.includes(A.adivinarEnt(k)) && [...hijos[k]].filter((x) => ESTRUCT.includes(A.adivinarEnt(x))).length >= 2)
+        .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+      const sedeRaizSug = sedes.length ? 'Sede principal' : /home\s*care/i.test(raizNombre) ? 'HOME CARE' : 'Sede principal';
+      // Grupos: cada carpeta de primer nivel (o de primer nivel dentro de cada sede)
+      const grupos = {};
       files.forEach((fl) => {
-        const p = fl.webkitRelativePath.split('/');
-        const t = raizEsEquipos ? '__equipos__' : (p.length > 2 ? p[1] : '(archivos sueltos)');
-        (top[t] = top[t] || []).push(fl);
+        const p = partes(fl); let key, g;
+        if (raizEsEquipos) { key = '__equipos__'; g = { sk: '', top: raizNombre, base: 1 }; }
+        else if (sedes.includes(p[1])) {
+          const top = p.length > 3 ? p[2] : '(archivos sueltos)';
+          key = `${p[1]}␟${top}`; g = { sk: p[1], top, base: 3, suelto: p.length <= 3 };
+        } else {
+          const top = p.length > 2 ? p[1] : '(archivos sueltos)';
+          key = `␟${top}`; g = { sk: '', top, base: 2, suelto: p.length <= 2 };
+        }
+        (grupos[key] = grupos[key] || { ...g, files: [] }).files.push(fl);
       });
-      const claves = Object.keys(top).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
-      // Analiza áreas y equipos
+      const claves = Object.keys(grupos).sort((a, b) => { const A1 = grupos[a], B1 = grupos[b]; return (A1.sk ? 1 : 0) - (B1.sk ? 1 : 0) || A1.sk.localeCompare(B1.sk, 'es', { numeric: true }) || A1.top.localeCompare(B1.top, 'es', { numeric: true }); });
       const analizar = (lista, base) => {
         const areas = {};
-        lista.forEach((fl) => { const p = fl.webkitRelativePath.split('/').slice(base); if (p.length >= 3) { const a = p[0], e = p[1]; areas[a] = areas[a] || new Set(); areas[a].add(e); } });
+        lista.forEach((fl) => { const p = partes(fl).slice(base); if (p.length >= 3) { const a = p[0], e = p[1]; areas[a] = areas[a] || new Set(); areas[a].add(e); } });
         return areas;
       };
+      const CORR = '__corr';
+      const sugerir = (g) => (g.top === raizNombre && raizEsEquipos ? CARP_EQ : g.suelto ? 'archivo' : /correctiv/.test(norm(g.top)) ? CORR : (A.adivinarEnt(g.top) || 'archivo'));
+      const opciones = (sug) => `${CAT.CARPETAS_ENTIDAD.map((c) => `<option value="${c.k}" ${c.k === sug ? 'selected' : ''}>${h(c.n)}</option>`).join('')}<option value="${CORR}" ${sug === CORR ? 'selected' : ''}>→ Mantenimientos correctivos de cada equipo (según el código del archivo)</option><option value="">— No importar —</option>`;
+      const fila = (k, i) => {
+        const g = grupos[k], sug = sugerir(g);
+        const areas = sug === CARP_EQ ? analizar(g.files, g.base) : null;
+        const det = areas ? `<div class="muted" style="font-size:.8rem">${Object.keys(areas).length} áreas · ${Object.values(areas).reduce((s, x) => s + x.size, 0)} equipos</div>` : '';
+        return `<tr><td>${h(g.top)}${det}</td><td class="r num">${g.files.length}</td><td><select data-g="${i}" aria-label="Carpeta destino">${opciones(sug)}</select></td></tr>`;
+      };
+      const cab = '<thead><tr><th>Carpeta del computador</th><th class="r">Archivos</th><th>Guardar en</th></tr></thead>';
+      const raizClaves = claves.filter((k) => !grupos[k].sk);
+      const hayInv = claves.some((k) => sugerir(grupos[k]) === 'inventarios' && grupos[k].files.some((f) => /\.(pdf|xlsx?|csv)$/i.test(f.name)));
       modal({
         titulo: soloEquipos ? 'Importar áreas y equipos' : `Importar carpeta de ${ent.razon_social}`, size: 'wide',
-        cuerpo: `<div class="form"><p class="muted">${files.length} archivos en “${h(raizNombre)}”. Cada carpeta se guardará en la carpeta equivalente del gestor. En “3. Hojas de vida…” se crean automáticamente las áreas y los equipos con sus subcarpetas.</p>
-          <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Carpeta del computador</th><th class="r">Archivos</th><th>Guardar en</th></tr></thead><tbody>
-          ${claves.map((k, i) => {
-            const sug = k === '__equipos__' ? CARP_EQ : k === '(archivos sueltos)' ? 'archivo' : (A.adivinarEnt(k) || 'archivo');
-            const areas = sug === CARP_EQ ? analizar(top[k], raizEsEquipos ? 1 : 2) : null;
-            const det = areas ? `<div class="muted" style="font-size:.8rem">${Object.keys(areas).length} áreas · ${Object.values(areas).reduce((s, x) => s + x.size, 0)} equipos</div>` : '';
-            return `<tr><td>${h(k === '__equipos__' ? raizNombre : k)}${det}</td><td class="r num">${top[k].length}</td><td><select data-g="${i}" aria-label="Carpeta destino">${CAT.CARPETAS_ENTIDAD.map((c) => `<option value="${c.k}" ${c.k === sug ? 'selected' : ''}>${h(c.n)}</option>`).join('')}<option value="">— No importar —</option></select></td></tr>`;
-          }).join('')}
-          </tbody></table></div>
-          ${claves.some((k) => (k === '__equipos__' ? false : A.adivinarEnt(k) === 'inventarios') && top[k].some((f) => /\.(pdf|xlsx?|csv)$/i.test(f.name))) ? `<div class="field full"><label class="checks"><input type="checkbox" name="usarInv" data-single checked> Crear los servicios y sus equipos a partir del inventario (se usa el más reciente de la carpeta de inventarios)</label></div>` : ''}
+        cuerpo: `<div class="form"><p class="muted">${files.length} archivos en “${h(raizNombre)}”. Cada carpeta se guardará en la carpeta equivalente del gestor. En “3. Hojas de vida…” se crean automáticamente las áreas y los equipos con sus subcarpetas.${sedes.length ? ` Se encontraron <b>${sedes.length} sedes</b>: cada una crea sus servicios con el nombre de la sede y sus documentos quedan en una subcarpeta con ese nombre.` : ''} Los archivos que ya estén cargados con el mismo nombre no se repiten.</p>
+          ${raizClaves.length ? `<div class="imp-sede"><div class="fields">${f.input('sede_raiz', sedes.length ? 'Sede para los equipos sueltos de la raíz' : 'Sede o servicio de esta carpeta', sedeRaizSug, { full: true })}</div>
+            <div class="tbl-wrap"><table class="tbl">${cab}<tbody>${raizClaves.map((k) => fila(k, claves.indexOf(k))).join('')}</tbody></table></div></div>` : ''}
+          ${sedes.map((s, j) => `<div class="imp-sede"><div class="fields">${f.input(`sede_${j}`, `Sede · carpeta “${s}”`, A.limpiaSede(s), { full: true })}</div>
+            <div class="tbl-wrap"><table class="tbl">${cab}<tbody>${claves.filter((k) => grupos[k].sk === s).map((k) => fila(k, claves.indexOf(k))).join('')}</tbody></table></div></div>`).join('')}
+          ${hayInv ? `<div class="field full"><label class="checks"><input type="checkbox" name="usarInv" data-single checked> Crear los servicios y sus equipos a partir del inventario${sedes.length ? ' de cada sede' : ''} (se usa el más reciente de la carpeta de inventarios)</label></div>` : ''}
           <div class="muted" data-prog></div></div>`,
         acciones: [{ t: 'Cancelar' }, { t: `${I.subir} Importar ${files.length} archivos`, cls: 'pri', fn: async (m) => {
-          const prog = m.body.querySelector('[data-prog]'); let n = 0, err = 0, nAreas = 0, nEq = 0;
-          // 1) Inventario primero: define los servicios y los equipos reales
-          const iInv = claves.findIndex((k, i) => m.body.querySelector(`[data-g="${i}"]`).value === 'inventarios');
-          if (m.body.querySelector('[name=usarInv]')?.checked && iInv >= 0) {
-            const cand = top[claves[iInv]].filter((f) => /\.(pdf|xlsx?|csv)$/i.test(f.name)).sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
-            const inv = cand.filter((f) => /\.(xlsx?|csv)$/i.test(f.name)).pop() || cand.pop();
-            if (inv) {
-              try { const r = await A.aplicarInventario(ent, await A.parsearInventario(inv), (t) => { prog.textContent = 'Inventario: ' + t; }); nAreas += r.nS; nEq += r.nE; }
-              catch (e) { toast('No pude leer el inventario (' + e.message + '). Se importan los archivos igual.', true); }
+          const prog = m.body.querySelector('[data-prog]'); let n = 0, err = 0, rep = 0, nAreas = 0, nEq = 0;
+          const val = (i) => m.body.querySelector(`[data-g="${i}"]`).value;
+          const sedeRaiz = (m.body.querySelector('[name=sede_raiz]')?.value || '').trim() || 'Sede principal';
+          const nomSede = (g) => (g.sk ? (m.body.querySelector(`[name=sede_${sedes.indexOf(g.sk)}]`)?.value || '').trim() || A.limpiaSede(g.sk) : sedeRaiz);
+          // 1) Inventarios primero (uno por sede): definen los servicios y los equipos reales
+          if (m.body.querySelector('[name=usarInv]')?.checked) {
+            for (const [i, k] of claves.entries()) {
+              if (val(i) !== 'inventarios') continue;
+              const g = grupos[k];
+              const cand = g.files.filter((x) => /\.(pdf|xlsx?|csv)$/i.test(x.name)).sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
+              const inv = cand.filter((x) => /\.(xlsx?|csv)$/i.test(x.name)).pop() || cand.pop();
+              if (!inv) continue;
+              const sede = nomSede(g);
+              try { const r = await A.aplicarInventario(ent, await A.parsearInventario(inv), (t) => { prog.textContent = `Inventario ${sede}: ${t}`; }, { sede }); nAreas += r.nS; nEq += r.nE; }
+              catch (e) { toast(`No pude leer el inventario de ${sede} (${e.message}). Se importan los archivos igual.`, true); }
             }
           }
           const consulta = await S.list('consultorios', { entidad_id: ent.id });
           const equipos = await S.list('equipos', { entidad_id: ent.id });
+          const ya = new Set((await S.list('documentos', { entidad_id: ent.id })).map((d) => [d.equipo_id || '', d.carpeta, d.subcarpeta || '', d.nombre].join('|')));
+          const subir = async (o) => { const key = [o.eqId || '', o.carpeta, o.subcarpeta || '', o.fl.name].join('|'); if (ya.has(key)) { rep++; return; } await subirDoc({ ent, ...o }); ya.add(key); n++; };
           const nombresPor = {};
-          Object.values(top).flat().forEach((fl) => { const p = fl.webkitRelativePath.split('/'); for (let j = 1; j < p.length - 1; j++) { const key = p.slice(0, j + 1).join('/'); (nombresPor[key] = nombresPor[key] || []).push(fl.name); } });
-          const reales = () => equipos.filter((e) => !A.esCarpetaDoc(e.nombre));
-          const equipoSuelto = async (rutaCarpeta, nombreCarpeta, archivo) => {
-            const cand = A.equipoPorCarpeta(nombreCarpeta, nombresPor[rutaCarpeta] || [], reales());
+          files.forEach((fl) => { const p = partes(fl); for (let j = 1; j < p.length - 1; j++) { const key = p.slice(0, j + 1).join('/'); (nombresPor[key] = nombresPor[key] || []).push(fl.name); } });
+          const consDeSede = (sede) => consulta.filter((c) => norm(sedeDe(c)) === norm(sede));
+          const reales = (sede) => { const ids = new Set(consDeSede(sede).map((c) => c.id)); const unaSede = new Set(consulta.map(sedeDe).map(norm)).size <= 1; return equipos.filter((e) => !A.esCarpetaDoc(e.nombre) && (ids.has(e.consultorio_id) || (!e.consultorio_id && unaSede))); };
+          const equipoSuelto = async (rutaCarpeta, nombreCarpeta, archivo, sede) => {
+            const cand = A.equipoPorCarpeta(nombreCarpeta, nombresPor[rutaCarpeta] || [], reales(sede));
             const e = (cand.length > 1 && A.equipoPorCodigo(archivo, cand)) || cand[0];
             if (e) return e;
             const nom = A.sinNum(nombreCarpeta) || nombreCarpeta;
             let cod = `${nom.normalize('NFD').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'EQ'}-${String(equipos.length + 1).padStart(3, '0')}`;
             while (equipos.some((x) => x.codigo_inv === cod)) cod += '-B';
-            const nuevo = await S.insert('equipos', { entidad_id: ent.id, consultorio_id: null, nombre: nom.toUpperCase(), codigo_inv: cod, estado: 'Activo', periodicidad_mto: 'Semestral', periodicidad_metro: 'No aplica', hv: {} });
+            const area = await areaDe('SIN SERVICIO', sede);
+            const nuevo = await S.insert('equipos', { entidad_id: ent.id, consultorio_id: area.id, nombre: nom.toUpperCase(), codigo_inv: cod, estado: 'Activo', periodicidad_mto: 'Semestral', periodicidad_metro: 'No aplica', hv: {} });
             equipos.push(nuevo); nEq++; return nuevo;
           };
-          const areaDe = async (nombreCarpeta) => {
+          const areaDe = async (nombreCarpeta, sede) => {
             const nom = A.sinNum(nombreCarpeta) || nombreCarpeta;
-            let c = consulta.find((x) => norm(x.nombre) === norm(nom));
-            if (!c) { c = await S.insert('consultorios', { entidad_id: ent.id, nombre: nom, orden: A.numDe(nombreCarpeta), sede: 'Sede principal' }); consulta.push(c); nAreas++; }
+            let c = consDeSede(sede).find((x) => norm(x.nombre) === norm(nom));
+            if (!c) { c = await S.insert('consultorios', { entidad_id: ent.id, nombre: nom, orden: A.numDe(nombreCarpeta) ?? consDeSede(sede).length + 1, sede }); consulta.push(c); nAreas++; }
             return c;
           };
           const equipoDe = async (area, nombreCarpeta) => {
@@ -734,41 +778,46 @@ window.APP = (() => {
             }
             return e;
           };
+          const conSede = (g, sede, sub) => (g.sk || (!sedes.length && norm(sedeRaiz) !== norm('Sede principal')) ? [sede, sub].filter(Boolean).join('/') : sub) || null;
           for (const [i, k] of claves.entries()) {
-            const carpeta = m.body.querySelector(`[data-g="${i}"]`).value; if (!carpeta) continue;
-            const base = raizEsEquipos ? 1 : 2;
-            for (const fl of top[k]) {
+            const carpeta = val(i); if (!carpeta) continue;
+            const g = grupos[k], sede = nomSede(g), base = g.base;
+            for (const fl of g.files) {
               try {
                 if (fl.size > 50 * 1048576) throw new Error('grande');
-                const p = fl.webkitRelativePath.split('/');
+                const p = partes(fl);
                 if (carpeta === CARP_EQ) {
                   const r = p.slice(base); // [SERVICIO /] EQUIPO / CARPETA DEL EQUIPO / … / archivo
                   const pre = p.slice(0, base).join('/');
-                  if (r.length < 2) { await subirDoc({ ent, carpeta: 'archivo', subcarpeta: A.sinNum(k) || null, fl }); }
+                  if (r.length < 2) { await subir({ carpeta: 'archivo', subcarpeta: conSede(g, sede, A.sinNum(g.top) || null), fl }); }
                   else {
                     let eq, docFolder, resto;
                     if (A.esCarpetaDoc(r[1]) || r.length === 2) {
-                      // EQUIPO / 0. HOJA VIDA / archivo  (sin carpeta de servicio)
-                      eq = await equipoSuelto(`${pre}/${r[0]}`, r[0], fl.name); docFolder = r.length === 2 ? '' : r[1]; resto = r.slice(2, -1);
+                      eq = await equipoSuelto(`${pre}/${r[0]}`, r[0], fl.name, sede); docFolder = r.length === 2 ? '' : r[1]; resto = r.slice(2, -1);
                     } else {
-                      // SERVICIO / EQUIPO / 0. HOJA VIDA / archivo
-                      const cand = A.equipoPorCarpeta(r[1], nombresPor[`${pre}/${r[0]}/${r[1]}`] || [], reales());
-                      eq = (cand.length > 1 && A.equipoPorCodigo(fl.name, cand)) || cand[0] || await equipoDe(await areaDe(r[0]), r[1]);
+                      const cand = A.equipoPorCarpeta(r[1], nombresPor[`${pre}/${r[0]}/${r[1]}`] || [], reales(sede));
+                      eq = (cand.length > 1 && A.equipoPorCodigo(fl.name, cand)) || cand[0] || await equipoDe(await areaDe(r[0], sede), r[1]);
                       docFolder = r.length > 3 ? r[2] : ''; resto = r.slice(3, -1);
                     }
                     const cEq = A.carpetaDeDoc(docFolder, fl.name) || A.carpetaDeDoc(fl.name, fl.name) || 'hoja_vida';
-                    await subirDoc({ ent, eqId: eq.id, carpeta: cEq, subcarpeta: resto.length ? resto.join('/') : null, fl });
+                    await subir({ eqId: eq.id, carpeta: cEq, subcarpeta: resto.length ? resto.join('/') : null, fl });
                   }
+                } else if (carpeta === CORR) {
+                  // correctivos sueltos: se asignan al equipo por el código / serie del archivo o por la carpeta
+                  const cand = reales(sede), r = p.slice(base, -1);
+                  let eq = A.equipoPorCodigo(fl.name, cand);
+                  for (let j = r.length - 1; !eq && j >= 0; j--) eq = A.equipoPorCarpeta(r[j], nombresPor[p.slice(0, base + j + 1).join('/')] || [], cand)[0];
+                  if (eq) await subir({ eqId: eq.id, carpeta: 'mto_correctivo', subcarpeta: null, fl });
+                  else await subir({ carpeta: 'archivo', subcarpeta: conSede(g, sede, [A.sinNum(A.limpiaSede(g.top)), ...r].filter(Boolean).join('/')), fl });
                 } else {
-                  const sub = p.slice(base, -1).join('/') || null;
-                  await subirDoc({ ent, carpeta, subcarpeta: k === '(archivos sueltos)' ? null : sub, fl });
+                  const sub = g.suelto ? null : p.slice(base, -1).join('/') || null;
+                  await subir({ carpeta, subcarpeta: conSede(g, sede, sub), fl });
                 }
-                n++;
               } catch (e) { err++; console.error(e); }
-              prog.textContent = `Subiendo… ${n} de ${files.length}${nAreas || nEq ? ` · ${nAreas} áreas y ${nEq} equipos creados` : ''}`;
+              prog.textContent = `Subiendo… ${n + rep + err} de ${files.length}${rep ? ` · ${rep} ya estaban` : ''}${nAreas || nEq ? ` · ${nAreas} áreas y ${nEq} equipos creados` : ''}`;
             }
           }
-          toast(`${n} archivos importados${nEq ? ` · ${nAreas} áreas y ${nEq} equipos creados` : ''}${err ? ` · ${err} con error` : ''}`, !!err); A.recargar();
+          toast(`${n} archivos importados${rep ? ` · ${rep} ya estaban cargados` : ''}${nEq ? ` · ${nAreas} áreas y ${nEq} equipos creados` : ''}${err ? ` · ${err} con error` : ''}`, !!err); A.recargar();
         } }],
       });
     };
