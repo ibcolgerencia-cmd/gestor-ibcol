@@ -408,3 +408,16 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .modal.vz-full .vz-body .viewer { height: calc(100vh - 175px); }
 @media (max-width: 640px) { .vz-bar select { min-width: 0; flex: 1; } .vz-bar [data-z=full] { display: none; } .vz-body .viewer { height: 68vh; padding: 6px; } }
 .modal-bg:has(.vz-full) { padding: 0; }
+
+/* ---------- v31: enviar por WhatsApp y correo ---------- */
+.env-form { display: grid; gap: 10px; }
+.env-doc { display: flex; gap: 8px; align-items: center; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.env-doc b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9rem; }
+.env-doc .ext { flex: none; font: 600 .62rem var(--f-mono, monospace); background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 3px 5px; }
+.env-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.env-btns .btn { justify-content: center; }
+.env-btns .env-wa { background: #1f9d55; border-color: #1f9d55; color: #fff; }
+.env-btns .env-wa:hover { background: #17834a; }
+.env-btns .env-mail { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.env-nota { font-size: .8rem; margin: 0; }
+@media (max-width: 480px) { .env-btns { grid-template-columns: 1fr; } }
