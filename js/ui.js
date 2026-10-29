@@ -29,6 +29,8 @@ window.UI = (() => {
     on: ic('<path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/>'),
     cal: ic('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
     alerta: ic('<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>'),
+    wa: ic('<path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.3z"/><path d="M9 8.5c0 3.5 2.6 6.5 6.5 6.5l1-1.6-2-1-1 1c-1.4-.6-2.4-1.6-3-3l1-1-1-2z"/>'),
+    mail: ic('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6 8.5-6"/>'),
     ia: ic('<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>'),
     luna: ic('<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>'),
   };
@@ -160,13 +162,14 @@ window.UI = (() => {
   }
 
   // ------------------------------------------------------------ Visor PDF (pdf.js)
-  async function verPDF({ titulo, blob, nombre, alDescargar, firmar, extras = [] }) {
+  async function verPDF({ titulo, blob, nombre, alDescargar, firmar, extras = [], archivo = null, enviar = true }) {
     if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
     let modoFirma = false;
     const acciones = [...extras];
     if (firmar) acciones.push({ t: `${I.firma} Firmar`, fn: () => { modoFirma = !modoFirma; m.body.querySelector('.viewer').classList.toggle('signing', modoFirma); if (modoFirma) toast('Toque en la página el lugar donde irá la firma'); return false; } });
+    if (enviar && window.APP?.enviarDoc) acciones.push({ t: `${I.mail} Enviar`, fn: () => { window.APP.enviarDoc({ blob, nombre: nombre || `${titulo || 'documento'}.pdf`, archivo }); return false; } });
     acciones.push({ t: `${I.bajar} Descargar`, cls: 'pri', fn: () => { descargar(blob, nombre || 'documento.pdf'); alDescargar?.(); return false; } });
     const m = modal({ titulo, size: 'wide pdfm', cuerpo: `<div class="vz-bar" role="toolbar" aria-label="Zoom del documento">
         <button type="button" class="btn sm" data-z="menos" aria-label="Alejar" title="Alejar (Ctrl -)">−</button>

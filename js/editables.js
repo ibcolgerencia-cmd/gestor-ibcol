@@ -146,7 +146,7 @@
     const b = await S.fileBlob(d.archivo); if (!b) throw new Error('El archivo no está disponible en este dispositivo');
     S.log('CONSULTA', 'documentos', d.id, d.nombre);
     const e = UI.ext(d.nombre);
-    if (e === 'pdf') return UI.verPDF({ titulo: d.nombre, blob: b, nombre: d.nombre, alDescargar: () => S.log('DESCARGA', 'documentos', d.id, d.nombre) });
+    if (e === 'pdf') return UI.verPDF({ titulo: d.nombre, blob: b, nombre: d.nombre, archivo: d.archivo, alDescargar: () => S.log('DESCARGA', 'documentos', d.id, d.nombre) });
     if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(e)) { const url = URL.createObjectURL(b); return modal({ titulo: d.nombre, size: 'wide', cuerpo: `<div class="viewer"><img src="${url}" alt="${h(d.nombre)}"></div>`, acciones: [{ t: `${I.bajar} Descargar`, cls: 'pri', fn: () => { UI.descargar(b, d.nombre); return false; } }] }); }
     UI.descargar(b, d.nombre); S.log('DESCARGA', 'documentos', d.id, d.nombre); toast('Este tipo de archivo se abre con su programa. Descargando…');
   };

@@ -501,7 +501,7 @@ window.APP = (() => {
         return `<div class="file"><span class="ext ${tipoExt(d.nombre)}">${h(UI.ext(d.nombre).slice(0, 4).toUpperCase())}</span>
           <div class="info"><b>${h(d.nombre)}</b><small>${d.subcarpeta && d.subcarpeta !== sel ? `<span class="pill acc">${h(sel ? d.subcarpeta.slice(sel.length + 1) : d.subcarpeta)}</span>` : ''}${d.fecha_documento ? `<span>Fecha: ${UI.fecha(d.fecha_documento)}</span>` : ''}${d.tamano ? `<span>${UI.tam(d.tamano)}</span>` : ''}
             ${d.fecha_vencimiento ? `<span class="pill ${dv < 0 ? 'bad' : dv <= 30 ? 'warn' : 'ok'}">Vence ${UI.fecha(d.fecha_vencimiento)}</span>` : ''}${d.firmado ? '<span class="pill ok">Firmado</span>' : ''}${esProp() && d.visible_cliente === false ? '<span class="pill">Oculto al cliente</span>' : ''}</small></div>
-          <div class="tools"><button class="icon-btn" data-act="verDoc" data-id="${d.id}" aria-label="Ver">${I.ver}</button><button class="icon-btn" data-act="bajarDoc" data-id="${d.id}" aria-label="Descargar">${I.bajar}</button>
+          <div class="tools"><button class="icon-btn" data-act="verDoc" data-id="${d.id}" aria-label="Ver">${I.ver}</button><button class="icon-btn" data-act="bajarDoc" data-id="${d.id}" aria-label="Descargar">${I.bajar}</button><button class="icon-btn" data-act="enviarDoc" data-id="${d.id}" aria-label="Enviar por WhatsApp o correo" title="Enviar por WhatsApp o correo">${I.mail}</button>
             ${esProp() && carpeta === 'inventarios' && /^(pdf|xlsx?|csv)$/.test(UI.ext(d.nombre)) ? `<button class="btn sm" data-act="usarInv" data-id="${d.id}">Crear servicios y equipos</button>` : ''}
             ${esProp() ? `${UI.ext(d.nombre) === 'pdf' ? `<button class="icon-btn" data-act="firmarDoc" data-id="${d.id}" aria-label="Firmar">${I.firma}</button>` : ''}<button class="icon-btn" data-act="editDoc" data-id="${d.id}" aria-label="Modificar">${I.edit}</button><button class="icon-btn bad" data-act="delDoc" data-id="${d.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></div>`;
       }).join('')}</div>` : `<div class="empty">${esProp() ? `${sel ? `La subcarpeta “${h(sel)}” está vacía.` : 'Esta carpeta aún no tiene archivos.'}` : 'Aún no hay documentos cargados en esta carpeta.'}</div>`}`;
@@ -536,10 +536,10 @@ window.APP = (() => {
       const b = await blobDe(d); S.log('CONSULTA', 'documentos', d.id, d.nombre);
       const e = UI.ext(d.nombre);
       if (e === 'pdf') {
-        UI.verPDF({ titulo: d.nombre, blob: b, nombre: d.nombre, alDescargar: () => S.log('DESCARGA', 'documentos', d.id, d.nombre), firmar: esProp() ? (pos) => firmarDoc(d, b, pos) : null });
+        UI.verPDF({ titulo: d.nombre, blob: b, nombre: d.nombre, archivo: d.archivo, alDescargar: () => S.log('DESCARGA', 'documentos', d.id, d.nombre), firmar: esProp() ? (pos) => firmarDoc(d, b, pos) : null });
       } else if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(e)) {
         const url = URL.createObjectURL(b);
-        modal({ titulo: d.nombre, size: 'wide', cuerpo: `<div class="viewer"><img src="${url}" alt="${h(d.nombre)}"></div>`, acciones: [{ t: `${I.bajar} Descargar`, cls: 'pri', fn: () => { UI.descargar(b, d.nombre); return false; } }] });
+        modal({ titulo: d.nombre, size: 'wide', cuerpo: `<div class="viewer"><img src="${url}" alt="${h(d.nombre)}"></div>`, acciones: [{ t: `${I.mail} Enviar`, fn: () => { A.enviarDoc({ nombre: d.nombre, blob: b, archivo: d.archivo, registro: d.id }); return false; } }, { t: `${I.bajar} Descargar`, cls: 'pri', fn: () => { UI.descargar(b, d.nombre); return false; } }] });
       } else { UI.descargar(b, d.nombre); S.log('DESCARGA', 'documentos', d.id, d.nombre); toast('Este tipo de archivo se abre con su programa (Excel/Word). Descargando…'); }
     };
     const firmarDoc = async (d, b, pos) => {
@@ -560,6 +560,7 @@ window.APP = (() => {
       nuevaSub: () => modal({ titulo: 'Nueva subcarpeta', size: 'sm', cuerpo: `<div class="form">${f.input('nombre', 'Nombre de la subcarpeta', '', { attrs: 'placeholder="ej: 2026-CONSULTA ALERTAS E INFORMES DE SEGURIDAD"' })}<p class="muted">Quedará guardada cuando suba el primer archivo en ella.</p></div>`,
         acciones: [{ t: 'Cancelar' }, { t: 'Crear', cls: 'pri', fn: (m) => { const v = leer(m.body).nombre.replace(/\//g, '-').trim(); if (!v) { toast('Escriba el nombre', true); return false; } st.subExtra[llave] = [...(st.subExtra[llave] || []), v]; st.subSel[llave] = v; recargar(); } }] }),
       verDoc: (dd) => verDoc(doc(dd.id)),
+      enviarDoc: (dd) => { const d = doc(dd.id); A.enviarDoc({ nombre: d.nombre, archivo: d.archivo, obtenerBlob: () => blobDe(d), registro: d.id }); },
       bajarDoc: async (dd) => { const d = doc(dd.id); UI.descargar(await blobDe(d), d.nombre); S.log('DESCARGA', 'documentos', d.id, d.nombre); },
       firmarDoc: async (dd) => { const d = doc(dd.id); const b = await blobDe(d); toast('Toque “Firmar” y luego el lugar de la página donde va la firma'); UI.verPDF({ titulo: `Firmar · ${d.nombre}`, blob: b, nombre: d.nombre, firmar: (pos) => firmarDoc(d, b, pos) }); },
       delDoc: async (dd) => { const d = doc(dd.id); if (!(await confirmar(`¿Eliminar "${d.nombre}"?`))) return; await S.remove('documentos', d.id); try { await S.removeFile(d.archivo); } catch {} toast('Archivo eliminado'); recargar(); },

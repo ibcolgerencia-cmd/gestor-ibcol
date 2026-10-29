@@ -64,6 +64,8 @@ window.Store = (() => {
         return path;
       },
       async fileBlob(path) { return chk(await sb.storage.from('documentos').download(path)); },
+      // enlace seguro y temporal para enviar un documento por WhatsApp o correo
+      async enlace(path, segundos = 604800, nombre) { const r = chk(await sb.storage.from('documentos').createSignedUrl(path, segundos)); return r.signedUrl; },
       async removeFile(path) { if (path) chk(await sb.storage.from('documentos').remove([path])); },
       async log(accion, tabla, registro, detalle) {
         try { await sb.rpc('registrar_evento', { p_accion: accion, p_tabla: tabla, p_registro: String(registro || ''), p_detalle: detalle || '' }); } catch {}
