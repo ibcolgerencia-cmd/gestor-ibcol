@@ -1,5 +1,5 @@
 // Service worker: permite instalar la app y abrirla rápido (los datos siempre vienen de la nube)
-const CACHE = 'ibcol-v35';
+const CACHE = 'ibcol-v36';
 const ARCHIVOS = ['./', './index.html', './css/styles.css', './js/config.js', './js/logo.js', './js/catalogos.js', './js/demo-seed.js',
   './js/store.js', './js/pdf.js', './js/ui.js', './js/app.js', './js/ia.js', './js/formatos.js', './js/consecutivos.js', './js/inventario.js', './js/revision.js', './js/modulos.js', './js/editables.js', './js/google.js', './js/comites.js', './js/limpieza.js', './js/enviar.js', './img/icon-192.png', './img/icon-512.png', './manifest.json'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ARCHIVOS)).then(() => self.skipWaiting())); });
