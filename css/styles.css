@@ -429,7 +429,7 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .sede-chips .chip small { color: var(--muted); margin-left: 4px; }
 .sede-chips .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .sede-chips .chip.on small { color: inherit; opacity: .8; }
-.sede-tit { font-size: 1rem; letter-spacing: .04em; margin: 22px 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--line); color: var(--ink); }
+.sede-tit { font-size: 1rem; letter-spacing: .04em; margin: 22px 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--line); color: var(--ink); display: flex; align-items: center; gap: 6px; }
 .imp-sede { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0; background: var(--surface-2); }
 .imp-sede .tbl-wrap { margin-top: 6px; }
 
@@ -455,10 +455,12 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 /* v37 · quitar carpetas por entidad */
 .folder-w { position: relative; display: grid; }
 .folder-w .folder { padding-right: 34px; }
-.folder-x { all: unset; position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .15s, background .15s; }
+.folder-tools { position: absolute; top: 4px; right: 4px; display: grid; gap: 2px; }
+.folder-x { all: unset; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .15s, background .15s; }
 .folder-x svg { width: 15px; height: 15px; }
 .folder-w:hover .folder-x, .folder-x:focus-visible { opacity: 1; }
-.folder-x:hover { background: var(--bad-soft); color: var(--bad); }
+.folder-x:hover { background: var(--accent-soft); color: var(--accent); }
+.folder-x.del:hover { background: var(--bad-soft); color: var(--bad); }
 .folder-x:focus-visible { outline: 2px solid var(--accent-2); }
 @media (hover: none) { .folder-x { opacity: .7; } }
 .cfg-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 10px; }
