@@ -101,10 +101,11 @@ window.APP = (() => {
       : [['grp', 'Mi entidad'], ['entidad', 'Documentación', I.ent], ['cuenta', 'Mi cuenta', I.llave]];
     root.innerHTML = `<div class="app" id="app">
       <aside class="side" aria-label="Menú principal">
+        <button class="side-tog" data-menu aria-label="Desplegar menú" title="Desplegar menú">${I.menu}<span>Menú</span></button>
         <div class="brand"><img src="${window.IBCOL_LOGO}" alt=""><div><b>Gestor biomédico</b><small>IBCOL</small></div></div>
-        <nav class="nav">${nav.map(([k, t, icn]) => (k === 'grp' ? `<div class="grp">${t}</div>` : `<button data-nav="${k}">${icn}<span>${t}</span></button>`)).join('')}</nav>
-        <div class="who"><div><b>${h(p.nombre || p.usuario)}</b><br><span class="rol">${p.rol}</span> <span class="mono" style="opacity:.7">${h(p.usuario || '')}</span></div>
-          <div class="nav"><button data-tema>${I.luna}<span>Cambiar tema</span></button><button data-salir>${I.salir}<span>Cerrar sesión</span></button></div><div style="font-size:.7rem;opacity:.55;padding:4px 14px">Versión ${h(window.IBCOL_VERSION || '')}</div></div>
+        <nav class="nav">${nav.map(([k, t, icn]) => (k === 'grp' ? `<div class="grp">${t}</div>` : `<button data-nav="${k}" title="${t}">${icn}<span>${t}</span></button>`)).join('')}</nav>
+        <div class="who"><div class="quien"><b>${h(p.nombre || p.usuario)}</b><br><span class="rol">${p.rol}</span> <span class="mono" style="opacity:.7">${h(p.usuario || '')}</span></div>
+          <div class="nav"><button data-tema title="Cambiar tema">${I.luna}<span>Cambiar tema</span></button><button data-salir title="Cerrar sesión">${I.salir}<span>Cerrar sesión</span></button></div><div class="ver" style="font-size:.7rem;opacity:.55;padding:4px 14px">Versión ${h(window.IBCOL_VERSION || '')}</div></div>
       </aside>
       <div class="main">
         <div class="topbar"><button data-menu aria-label="Abrir menú">${I.menu}</button><b>Gestor biomédico IBCOL</b></div>
@@ -115,12 +116,22 @@ window.APP = (() => {
     app.addEventListener('click', async (e) => {
       const n = e.target.closest('[data-nav]');
       if (n) { app.classList.remove('menu'); return n.dataset.nav === 'entidad' ? go('entidad', { id: p.entidad_id }, true) : go(n.dataset.nav, {}, true); }
-      if (e.target.closest('[data-menu]')) return app.classList.toggle('menu');
+      if (e.target.closest('[data-menu]')) { const ab = app.classList.toggle('menu'); app.querySelectorAll('[data-menu]').forEach((b) => b.setAttribute('aria-expanded', ab)); return; }
       if (e.target.closest('[data-tema]')) return cambiarTema();
       if (e.target.closest('[data-reset]')) { if (await confirmar('Se borrarán todos los cambios del modo demostración y se cargarán de nuevo los datos de ejemplo.', 'Restaurar')) S.reiniciarDemo(); return; }
       if (e.target.closest('[data-salir]')) { await S.logout(); st.perfil = null; login(); return; }
       if (app.classList.contains('menu') && !e.target.closest('.side')) app.classList.remove('menu');
     });
+    // Celular: el menú se despliega desde el lado izquierdo (botón ☰ o deslizando el dedo desde el borde)
+    let tx = null, ty = 0;
+    app.addEventListener('touchstart', (e) => { const t = e.touches[0]; tx = t.clientX; ty = t.clientY; }, { passive: true });
+    app.addEventListener('touchend', (e) => {
+      if (tx === null || window.innerWidth > 900) return; const t = e.changedTouches[0], dx = t.clientX - tx, dy = Math.abs(t.clientY - ty);
+      if (dy < 60 && dx > 60 && tx < 90) app.classList.add('menu');
+      else if (dy < 60 && dx < -60 && app.classList.contains('menu')) app.classList.remove('menu');
+      tx = null;
+    }, { passive: true });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && app.classList.contains('menu')) app.classList.remove('menu'); });
     content().addEventListener('click', (e) => {
       const b = e.target.closest('[data-act]'); if (!b || !content().contains(b)) return;
       const fn = st.acts[b.dataset.act]; if (fn) { e.preventDefault(); e.stopPropagation(); Promise.resolve(fn(b.dataset, b, e)).catch((er) => { console.error(er); toast(er.message, true); }); }
