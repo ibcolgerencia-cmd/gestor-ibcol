@@ -102,6 +102,15 @@ window.FMT = (() => {
         if (typeof v === 'object' && v.fill) { const m = 0.6; pg.drawRectangle({ x: c.x + m, y: c.y + m, width: c.w - 2 * m, height: c.h - 2 * m, color: hex(COLORES[v.fill] || v.fill) }); continue; }
         escribir(pg, c, v, fN, fB);
       }
+      // Filas sin datos: se dejan en blanco (sin cuadrícula) en la última hoja de los formatos con tabla
+      if (vals.__nFilas > 0 && mapa.filas && vals.__nFilas < mapa.filas) {
+        const re = /^r(\d+)_/; let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, pIdx = 0;
+        for (const [key, c] of Object.entries(mapa.campos)) {
+          const m = key.match(re); if (!m || +m[1] < vals.__nFilas) continue;
+          x0 = Math.min(x0, c.x); x1 = Math.max(x1, c.x + c.w); y0 = Math.min(y0, c.y); y1 = Math.max(y1, c.y + c.h); pIdx = c.p || 0;
+        }
+        if (x1 > x0 && y1 > y0) pags[pIdx].drawRectangle({ x: x0 - 1.2, y: y0 - 1.2, width: x1 - x0 + 2.4, height: y1 - y0 + 1.2 - 0.8, color: hex('FFFFFF') });
+      }
       // textos adicionales sobre el formato (ej. meses de un periodo que cruza dos años)
       for (const x of vals.__extra || []) {
         const pg = pags[x.p || 0];
@@ -284,7 +293,7 @@ window.FMT = (() => {
       anio1: cruza ? rango(y1) : `AÑO ${anio}`, anio2: cruza ? rango(y2) : `AÑO ${anio}`,
       fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined, __extra: extra };
     const hojas = partes(filas, cap).map((grupo, h) => {
-      const v = { ...base };
+      const v = { ...base, __nFilas: grupo.length };
       grupo.forEach((r, i) => {
         const e = eqs(r.equipo_id);
         const it = e.hv?.nr?.item ? 'NR' : val(e, 'item');
@@ -308,7 +317,7 @@ window.FMT = (() => {
     const base = { ...cabEntidad(ent, cons), reps: ent?.reps || '', servicio: `SERVICIO: ${cons ? U(cons.nombre) : 'TODOS LOS SERVICIOS'}`, fecha_act: `FECHA ACTUALIZACIÓN: ${fD(UI.hoy())}`,
       fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined };
     const hojas = partes(equipos, cap).map((grupo, h) => {
-      const v = { ...base };
+      const v = { ...base, __nFilas: grupo.length };
       grupo.forEach((e, i) => Object.assign(v, { [`r${i}_item`]: String((e.hv?.nr?.item ? 'NR' : val(e, 'item')) || h * cap + i + 1), [`r${i}_cod`]: val(e, 'codigo_inv'), [`r${i}_af`]: val(e, 'activo_fijo'), [`r${i}_equipo`]: val(e, 'nombre'),
         [`r${i}_marca`]: val(e, 'marca'), [`r${i}_modelo`]: val(e, 'modelo'), [`r${i}_serie`]: val(e, 'serie') || 'NR', [`r${i}_ubicacion`]: U(val(e, 'ubicacion') || cn(e.consultorio_id)),
         [`r${i}_riesgo`]: riesgoTxt(e), [`r${i}_rs`]: val(e, 'registro_sanitario') || 'NR' }));
@@ -323,10 +332,10 @@ window.FMT = (() => {
     const base = { ent_nombre: U(ent?.razon_social || ''), logo: ent?.logo || undefined,
       fmt_codigo: fmt.codigo ? `CÓDIGO: ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN: ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? `FECHA DE CREACIÓN: ${fD(fmt.fecha).replace(/^0/, '')}` : undefined };
     const hojas = partes(alertas, cap).map((grupo, h) => {
-      const v = { ...base };
+      const v = { ...base, __nFilas: grupo.length };
       for (let i = 0; i < cap; i++) {
-        v[`r${i}_n`] = String(h * cap + i + 1);
         const a = grupo[i]; if (!a) continue;
+        v[`r${i}_n`] = String(h * cap + i + 1);
         Object.assign(v, { [`r${i}_mes`]: a.mes_consulta || '', [`r${i}_rs`]: a.registro_sanitario || '', [`r${i}_dispositivo`]: a.dispositivo || '', [`r${i}_tipo`]: a.tipo_notificacion || '',
           [`r${i}_agencia`]: a.agencia || 'INVIMA', [`r${i}_fecha`]: fD(a.fecha_publicacion), [`r${i}_responsable`]: U(a.responsable || 'LAURA PISTALA'), [`r${i}_analisis`]: a.analisis || '', [`r${i}_aplica`]: a.aplicabilidad || '' });
       }
