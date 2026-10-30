@@ -352,7 +352,7 @@ window.APP = (() => {
         ${esProp() ? `<div class="actions"><button class="btn" data-act="editEnt">${I.edit} Editar</button><button class="btn" data-act="usuariosEnt">${I.users} Accesos</button><button class="btn" data-act="configCarp" title="Quitar o volver a mostrar carpetas para esta entidad">${I.carpeta} Carpetas${ocE.size + A.ocultas(ent, 'eq').size ? ` <span class="pill">${ocE.size + A.ocultas(ent, 'eq').size} quitadas</span>` : ''}</button><button class="btn pri" data-act="importarDrive">${I.subir} Importar carpeta de la entidad</button></div>` : ''}</div>
       ${A.kpiTiles(k, ['mp', 'mm', 'mv', 'disp'])}
       <section class="panel"><header><h2>Alertas de vencimiento</h2><span class="muted">Mantenimientos, calibraciones, garantías y documentos</span></header>${A.listaVenc(venc)}</section>
-      ${grupos.map((g) => `<section class="folder-group"><span class="eyebrow">${h(g)}</span><div class="folders">${visiblesE.filter((c) => c.g === g).map((c) => A.tarjetaCarpeta(c, etiqueta(c), 'ent')).join('')}</div></section>`).join('')}`;
+      ${grupos.map((g) => `<section class="folder-group"><span class="eyebrow">${h(g)}</span><div class="folders">${visiblesE.filter((c) => c.g === g).map((c) => A.tarjetaCarpeta(c, etiqueta(c), 'ent', ent)).join('')}</div></section>`).join('')}`;
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
       carpeta: (d) => (d.k === CARP_EQ ? go('areas', { id }) : go('carpeta', { ent: id, k: d.k })),
@@ -361,6 +361,7 @@ window.APP = (() => {
       importarDrive: () => A.importarEntidad(ent),
       configCarp: () => A.configCarpetas(ent),
       quitarCarp: (d) => A.quitarCarpeta(ent, d.tipo, d.k, d.tipo === 'ent' ? nDocs(CAT.CARPETAS_ENTIDAD.find((c) => c.k === d.k)) : null),
+      renCarp: (d) => A.renombrarCarpeta(ent, d.tipo, d.k),
     });
   };
 
@@ -371,7 +372,7 @@ window.APP = (() => {
     const sedeC = (c) => c.sede || 'Sede principal';
     const sedesL = [...new Set(A.ordenar(consR).map(sedeC))];
     st.sedeSel = st.sedeSel || {}; const sedeSel = sedesL.includes(st.sedeSel[id]) ? st.sedeSel[id] : '';
-    const titulo = CAT.CARPETAS_ENTIDAD.find((c) => c.k === CARP_EQ).n;
+    const titulo = A.nomCarpeta(ent, 'ent', CARP_EQ);
     const sinCons = A.numerado(eqsR.filter((e) => !cons.some((c) => c.id === e.consultorio_id)));
     const fila = (e) => `<button class="eq-row" data-act="abrirEq" data-id="${e.id}"><span class="cod">${e._n}. ${h(e.codigo_inv)}</span><span class="nm"><b>${h(e.nombre)}</b><small>${h([e.marca, e.modelo].filter(Boolean).join(' · '))}</small></span><span class="mm muted mono" style="font-size:.8rem">S/N ${h(e.serie || '—')}</span><span class="badges">${A.riesgo(e.clase_riesgo)}${A.estadoPill(e.estado)}</span></button>`;
     const sala = (c, lista) => `<section class="room"><header><h3>${c ? `${c._n}. ${h(c.nombre.toUpperCase())}` : 'SIN SERVICIO ASIGNADO'} ${c?.sede ? `<small class="muted" style="font-family:var(--f-body);font-weight:400;font-size:.85rem">${h(c.sede)}${c.servicio ? ' · ' + h(c.servicio) : ''}</small>` : ''}</h3>
@@ -381,11 +382,22 @@ window.APP = (() => {
       <div class="page-head"><div><span class="eyebrow">Servicios o consultorios · carpeta por equipo</span><h1>${h(titulo)}</h1></div>
         ${esProp() ? `<div class="actions"><button class="btn" data-act="revisarDocs">${I.ia} Revisar documentos (IA)</button><button class="btn" data-act="importarDrive">${I.subir} Importar servicios y equipos</button><button class="btn" data-act="nuevoCons">${I.mas} Servicio / consultorio</button><button class="btn pri" data-act="nuevoEq">${I.mas} Equipo</button></div>` : ''}</div>
       ${sedesL.length > 1 ? `<div class="chips sede-chips" role="tablist" aria-label="Sedes"><button class="chip ${!sedeSel ? 'on' : ''}" data-act="verSede" data-s="">Todas las sedes</button>${sedesL.map((s) => `<button class="chip ${sedeSel === s ? 'on' : ''}" data-act="verSede" data-s="${h(s)}">${h(s)} <small>${eqsR.filter((e) => consR.some((c) => c.id === e.consultorio_id && sedeC(c) === s)).length}</small></button>`).join('')}</div>` : ''}
-      ${sedesL.filter((s) => !sedeSel || s === sedeSel).map((s) => `${sedesL.length > 1 ? `<h2 class="sede-tit">${h(s.toUpperCase())}</h2>` : ''}${A.numerado(cons.filter((c) => sedeC(c) === s)).map((c) => sala(c, A.numerado(eqsR.filter((e) => e.consultorio_id === c.id)))).join('')}`).join('')}
+      ${sedesL.filter((s) => !sedeSel || s === sedeSel).map((s) => `${sedesL.length > 1 || esProp() ? `<h2 class="sede-tit">${h(s.toUpperCase())}${esProp() ? ` <button class="icon-btn" data-act="renSede" data-s="${h(s)}" title="Cambiar el nombre de la sede" aria-label="Cambiar nombre de la sede ${h(s)}">${I.edit}</button>` : ''}</h2>` : ''}${A.numerado(cons.filter((c) => sedeC(c) === s)).map((c) => sala(c, A.numerado(eqsR.filter((e) => e.consultorio_id === c.id)))).join('')}`).join('')}
       ${(sinCons.length || !cons.length) && !sedeSel ? sala(null, sinCons) : ''}`;
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
       verSede: (d) => { st.sedeSel[id] = d.s; A.recargar(); },
+      renSede: (d) => modal({
+        titulo: 'Cambiar nombre de la sede', size: 'sm',
+        cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre de la sede o servicio', d.s, { full: true })}</div><p class="muted" style="font-size:.85rem">Se cambia en los ${consR.filter((c) => sedeC(c) === d.s).length} servicios o consultorios de esta sede.</p></form>`,
+        acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
+          const v = leer(m.body).nombre.replace(/\s+/g, ' ').trim(); if (!v) { toast('Escriba el nombre', true); return false; }
+          if (v === d.s) return;
+          for (const c of consR.filter((x) => sedeC(x) === d.s)) await S.update('consultorios', c.id, { sede: v });
+          if (st.sedeSel[id] === d.s) st.sedeSel[id] = v;
+          S.log('EDITAR', 'consultorios', id, `Sede ${d.s} → ${v}`); toast('Sede renombrada'); A.recargar();
+        } }],
+      }),
       nuevoCons: () => A.formConsultorio(id, null, cons.length + 1),
       editCons: (d) => A.formConsultorio(id, cons.find((c) => c.id === d.id)),
       nuevoEq: (d) => A.formEquipo({ entidad_id: id, consultorio_id: d.cons || cons[0]?.id, orden: eqsR.filter((e) => e.consultorio_id === (d.cons || cons[0]?.id)).length + 1 }, cons),
@@ -413,7 +425,7 @@ window.APP = (() => {
     const cnt = (k) => docs.filter((d) => d.carpeta === k).length + (tipoMto[k] ? mtos.filter((m) => m.tipo === tipoMto[k]).length : 0);
     const dd = (iso) => { const n = UI.diasHasta(iso); return iso ? `${UI.fecha(iso)} ${n !== null && n <= 30 ? `<span class="pill ${n < 0 ? 'bad' : n <= 7 ? 'warn' : 'acc'}">${n < 0 ? 'vencido' : n + ' d'}</span>` : ''}` : '—'; };
     content().innerHTML = `
-      ${migas([...A.rutaEnt(ent), ['3. Información del equipo', 'areas', { id: ent.id }], `${c ? c._n + '. ' + c.nombre.toUpperCase() + ' / ' : ''}${eq.nombre.toUpperCase()}`])}
+      ${migas([...A.rutaEnt(ent), [A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], `${c ? c._n + '. ' + c.nombre.toUpperCase() + ' / ' : ''}${eq.nombre.toUpperCase()}`])}
       <div class="page-head"><div><span class="eyebrow">${h(c?.nombre || 'Sin área')} · ${h(eq.ubicacion || '')}</span><h1>${h(eq.nombre)} ${A.riesgo(eq.clase_riesgo)}</h1>
         <span class="muted"><span class="mono">${h(eq.codigo_inv)}</span> · ${h([eq.marca, eq.modelo].filter(Boolean).join(' · '))} · S/N <span class="mono">${h(eq.serie || '—')}</span></span></div>
         <div class="actions">${A.estadoPill(eq.estado)}${esProp() ? `<button class="btn" data-act="fotoEq">${I.subir} Imagen del equipo</button>` : ''}<button class="btn" data-act="pdfHV">${I.pdf} Hoja de vida PDF</button>${esProp() ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button><button class="btn pri" data-act="editHV">${I.edit} Editar hoja de vida</button>` : ''}</div></div>
@@ -432,7 +444,7 @@ window.APP = (() => {
         <div><span>Garantía hasta</span><b>${dd(eq.fecha_fin_garantia)}</b></div>
       </div></div></section>
       <section class="folder-group"><span class="eyebrow">Carpeta del equipo</span><div class="folders">
-        ${CAT.CARPETAS_EQUIPO.filter((k) => !A.ocultas(ent, 'eq').has(k.k)).map((k) => A.tarjetaCarpeta(k, `${cnt(k.k)} documento${cnt(k.k) === 1 ? '' : 's'}`, 'eq')).join('')}
+        ${CAT.CARPETAS_EQUIPO.filter((k) => !A.ocultas(ent, 'eq').has(k.k)).map((k) => A.tarjetaCarpeta(k, `${cnt(k.k)} documento${cnt(k.k) === 1 ? '' : 's'}`, 'eq', ent)).join('')}
       </div></section>
       ${esProp() ? `<section class="panel"><header><h3>Acciones del equipo</h3></header><div class="actions">
         <button class="btn" data-act="nuevoMto" data-t="preventivo">${I.mas} Mantenimiento preventivo</button><button class="btn" data-act="nuevoMto" data-t="correctivo">${I.mas} Mantenimiento correctivo</button>
@@ -441,6 +453,7 @@ window.APP = (() => {
     A.acts({
       carpeta: (d) => go('carpeta', { ent: eq.entidad_id, eq: id, k: d.k }),
       quitarCarp: (d) => A.quitarCarpeta(ent, 'eq', d.k, null),
+      renCarp: (d) => A.renombrarCarpeta(ent, 'eq', d.k),
       pdfHV: () => A.verHojaVida(eq, ent, c, mtos),
       fotoEq: () => A.cargarFotoEquipo(eq),
       editHV: () => A.formHojaVida(eq, cons),
@@ -484,9 +497,10 @@ window.APP = (() => {
     const ent = await S.get('entidades', entId);
     const eq = eqId ? await S.get('equipos', eqId) : null;
     const def = (eq ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD).find((c) => c.k === k);
-    const ruta = [...A.rutaEnt(ent), ...(eq ? [['3. Información del equipo', 'areas', { id: ent.id }], [eq.nombre.toUpperCase(), 'equipo', { id: eq.id }]] : []), def.n];
+    const nomDef = A.nomCarpeta(ent, eq ? 'eq' : 'ent', k);
+    const ruta = [...A.rutaEnt(ent), ...(eq ? [[A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], [eq.nombre.toUpperCase(), 'equipo', { id: eq.id }]] : []), nomDef];
     content().innerHTML = `${migas(ruta)}
-      <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : 'Carpeta de la entidad'}</span><h1>${h(def.n)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
+      <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : 'Carpeta de la entidad'}</span><h1>${h(nomDef)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
       ${k === 'inventarios' ? '<section class="panel" id="archivos"></section>' : ''}
       ${def.gen ? '<div id="gen" style="display:grid;gap:18px"></div>' : ''}
       ${k === 'inventarios' ? '' : '<section class="panel" id="archivos"></section>'}`;
@@ -523,7 +537,7 @@ window.APP = (() => {
     const visibles = docs.filter((d) => !sel || raiz(d) === sel).sort((a, b) => String(a.subcarpeta || '').localeCompare(String(b.subcarpeta || ''), 'es', { numeric: true }) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
     const cuenta = (s) => docs.filter((d) => raiz(d) === s).length;
     const tipoExt = (n) => { const e = UI.ext(n); return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(e) ? 'img' : e; };
-    cont.innerHTML = `<header><h2>${h(titulo)}</h2>${esProp() ? `<div class="actions"><button class="btn" data-act="nuevaSub">${I.mas} Subcarpeta</button><label class="btn">${I.subir} Importar carpeta<input type="file" webkitdirectory multiple hidden data-dir></label><label class="btn pri">${I.subir} Subir archivos<input type="file" multiple hidden data-up></label></div>` : ''}</header>
+    cont.innerHTML = `<header><h2>${h(titulo)}</h2>${esProp() ? `<div class="actions">${sel && cuenta(sel) ? `<button class="btn" data-act="renSub" title="Cambiar el nombre de la subcarpeta “${h(sel)}”">${I.edit} Renombrar subcarpeta</button>` : ''}<button class="btn" data-act="nuevaSub">${I.mas} Subcarpeta</button><label class="btn">${I.subir} Importar carpeta<input type="file" webkitdirectory multiple hidden data-dir></label><label class="btn pri">${I.subir} Subir archivos<input type="file" multiple hidden data-up></label></div>` : ''}</header>
       ${listaSubs.length ? `<div class="subs" role="tablist"><button class="sub ${sel ? '' : 'on'}" data-act="sub" data-s="">Todo <span>${docs.length}</span></button>${listaSubs.map((s) => `<button class="sub ${s === sel ? 'on' : ''}" data-act="sub" data-s="${h(s)}">${h(s)} <span>${cuenta(s)}</span></button>`).join('')}</div>` : ''}
       ${esProp() ? `<div class="drop" data-drop>Arrastre aquí archivos para guardarlos en <b>${h(sel || 'esta carpeta')}</b></div>` : ''}
       ${visibles.length ? `<div class="files">${visibles.map((d) => {
@@ -586,6 +600,21 @@ window.APP = (() => {
     };
     A.acts({
       sub: (dd) => { st.subSel[llave] = dd.s; recargar(); },
+      renSub: () => {
+        const viejo = sel; if (!viejo) return;
+        const afectados = docs.filter((d) => raiz(d) === viejo);
+        modal({
+          titulo: 'Cambiar nombre de la subcarpeta', size: 'sm',
+          cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nuevo nombre', viejo, { full: true })}</div><p class="muted" style="font-size:.85rem">Se cambia en ${afectados.length} archivo${afectados.length === 1 ? '' : 's'} de esta subcarpeta (y sus subcarpetas internas).</p></form>`,
+          acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
+            const v = leer(m.body).nombre.replace(/\//g, '-').replace(/\s+/g, ' ').trim(); if (!v) { toast('Escriba el nombre', true); return false; }
+            if (v === viejo) return;
+            for (const d of afectados) { const resto = (d.subcarpeta || '').split('/').slice(1); await S.update('documentos', d.id, { subcarpeta: [v, ...resto].join('/') }); }
+            st.subExtra[llave] = [...(st.subExtra[llave] || []).filter((x) => x !== viejo), ...(afectados.length ? [] : [v])];
+            st.subSel[llave] = v; S.log('EDITAR', 'documentos', entidad_id, `Subcarpeta ${viejo} → ${v}`); toast('Subcarpeta renombrada'); recargar();
+          } }],
+        });
+      },
       usarInv: async (dd) => { const ent = await S.get('entidades', entidad_id); await A.inventarioDesdeDoc(ent, doc(dd.id)); },
       nuevaSub: () => modal({ titulo: 'Nueva subcarpeta', size: 'sm', cuerpo: `<div class="form">${f.input('nombre', 'Nombre de la subcarpeta', '', { attrs: 'placeholder="ej: 2026-CONSULTA ALERTAS E INFORMES DE SEGURIDAD"' })}<p class="muted">Quedará guardada cuando suba el primer archivo en ella.</p></div>`,
         acciones: [{ t: 'Cancelar' }, { t: 'Crear', cls: 'pri', fn: (m) => { const v = leer(m.body).nombre.replace(/\//g, '-').trim(); if (!v) { toast('Escriba el nombre', true); return false; } st.subExtra[llave] = [...(st.subExtra[llave] || []), v]; st.subSel[llave] = v; recargar(); } }] }),
@@ -854,7 +883,33 @@ window.APP = (() => {
   // Quitar una carpeta NO borra sus archivos: quedan guardados y vuelven si se activa de nuevo.
   const OBLIG = new Set(['equipos', 'hoja_vida']); // sin estas no funciona la estructura
   A.ocultas = (ent, tipo) => new Set((ent?.config || {})[tipo === 'eq' ? 'ocultas_eq' : 'ocultas_ent'] || []);
-  A.tarjetaCarpeta = (c, sub, tipo) => `<div class="folder-w"><button class="folder" data-act="carpeta" data-k="${c.k}"><span class="ic"></span><b>${h(c.n)}</b><small>${sub}</small></button>${esProp() && !OBLIG.has(c.k) ? `<button class="folder-x" data-act="quitarCarp" data-tipo="${tipo}" data-k="${c.k}" title="Quitar esta carpeta para esta entidad" aria-label="Quitar carpeta ${h(c.n)}">${I.x}</button>` : ''}</div>`;
+  // Nombre de una carpeta para una entidad (puede haberse cambiado en entidades.config.nombres_ent / nombres_eq)
+  A.nomCarpeta = (ent, tipo, k) => { const n = ((ent?.config || {})[tipo === 'eq' ? 'nombres_eq' : 'nombres_ent'] || {})[k]; return n || ((tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD).find((c) => c.k === k)?.n || k); };
+  A.tarjetaCarpeta = (c, sub, tipo, ent) => { const nom = A.nomCarpeta(ent, tipo, c.k); return `<div class="folder-w"><button class="folder" data-act="carpeta" data-k="${c.k}"><span class="ic"></span><b>${h(nom)}</b><small>${sub}</small></button>${esProp() ? `<div class="folder-tools"><button class="folder-x" data-act="renCarp" data-tipo="${tipo}" data-k="${c.k}" title="Cambiar el nombre de esta carpeta" aria-label="Cambiar nombre de ${h(nom)}">${I.edit}</button>${!OBLIG.has(c.k) ? `<button class="folder-x del" data-act="quitarCarp" data-tipo="${tipo}" data-k="${c.k}" title="Quitar esta carpeta para esta entidad" aria-label="Quitar carpeta ${h(nom)}">${I.x}</button>` : ''}</div>` : ''}</div>`; };
+  A.renombrarCarpeta = (ent, tipo, k) => {
+    const cat = tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD, c = cat.find((x) => x.k === k); if (!c) return;
+    const key = tipo === 'eq' ? 'nombres_eq' : 'nombres_ent', actual = A.nomCarpeta(ent, tipo, k);
+    modal({
+      titulo: 'Cambiar nombre de la carpeta', size: 'sm',
+      cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre de la carpeta', actual, { full: true })}</div>
+        <p class="muted" style="font-size:.85rem">Nombre original: <b>${h(c.n)}</b>${tipo === 'eq' ? ' · se aplica a la carpeta de todos los equipos de la entidad' : ''}. Los archivos no se mueven.</p>
+        <label class="checks"><input type="checkbox" name="todas" data-single> Aplicar este nombre en <b>todas las entidades</b></label></form>`,
+      acciones: [{ t: 'Cancelar' }, { t: 'Nombre original', fn: async (m) => { const d = leer(m.body); return aplicar('', d.todas); } }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
+        const d = leer(m.body); const v = d.nombre.replace(/\s+/g, ' ').trim(); if (!v) { toast('Escriba el nombre', true); return false; }
+        return aplicar(v === c.n ? '' : v, d.todas);
+      } }],
+    });
+    async function aplicar(nombre, todas) {
+      const lista = todas ? await S.list('entidades') : [ent];
+      for (const e of lista) {
+        const cfg = { ...(e.config || {}) }; const mp = { ...(cfg[key] || {}) };
+        if (nombre) mp[k] = nombre; else delete mp[k];
+        cfg[key] = mp; if (!(await guardarConfig(e, cfg))) return false;
+      }
+      S.log('EDITAR', 'entidades', ent.id, `Carpeta ${c.n} → ${nombre || c.n}${todas ? ' (todas las entidades)' : ''}`);
+      toast(nombre ? `Carpeta renombrada a “${nombre}”${todas ? ' en todas las entidades' : ''}` : 'Se restauró el nombre original'); A.recargar();
+    }
+  };
   const guardarConfig = async (ent, config) => {
     try { const u = await S.update('entidades', ent.id, { config }); ent.config = u?.config || config; return true; }
     catch (e) {
@@ -863,7 +918,8 @@ window.APP = (() => {
     }
   };
   A.quitarCarpeta = async (ent, tipo, k, nArch) => {
-    const cat = tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD, c = cat.find((x) => x.k === k); if (!c) return;
+    const cat = tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD, c0 = cat.find((x) => x.k === k); if (!c0) return;
+    const c = { ...c0, n: A.nomCarpeta(ent, tipo, k) };
     const extra = nArch ? ` Tiene ${nArch} archivo${nArch === 1 ? '' : 's'}: no se borran, quedan guardados y vuelven a aparecer si activa la carpeta otra vez.` : '';
     const donde = tipo === 'eq' ? 'de TODOS los equipos de' : 'de la carpeta de';
     if (!(await confirmar(`¿Quitar “${c.n}” ${donde} ${ent.razon_social}? El cliente tampoco la verá.${extra} Puede volver a mostrarla con el botón “Carpetas” de la entidad.`, 'Quitar carpeta'))) return;
@@ -873,7 +929,7 @@ window.APP = (() => {
   };
   A.configCarpetas = (ent) => {
     const ocE = A.ocultas(ent, 'ent'), ocQ = A.ocultas(ent, 'eq');
-    const lista = (cat, oc, tipo) => cat.map((c) => `<label class="checks cfg-carp"><input type="checkbox" name="${tipo}" value="${c.k}" ${oc.has(c.k) ? '' : 'checked'} ${OBLIG.has(c.k) ? 'disabled' : ''}> ${h(c.n)}${OBLIG.has(c.k) ? ' <small class="muted">(siempre visible)</small>' : ''}</label>`).join('');
+    const lista = (cat, oc, tipo) => cat.map((c) => `<label class="checks cfg-carp"><input type="checkbox" name="${tipo}" value="${c.k}" ${oc.has(c.k) ? '' : 'checked'} ${OBLIG.has(c.k) ? 'disabled' : ''}> ${h(A.nomCarpeta(ent, tipo, c.k))}${OBLIG.has(c.k) ? ' <small class="muted">(siempre visible)</small>' : ''}</label>`).join('');
     modal({
       titulo: `Carpetas de ${ent.razon_social}`, size: 'wide',
       cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Marque las carpetas que usa esta entidad. Las que desmarque se quitan para el propietario y para el cliente. Los archivos que tengan <b>no se borran</b>: vuelven a aparecer si marca la carpeta otra vez.</p>
