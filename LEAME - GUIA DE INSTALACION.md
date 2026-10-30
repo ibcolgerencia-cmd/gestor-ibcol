@@ -87,6 +87,14 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 **Hoja de vida: RS / PC / NA / NR y código ECRI.** En *Editar hoja de vida → Identificación* se marca a mano RS, PC, NA o NR (sale con X en el formato). La hoja de vida tiene la pestaña **Código ECRI**: muestra el código asignado, sugerencias según el nombre del equipo y un buscador en todo el listado; *Asignar* lo pone en la casilla 1.2 (luego *Guardar hoja de vida*). El campo *1.2 Código ECRI (UMDNS)* de la pestaña Identificación también tiene *Buscar en listado ECRI* (4.907 códigos del listado ECRI español-inglés, búsqueda por nombre o código) y sugerencias según el nombre del equipo.
 
+## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
+
+- **Importación por sedes (v33):** *Importar carpeta de la entidad* reconoce las carpetas de cada sede (ej. "A1. SIEMPREE SEDE II") y crea sus servicios con el nombre de la sede. Los documentos generales de cada sede quedan en una subcarpeta con ese nombre. Los mantenimientos correctivos sueltos se asignan al equipo por el código del archivo. Una carpeta como "HOME CARE" se importa como sede propia. Si se importa la misma carpeta otra vez, no se repiten los archivos. En *3. Información del equipo* hay botones por sede; el inventario tiene filtro por sede.
+- **Menú en el celular (v34):** franja de íconos siempre visible a la izquierda; se despliega con ☰ o deslizando desde el borde.
+- **Cambio de usuario en otra pestaña (v35):** si en el mismo navegador se entra con otro usuario (p. ej. el cliente), las demás pestañas se recargan. Así se evita el aviso "No tiene permiso para esta acción". Para ver al cliente y trabajar como propietario a la vez, use una ventana de incógnito.
+- **Cronograma entre dos años (v36):** *Generar desde periodicidad* tiene mes y año de inicio y alcance de 12 o 24 meses. Ejemplo: semestral desde octubre de 2026 → octubre 2026 y abril 2027. Puede completar los equipos ya programados sin borrar lo existente.
+- **Quitar carpetas por entidad (v37):** la ✕ de cada carpeta o el botón *Carpetas* de la entidad quita las carpetas que esa empresa no usa, de la entidad y de cada equipo. El cliente tampoco las ve. Los archivos no se borran y vuelven si se activa la carpeta. Base de datos: `supabase/carpetas.sql` (columna `entidades.config`, ejecutada el 30/10/2026).
+
 ## Versión 30-32 (28-29/10/2026): visor PDF con zoom · enviar por WhatsApp y correo
 
 **Zoom en todos los PDF:** barra con − / +, *Ajustar al ancho*, *Página completa*, porcentajes de 50 % a 400 %, *Pantalla completa*; Ctrl + rueda del mouse, Ctrl + / Ctrl − / Ctrl 0, y pellizco con dos dedos en celular. La página se vuelve a dibujar en cada zoom para que el texto se vea nítido.
