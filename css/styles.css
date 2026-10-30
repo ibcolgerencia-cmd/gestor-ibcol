@@ -468,3 +468,13 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .cfg-cols legend { font-weight: 600; padding: 0 6px; font-size: .9rem; }
 .cfg-cols .cfg-carp { padding: 4px 0; display: flex !important; align-items: center; gap: 8px; flex-wrap: nowrap; grid-template-columns: none; }
 .cfg-cols .cfg-carp input { margin: 0; flex: none; }
+
+/* v39 · cronograma entre dos años y por servicio */
+.crono-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 12px; border-bottom: 1px solid var(--line); }
+.crono-tabs .ctab { all: unset; cursor: pointer; padding: 8px 12px; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 500; font-size: .92rem; margin-bottom: -1px; }
+.crono-tabs .ctab.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.crono-tabs .ctab:focus-visible { outline: 2px solid var(--accent-2); border-radius: 4px; }
+.crono-tabs .ctab-sel { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; color: var(--muted); margin-left: 4px; }
+.crono-tabs .ctab-sel select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
+.crono th.crono-anio { background: var(--accent-soft); color: var(--accent); font-size: .78rem; }
+.crono td.y-ini, .crono th.y-ini { border-left: 2px solid var(--accent); }
