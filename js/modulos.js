@@ -109,82 +109,143 @@
     const cons = A.ordenar(consAll);
     const titulo = { mantenimiento: 'Cronograma de mantenimiento preventivo', metrologia: 'Cronograma de metrología y calibración', capacitacion: 'Cronograma de capacitación' }[tipo];
     const cap = tipo === 'capacitacion';
-    const fk = `${ent.id}|${tipo}`; st.cronoF = st.cronoF || {}; const F = (st.cronoF[fk] = st.cronoF[fk] || { mes: 0, q: '', estado: '', editar: false });
+    const fk = `${ent.id}|${tipo}`; st.cronoF = st.cronoF || {}; const F = (st.cronoF[fk] = st.cronoF[fk] || { mes: 0, q: '', estado: '', editar: false, mesIni: 1, serv: '' });
+    if (!F.mesIni) F.mesIni = 1;
     const eqd = (id) => eqs.find((e) => e.id === id) || {};
+    const sedeC = (c) => c?.sede || 'Sede principal';
+    const sedes = [...new Set(cons.map(sedeC))];
     const ordenEq = (() => { const idx = (x) => cons.findIndex((k) => k.id === x.consultorio_id); return (a, b) => (idx(a) - idx(b)) || ((a.orden ?? 9999) - (b.orden ?? 9999)) || String(a.codigo_inv || '').localeCompare(String(b.codigo_inv || '')); })();
-    const mesDe = (c, m) => Object.entries(c.plan || {}).filter(([k, v]) => v && +k.split('-')[0] === m).map(([k, v]) => ({ k, v }));
+    const mesDe = (c, m) => Object.entries(c?.plan || {}).filter(([k, v]) => v && +k.split('-')[0] === m).map(([k, v]) => ({ k, v }));
+    const M3 = (m) => CAT.MESES[m - 1].slice(0, 3);
     const pintar = async () => {
       st.cronoAnio = anio;
-      const cronos = (await S.list('cronogramas', { entidad_id: ent.id, tipo, anio })).sort((a, b) => (cap ? String(a.tema || '').localeCompare(String(b.tema || '')) : ordenEq(eqd(a.equipo_id), eqd(b.equipo_id))));
+      // Periodo de 12 meses: de enero a diciembre, o desde otro mes hasta el mismo mes del año siguiente (ej. oct 2026 – sep 2027)
+      const ventana = [...Array(12).keys()].map((i) => { const abs = F.mesIni - 1 + i; return { y: anio + Math.floor(abs / 12), m: (abs % 12) + 1, p: i }; });
+      const dosAnios = F.mesIni > 1;
+      const yDe = (m) => ventana.find((v) => v.m === m).y;
+      const fin = ventana[11];
+      const periodoTxt = dosAnios ? `${M3(F.mesIni)} ${anio} – ${M3(fin.m)} ${fin.y}` : String(anio);
+      const anios = dosAnios ? [anio, anio + 1] : [anio];
+      const todos = (await Promise.all(anios.map((y) => S.list('cronogramas', { entidad_id: ent.id, tipo, anio: y })))).flat();
+      // Una fila por equipo (o por tema de capacitación) con su programación de cada año del periodo
+      const mapa = new Map();
+      todos.forEach((c) => {
+        const key = cap ? `t|${(c.tema || '').trim().toLowerCase()}|${c.equipo_id || ''}` : `e|${c.equipo_id || c.id}`;
+        if (!mapa.has(key)) mapa.set(key, { key, equipo_id: c.equipo_id, tema: c.tema, cr: {} });
+        const r = mapa.get(key); if (!r.cr[c.anio]) r.cr[c.anio] = c; if (!r.tema && c.tema) r.tema = c.tema;
+      });
+      const filas = [...mapa.values()].sort((a, b) => (cap ? String(a.tema || '').localeCompare(String(b.tema || '')) : ordenEq(eqd(a.equipo_id), eqd(b.equipo_id))));
+      const mesF = (r, m) => mesDe(r.cr[yDe(m)], m);
       const mesAct = new Date().getMonth() + 1;
-      const texto = (c) => { const e = eqd(c.equipo_id); return nrmQ([c.tema, e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, cons.find((x) => x.id === e.consultorio_id)?.nombre, cons.find((x) => x.id === e.consultorio_id)?.sede].join(' ')); };
-      const visibles = cronos.filter((c) => (!F.q || texto(c).includes(F.q)) && (!F.mes || mesDe(c, F.mes).some((x) => !F.estado || x.v === F.estado)));
-      const enMes = F.mes ? cronos.flatMap((c) => mesDe(c, F.mes)) : [];
-      const movibles = F.mes ? visibles.filter((c) => mesDe(c, F.mes).some((x) => x.v !== 'E')).length : 0;
-      const nFil = F.mes ? new Set(cronos.filter((c) => mesDe(c, F.mes).length).map((c) => c.id)).size : 0;
-      const resumen = F.mes ? `<div class="mes-res"><b>${CAT.MESES[F.mes - 1]} ${anio}:</b> <button class="btn sm" data-act="anio12">${F.anio12 ? 'Ver solo ' + CAT.MESES[F.mes - 1] : 'Ver todo el año'}</button> <span class="pill">${nFil} ${cap ? (nFil === 1 ? 'capacitación' : 'capacitaciones') : (nFil === 1 ? 'equipo' : 'equipos')}</span><span class="pill warn">${enMes.filter((x) => x.v === 'P').length} programados</span><span class="pill ok">${enMes.filter((x) => x.v === 'E').length} ejecutados</span><span class="pill bad">${enMes.filter((x) => x.v === 'N').length} no ejecutados</span>
+      const consDe = (r) => cons.find((x) => x.id === eqd(r.equipo_id).consultorio_id);
+      const texto = (r) => { const e = eqd(r.equipo_id), c = consDe(r); return nrmQ([r.tema, e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, c?.nombre, c?.sede].join(' ')); };
+      const enServ = (r) => { if (!F.serv) return true; const c = consDe(r); if (F.serv.startsWith('sede:')) return !!c && sedeC(c) === F.serv.slice(5); return c?.id === F.serv; };
+      const consSel = F.serv && !F.serv.startsWith('sede:') ? cons.find((c) => c.id === F.serv) : F.serv ? { sede: F.serv.slice(5), nombre: '' } : null;
+      const delServ = filas.filter(enServ);
+      const visibles = delServ.filter((r) => (!F.q || texto(r).includes(F.q)) && (!F.mes || mesF(r, F.mes).some((x) => !F.estado || x.v === F.estado)));
+      const enMes = F.mes ? delServ.flatMap((r) => mesF(r, F.mes)) : [];
+      const movibles = F.mes ? visibles.filter((r) => mesF(r, F.mes).some((x) => x.v !== 'E')).length : 0;
+      const nFil = F.mes ? delServ.filter((r) => mesF(r, F.mes).length).length : 0;
+      const mesTxt = F.mes ? `${CAT.MESES[F.mes - 1]} ${yDe(F.mes)}` : '';
+      const resumen = F.mes ? `<div class="mes-res"><b>${mesTxt}:</b> <button class="btn sm" data-act="anio12">${F.anio12 ? 'Ver solo ' + CAT.MESES[F.mes - 1] : 'Ver todo el periodo'}</button> <span class="pill">${nFil} ${cap ? (nFil === 1 ? 'capacitación' : 'capacitaciones') : (nFil === 1 ? 'equipo' : 'equipos')}</span><span class="pill warn">${enMes.filter((x) => x.v === 'P').length} programados</span><span class="pill ok">${enMes.filter((x) => x.v === 'E').length} ejecutados</span><span class="pill bad">${enMes.filter((x) => x.v === 'N').length} no ejecutados</span>
         ${esProp() && !cap ? `<span class="sp"></span><span class="muted">Mover lo programado de ${CAT.MESES[F.mes - 1]} a</span><select data-mover-mes aria-label="Mes destino">${CAT.MESES.map((m, i) => `<option value="${i + 1}" ${i + 1 === (F.mes % 12) + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select><select data-mover-sem aria-label="Semana destino">${[1, 2, 3, 4].map((s) => `<option ${s === 2 ? 'selected' : ''}>${s}</option>`).join('')}</select><button class="btn sm" data-act="moverMes" ${movibles ? '' : 'disabled title="No hay semanas programadas sin ejecutar en este mes"'}>Mover (${movibles})</button>` : ''}</div>` : '';
       const colsInfo = cap ? [] : A.COLS_EQ;
-      const mesesVis = F.mes && !F.anio12 ? [F.mes - 1] : [...Array(12).keys()];
+      const posMes = F.mes ? ventana.find((v) => v.m === F.mes).p : -1;
+      const vis = F.mes && !F.anio12 ? [ventana[posMes]] : ventana;
       const editar = F.editar && esProp() && !cap;
+      const optServ = `<option value="">Todos los servicios</option>${sedes.map((sd) => {
+        const lista = cons.filter((c) => sedeC(c) === sd).map((c) => `<option value="${c.id}" ${F.serv === c.id ? 'selected' : ''}>${h(c.nombre)}</option>`).join('');
+        return sedes.length > 1 ? `<optgroup label="${h(sd)}"><option value="sede:${h(sd)}" ${F.serv === 'sede:' + sd ? 'selected' : ''}>Toda la sede ${h(sd)}</option>${lista}</optgroup>` : lista;
+      }).join('')}`;
       el.innerHTML = `<section class="panel"><header><h2>${titulo}</h2><div class="actions">
-          <button class="btn sm" data-act="anio" data-d="-1" aria-label="Año anterior">‹</button><b class="num" style="align-self:center">${anio}</b><button class="btn sm" data-act="anio" data-d="1" aria-label="Año siguiente">›</button>
-          <button class="btn" data-act="cronoPDF">${I.pdf} PDF${F.mes || F.q ? ' (filtrado)' : ''}</button>
+          <button class="btn sm" data-act="anio" data-d="-1" aria-label="Periodo anterior">‹</button><b class="num" style="align-self:center">${periodoTxt}</b><button class="btn sm" data-act="anio" data-d="1" aria-label="Periodo siguiente">›</button>
+          <button class="btn" data-act="cronoPDF">${I.pdf} PDF${F.mes || F.q || F.serv ? ' (filtrado)' : ''}</button>
           ${esProp() ? `${cap ? '' : `<button class="btn" data-act="generar">${I.cal} Generar desde periodicidad</button>`}<button class="btn pri" data-act="agregar">${I.mas} ${cap ? 'Capacitación' : 'Equipo'}</button>` : ''}</div></header>
+        <div class="crono-tabs" role="tablist" aria-label="Periodo">
+          <button role="tab" class="ctab ${!dosAnios ? 'on' : ''}" data-act="periodo" data-v="1">Año ${anio} (ene – dic)</button>
+          <button role="tab" class="ctab ${dosAnios ? 'on' : ''}" data-act="periodo" data-v="${dosAnios ? F.mesIni : (new Date().getMonth() + 1 > 1 ? new Date().getMonth() + 1 : 7)}">Entre dos años${dosAnios ? `: ${periodoTxt}` : ''}</button>
+          ${dosAnios ? `<label class="ctab-sel">Desde <select data-ini aria-label="Mes de inicio del periodo">${CAT.MESES.map((m, i) => (i ? `<option value="${i + 1}" ${F.mesIni === i + 1 ? 'selected' : ''}>${m} ${anio}</option>` : '')).join('')}</select></label>` : ''}
+        </div>
         <div class="tbl-tools">
-          <div class="field"><select data-mes aria-label="Buscar por mes"><option value="0">Buscar por mes: todos</option>${CAT.MESES.map((m, i) => `<option value="${i + 1}" ${F.mes === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+          <div class="field" style="min-width:190px"><select data-serv aria-label="Consultar por servicio">${optServ}</select></div>
+          <div class="field"><select data-mes aria-label="Buscar por mes"><option value="0">Buscar por mes: todos</option>${ventana.map((v) => `<option value="${v.m}" ${F.mes === v.m ? 'selected' : ''}>${CAT.MESES[v.m - 1]}${dosAnios ? ' ' + v.y : ''}</option>`).join('')}</select></div>
           ${F.mes ? `<div class="field"><select data-estado aria-label="Estado en el mes"><option value="">Cualquier estado</option><option value="P" ${F.estado === 'P' ? 'selected' : ''}>Programado</option><option value="E" ${F.estado === 'E' ? 'selected' : ''}>Ejecutado</option><option value="N" ${F.estado === 'N' ? 'selected' : ''}>No ejecutado</option></select></div>` : ''}
           <input type="search" data-q value="${h(F.qRaw || '')}" placeholder="Buscar código, equipo, serie…" aria-label="Buscar en el cronograma">
-          <span class="muted">${visibles.length} de ${cronos.length}</span>
+          <span class="muted">${visibles.length} de ${filas.length}</span>
           ${esProp() && !cap ? `<span class="sp"></span><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
         ${resumen}
         <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span>${esProp() ? `<span>Toque una semana para cambiar su estado${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses'}.</span>` : ''}</div>
         ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista.</p>' : ''}
         ${A.datalistNR}
-        ${visibles.length ? `<div class="crono-wrap"><table class="crono ${esProp() ? 'edit' : ''} ${editar ? 'editando' : ''}"><thead><tr>${cap ? '<th rowspan="2">Ítem</th><th rowspan="2">Tema</th><th rowspan="2">Equipo</th>' : colsInfo.map((c) => `<th rowspan="2" style="min-width:${editar ? c.w : 0}px">${c.t}</th>`).join('')}${mesesVis.map((i) => { const m = CAT.MESES[i]; return `<th colspan="4" class="${F.mes === i + 1 ? 'mes-sel' : ''}" data-act="verMes" data-m="${i + 1}" style="cursor:pointer" title="${F.mes === i + 1 ? 'Quitar filtro' : 'Filtrar ' + m}">${mesesVis.length === 1 ? m.toUpperCase() : m.slice(0, 3)}</th>`; }).join('')}${esProp() ? '<th rowspan="2"></th>' : ''}</tr>
-          <tr>${mesesVis.map((m) => [1, 2, 3, 4].map((s) => `<th class="${F.mes === m + 1 ? 'mes-sel' : ''}" style="font-size:.66rem;padding:2px">${s}</th>`).join('')).join('')}</tr></thead><tbody>
-          ${visibles.map((c) => { const e = eqd(c.equipo_id); const i = cronos.indexOf(c); return `<tr>${cap ? `<td class="num">${i + 1}</td><td>${h(c.tema || '')}</td><td>${h(e.nombre || '—')}</td>` : colsInfo.map((col) => `<td class="${col.mono && !editar ? 'mono' : ''}">${e.id ? (editar ? A.celdaEdit(e, col.k, i, cons) : A.celdaVer(e, col.k, i, cons)) : ''}</td>`).join('')}
-            ${mesesVis.map((m) => [1, 2, 3, 4].map((s) => { const v = (c.plan || {})[`${m + 1}-${s}`] || ''; return `<td class="w ${v} ${anio === anioAct && m + 1 === mesAct ? 'now' : ''} ${F.mes === m + 1 ? 'mes-sel' : ''}" ${esProp() ? `data-act="celda" data-id="${c.id}" data-k="${m + 1}-${s}"` : ''} title="${CAT.MESES[m]} semana ${s}">${v}</td>`; }).join('')).join('')}
-            ${esProp() ? `<td style="white-space:nowrap">${cap ? '' : `<button class="icon-btn" data-act="meses" data-id="${c.id}" aria-label="Cambiar meses" title="Cambiar meses">${I.edit}</button>`}<button class="icon-btn bad" data-act="quitar" data-id="${c.id}" aria-label="Quitar fila">${I.del}</button></td>` : ''}</tr>`; }).join('')}
-          </tbody></table></div>` : `<div class="empty">${cronos.length ? 'Ningún registro coincide con la búsqueda.' : `No hay cronograma para ${anio}.${esProp() && !cap ? ' Use “Generar desde periodicidad” para crearlo automáticamente con la frecuencia de cada equipo.' : ''}`}</div>`}</section>`;
+        ${visibles.length ? `<div class="crono-wrap"><table class="crono ${esProp() ? 'edit' : ''} ${editar ? 'editando' : ''}"><thead>
+          ${dosAnios && vis.length > 1 ? `<tr>${cap ? '<th colspan="3"></th>' : `<th colspan="${colsInfo.length}"></th>`}${anios.map((y) => { const n = vis.filter((v) => v.y === y).length; return n ? `<th colspan="${n * 4}" class="crono-anio">AÑO ${y}</th>` : ''; }).join('')}${esProp() ? '<th></th>' : ''}</tr>` : ''}
+          <tr>${cap ? '<th rowspan="2">Ítem</th><th rowspan="2">Tema</th><th rowspan="2">Equipo</th>' : colsInfo.map((c) => `<th rowspan="2" style="min-width:${editar ? c.w : 0}px">${c.t}</th>`).join('')}${vis.map((v) => { const m = CAT.MESES[v.m - 1]; return `<th colspan="4" class="${F.mes === v.m ? 'mes-sel' : ''}" data-act="verMes" data-m="${v.m}" style="cursor:pointer" title="${F.mes === v.m ? 'Quitar filtro' : 'Filtrar ' + m + ' ' + v.y}">${vis.length === 1 ? `${m.toUpperCase()} ${v.y}` : m.slice(0, 3)}</th>`; }).join('')}${esProp() ? '<th rowspan="2"></th>' : ''}</tr>
+          <tr>${vis.map((v) => [1, 2, 3, 4].map((s) => `<th class="${F.mes === v.m ? 'mes-sel' : ''}" style="font-size:.66rem;padding:2px">${s}</th>`).join('')).join('')}</tr></thead><tbody>
+          ${visibles.map((r) => { const e = eqd(r.equipo_id); const i = filas.indexOf(r); return `<tr>${cap ? `<td class="num">${i + 1}</td><td>${h(r.tema || '')}</td><td>${h(e.nombre || '—')}</td>` : colsInfo.map((col) => `<td class="${col.mono && !editar ? 'mono' : ''}">${e.id ? (editar ? A.celdaEdit(e, col.k, i, cons) : A.celdaVer(e, col.k, i, cons)) : ''}</td>`).join('')}
+            ${vis.map((v) => [1, 2, 3, 4].map((s) => { const val = (r.cr[v.y]?.plan || {})[`${v.m}-${s}`] || ''; return `<td class="w ${val} ${v.y === anioAct && v.m === mesAct ? 'now' : ''} ${F.mes === v.m ? 'mes-sel' : ''} ${dosAnios && v.p === 12 - F.mesIni + 1 && s === 1 ? 'y-ini' : ''}" ${esProp() ? `data-act="celda" data-r="${i}" data-y="${v.y}" data-k="${v.m}-${s}"` : ''} title="${CAT.MESES[v.m - 1]} ${v.y} · semana ${s}">${val}</td>`; }).join('')).join('')}
+            ${esProp() ? `<td style="white-space:nowrap">${cap ? '' : `<button class="icon-btn" data-act="meses" data-r="${i}" aria-label="Cambiar meses" title="Cambiar meses">${I.edit}</button>`}<button class="icon-btn bad" data-act="quitar" data-r="${i}" aria-label="Quitar fila">${I.del}</button></td>` : ''}</tr>`; }).join('')}
+          </tbody></table></div>` : `<div class="empty">${filas.length ? 'Ningún registro coincide con la búsqueda o el servicio elegido.' : `No hay cronograma para ${periodoTxt}.${esProp() && !cap ? ' Use “Generar desde periodicidad” para crearlo automáticamente con la frecuencia de cada equipo.' : ''}`}</div>`}</section>`;
       el.querySelector('[data-mes]').onchange = (ev) => { F.mes = +ev.target.value; if (!F.mes) F.estado = ''; pintar(); };
+      el.querySelector('[data-serv]').onchange = (ev) => { F.serv = ev.target.value; pintar(); };
+      const ini = el.querySelector('[data-ini]'); if (ini) ini.onchange = (ev) => { F.mesIni = +ev.target.value; F.mes = 0; pintar(); };
       const es = el.querySelector('[data-estado]'); if (es) es.onchange = (ev) => { F.estado = ev.target.value; pintar(); };
       let tq; const qi = el.querySelector('[data-q]'); qi.oninput = () => { clearTimeout(tq); tq = setTimeout(() => { F.qRaw = qi.value; F.q = nrmQ(qi.value); pintar().then(() => { const n = el.querySelector('[data-q]'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }, 250); };
       if (editar) A.bindCeldas(el.querySelector('tbody'), eqs);
       if (F.mes && F.anio12) { const th = el.querySelector('th.mes-sel'); const w = el.querySelector('.crono-wrap'); if (th && w) w.scrollLeft = Math.max(0, th.offsetLeft - w.clientWidth / 2); }
+      // crono de una fila para un año (lo crea si aún no existe)
+      const cronoDe = async (r, y) => {
+        if (r.cr[y]) return r.cr[y];
+        const nv = await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: r.equipo_id || null, tipo, anio: y, tema: r.tema || null, plan: {} });
+        r.cr[y] = nv; return nv;
+      };
       A.acts({
         anio: (d) => { anio += +d.d; pintar(); },
+        periodo: (d) => { F.mesIni = +d.v; F.mes = 0; F.estado = ''; pintar(); },
         verMes: (d) => { F.mes = F.mes === +d.m ? 0 : +d.m; if (!F.mes) F.estado = ''; pintar(); },
         editTabla: () => { F.editar = !F.editar; pintar(); },
         anio12: () => { F.anio12 = !F.anio12; pintar(); },
-        llenarNR: () => A.completarNR([...new Set(visibles.map((c) => eqd(c.equipo_id)).filter((e) => e.id))], pintar),
+        llenarNR: () => A.completarNR([...new Set(visibles.map((r) => eqd(r.equipo_id)).filter((e) => e.id))], pintar),
         celda: async (d, b) => {
-          const c = cronos.find((x) => x.id === d.id); const orden = ['', 'P', 'E', 'N'];
-          const nv = orden[(orden.indexOf(c.plan?.[d.k] || '') + 1) % 4];
+          const r = filas[+d.r]; const y = +d.y; const orden = ['', 'P', 'E', 'N'];
+          const actual = r.cr[y]?.plan?.[d.k] || '';
+          const nv = orden[(orden.indexOf(actual) + 1) % 4];
+          const c = await cronoDe(r, y);
           const plan = { ...(c.plan || {}) }; if (nv) plan[d.k] = nv; else delete plan[d.k];
-          c.plan = plan; b.className = `w ${nv} ${b.classList.contains('now') ? 'now' : ''} ${b.classList.contains('mes-sel') ? 'mes-sel' : ''}`; b.textContent = nv;
+          c.plan = plan; b.classList.remove('P', 'E', 'N'); if (nv) b.classList.add(nv); b.textContent = nv;
           await S.update('cronogramas', c.id, { plan });
         },
-        meses: (d) => A.cambiarMeses(cronos.find((x) => x.id === d.id), eqd(cronos.find((x) => x.id === d.id).equipo_id), tipo, pintar),
+        meses: async (d) => {
+          const r = filas[+d.r]; const e = eqd(r.equipo_id);
+          const abrir = async (y) => A.cambiarMeses(await cronoDe(r, y), e, tipo, pintar, y);
+          if (!dosAnios) return abrir(anio);
+          modal({ titulo: '¿Qué año desea modificar?', size: 'sm', cuerpo: `<p>${h(e.codigo_inv || '')} ${h(e.nombre || '')}: el periodo ${h(periodoTxt)} tiene meses de dos años.</p>`,
+            acciones: [{ t: 'Cancelar' }, ...anios.map((y) => ({ t: `Año ${y}`, cls: y === anio ? 'pri' : '', fn: () => { abrir(y); } }))] });
+        },
         moverMes: async () => {
           const destino = +el.querySelector('[data-mover-mes]').value, sem = +el.querySelector('[data-mover-sem]').value;
           if (destino === F.mes) { toast('Elija un mes distinto', true); return; }
-          const afect = visibles.filter((c) => mesDe(c, F.mes).some((x) => x.v !== 'E'));
+          const y = yDe(F.mes);
+          const afect = visibles.filter((r) => mesF(r, F.mes).some((x) => x.v !== 'E'));
           if (!afect.length) { toast('No hay semanas programadas o no ejecutadas para mover en ese mes', true); return; }
-          if (!(await confirmar(`Se moverá lo programado (no ejecutado) de ${CAT.MESES[F.mes - 1]} a ${CAT.MESES[destino - 1]} semana ${sem} en ${afect.length} ${afect.length === 1 ? 'fila' : 'filas'}. Lo ejecutado no se toca.`, 'Mover'))) return;
-          for (const c of afect) {
-            const plan = { ...(c.plan || {}) };
+          if (!(await confirmar(`Se moverá lo programado (no ejecutado) de ${CAT.MESES[F.mes - 1]} ${y} a ${CAT.MESES[destino - 1]} ${y} semana ${sem} en ${afect.length} ${afect.length === 1 ? 'fila' : 'filas'}. Lo ejecutado no se toca.`, 'Mover'))) return;
+          for (const r of afect) {
+            const c = r.cr[y]; const plan = { ...(c.plan || {}) };
             mesDe(c, F.mes).filter((x) => x.v !== 'E').forEach((x) => delete plan[x.k]);
             if (!mesDe({ plan }, destino).length) plan[`${destino}-${sem}`] = 'P';
             await S.update('cronogramas', c.id, { plan });
           }
           toast(`Programación movida a ${CAT.MESES[destino - 1]}`); F.mes = destino; pintar();
         },
-        quitar: async (d) => { if (await confirmar('¿Quitar esta fila del cronograma?')) { await S.remove('cronogramas', d.id); pintar(); } },
+        quitar: async (d) => {
+          const r = filas[+d.r]; const lista = Object.values(r.cr);
+          if (!(await confirmar(`¿Quitar esta fila del cronograma${lista.length > 1 ? ` (años ${Object.keys(r.cr).join(' y ')})` : ''}?`))) return;
+          for (const c of lista) await S.remove('cronogramas', c.id); pintar();
+        },
         cronoPDF: async () => {
-          const blob = await FMT.cronograma({ ent, tipo, anio, cronos: visibles, equipos: eqs, fmt: st.fmt.cronograma, titulo, consultorios: cons });
-          S.log('CONSULTA', 'cronogramas', ent.id, `${titulo} ${anio}${F.mes ? ' · ' + CAT.MESES[F.mes - 1] : ''}`);
-          UI.verPDF({ titulo: `${titulo} ${anio}${F.mes ? ' · ' + CAT.MESES[F.mes - 1] : ''}`, blob, nombre: `Cronograma_${tipo}_${anio}${F.mes ? '_' + CAT.MESES[F.mes - 1] : ''}.pdf` });
+          const etiqueta = `${titulo} ${periodoTxt}${F.mes ? ' · ' + mesTxt : ''}${consSel ? ' · ' + (consSel.nombre || consSel.sede) : ''}`;
+          const blob = await FMT.cronograma({ ent, tipo, anio, filas: visibles, ventana, equipos: eqs, fmt: st.fmt.cronograma, titulo, consultorios: cons, cons: consSel });
+          S.log('CONSULTA', 'cronogramas', ent.id, etiqueta);
+          UI.verPDF({ titulo: etiqueta, blob, nombre: `Cronograma_${tipo}_${periodoTxt.replace(/\s+/g, '')}${F.mes ? '_' + CAT.MESES[F.mes - 1] : ''}${consSel ? '_' + (consSel.nombre || consSel.sede).replace(/\s+/g, '_') : ''}.pdf` });
         },
         generar: () => modal({
           titulo: 'Generar cronograma automáticamente', size: 'sm',
@@ -225,6 +286,7 @@
               }
             }
             const ys = [...anios].sort();
+            if (ys.length > 1 || +d.mes > 1) { F.mesIni = +d.mes; anio = anioIni; } else if (ys.length) anio = ys[0];
             toast(nNuevo || nAct ? `Cronograma generado${ys.length ? ' en ' + ys.join(' y ') : ''}: ${nNuevo} filas nuevas, ${nAct} equipos actualizados` : 'Todos los equipos ya tenían esas fechas programadas');
             pintar();
           } }],
@@ -245,13 +307,13 @@
   };
 
   // Cambiar los meses programados de una fila del cronograma
-  A.cambiarMeses = (c, e, tipo, alGuardar) => {
+  A.cambiarMeses = (c, e, tipo, alGuardar, y = c?.anio) => {
     const meses = (p) => new Set(Object.entries(p || {}).filter(([, v]) => v).map(([k]) => +k.split('-')[0]));
     const act = meses(c.plan);
     const perAct = tipo === 'metrologia' ? e.periodicidad_metro : e.periodicidad_mto;
     const estadoMes = (m) => { const x = Object.entries(c.plan || {}).find(([k, v]) => v && +k.split('-')[0] === m); return x ? { P: 'Programado', E: 'Ejecutado', N: 'No ejecutado' }[x[1]] + ` · sem ${x[0].split('-')[1]}` : ''; };
     modal({
-      titulo: `Cambiar meses · ${e.codigo_inv || ''} ${e.nombre || ''}`, size: 'sm',
+      titulo: `Cambiar meses${y ? ' ' + y : ''} · ${e.codigo_inv || ''} ${e.nombre || ''}`, size: 'sm',
       cuerpo: `<div class="form"><p class="muted">Marque los meses en que se hará ${tipo === 'metrologia' ? 'la calibración' : 'el mantenimiento'}. Los meses ya ejecutados conservan su estado.</p>
         <div class="mes-grid">${CAT.MESES.map((m, i) => `<label class="mes-chk ${act.has(i + 1) ? 'on' : ''}"><input type="checkbox" name="mes" value="${i + 1}" ${act.has(i + 1) ? 'checked' : ''}><b>${m}</b><small>${h(estadoMes(i + 1))}</small></label>`).join('')}</div>
         <div class="fields">${f.sel('sem', 'Semana para los meses nuevos', [1, 2, 3, 4], 2)}</div>

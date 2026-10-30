@@ -102,6 +102,12 @@ window.FMT = (() => {
         if (typeof v === 'object' && v.fill) { const m = 0.6; pg.drawRectangle({ x: c.x + m, y: c.y + m, width: c.w - 2 * m, height: c.h - 2 * m, color: hex(COLORES[v.fill] || v.fill) }); continue; }
         escribir(pg, c, v, fN, fB);
       }
+      // textos adicionales sobre el formato (ej. meses de un periodo que cruza dos años)
+      for (const x of vals.__extra || []) {
+        const pg = pags[x.p || 0];
+        if (x.bg) pg.drawRectangle({ x: x.x, y: x.y, width: x.w, height: x.h, color: hex(x.bg) });
+        if (x.texto) escribir(pg, { align: 'center', bold: true, size: 6, ...x }, x.texto, fN, fB);
+      }
     }
     out.setTitle(k); out.setProducer('Gestor Biomédico IBCOL');
     return new Blob([await out.save()], { type: 'application/pdf' });
@@ -240,23 +246,54 @@ window.FMT = (() => {
   }
 
   // ------------------------------------------------------------------ CRONOGRAMA (FMB-002)
-  async function cronograma({ ent, tipo, anio, cronos, equipos, fmt = {}, cons = null, titulo, consultorios = [] }) {
+  async function cronograma({ ent, tipo, anio, cronos = null, filas = null, ventana = null, equipos, fmt = {}, cons = null, titulo, consultorios = [] }) {
     const cap = await capacidad('cronograma');
+    const [, mapa] = await cargar('cronograma');
+    // filas: [{ equipo_id, tema, cr: { año: crono } }] · ventana: 12 meses [{ y, m }] (puede cruzar dos años)
+    if (!filas) filas = (cronos || []).map((c) => ({ equipo_id: c.equipo_id, tema: c.tema, cr: { [c.anio ?? anio]: c } }));
+    if (!ventana) ventana = [...Array(12).keys()].map((i) => ({ y: anio, m: i + 1 }));
     const orden = porServicio(equipos, consultorios).map((e) => e.id);
-    cronos = [...cronos].sort((a, b) => (orden.indexOf(a.equipo_id) + 1 || 9999) - (orden.indexOf(b.equipo_id) + 1 || 9999));
+    filas = [...filas].sort((a, b) => (orden.indexOf(a.equipo_id) + 1 || 9999) - (orden.indexOf(b.equipo_id) + 1 || 9999));
     const eqs = (id) => equipos.find((e) => e.id === id) || {};
-    const base = { ...cabEntidad(ent, cons), titulo: titulo ? U(titulo) : undefined, reps: ent?.reps || '', servicio: `SERVICIO: ${cons ? U(cons.nombre) : 'TODOS LOS SERVICIOS'}`,
+    const MES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+    const cruza = ventana[0].m !== 1;
+    const y1 = ventana[0].y, y2 = ventana[11].y;
+    // Etiquetas de año: el formato tiene dos (sobre ene–may y jun–dic). Si el periodo cruza dos años, se escriben los meses de cada uno.
+    const rango = (y) => { const ms = ventana.filter((v) => v.y === y); return `AÑO ${y}: ${MES[ms[0].m - 1].slice(0, 3)} – ${MES[ms[ms.length - 1].m - 1].slice(0, 3)}`; };
+    const extra = [];
+    if (cruza) {
+      // Reescribe los nombres de los meses de cada columna en el orden del periodo (oct, nov, dic, ene…)
+      ventana.forEach((v, p) => {
+        const c1 = mapa.campos[`r0_w${p + 1}-1`], c4 = mapa.campos[`r0_w${p + 1}-4`]; if (!c1 || !c4) return;
+        const x = c1.x + 0.5, w = c4.x + c4.w - c1.x - 1;
+        extra.push({ x, y: 411.3, w, h: 15.3, bg: 'FFFFFF', texto: `${MES[v.m - 1].slice(0, 3)} ${String(v.y).slice(2)}`, size: 6.2, color: v.y === y1 ? '0070C0' : '00B050' });
+      });
+      // Fila de años: un rótulo sobre los meses de cada año, separados donde empieza enero
+      const a1 = mapa.campos.anio1, a2 = mapa.campos.anio2;
+      if (a1 && a2) {
+        const xIni = a1.x, xFin = a2.x + a2.w;
+        const corte = ventana.findIndex((v) => v.y === y2), cc = mapa.campos[`r0_w${corte + 1}-1`];
+        const xc = cc ? cc.x : (xIni + xFin) / 2;
+        extra.push({ x: xIni + 0.5, y: a1.y + 0.5, w: xc - xIni - 1, h: a1.h + 1.1, bg: 'FFFFFF', texto: rango(y1), size: 6.3, color: '0070C0' });
+        extra.push({ x: xc + 0.5, y: a1.y + 0.5, w: xFin - xc - 1, h: a1.h + 1.1, bg: 'FFFFFF', texto: rango(y2), size: 6.3, color: '00B050' });
+        extra.push({ x: xc - 0.35, y: a1.y, w: 0.7, h: a1.h + 1.6, bg: '000000' });
+      }
+    }
+    const base = { ...cabEntidad(ent, cons), titulo: titulo ? U(titulo) : undefined, reps: ent?.reps || '', servicio: `SERVICIO: ${cons ? U([cons.sede && !cons.nombre ? 'SEDE ' + cons.sede : '', cons.nombre].filter(Boolean).join(' ')) : 'TODOS LOS SERVICIOS'}`,
       fecha_act: `FECHA ACTUALIZACIÓN: ${fD(UI.hoy())}`, estrategia: fmt.estrategia || (tipo === 'metrologia' ? 'CALIBRACIÓN' : tipo === 'capacitacion' ? 'CAPACITACIÓN' : 'PREVENTIVO'),
-      anio1: `AÑO ${anio}`, anio2: `AÑO ${anio}`,
-      fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined };
-    const hojas = partes(cronos, cap).map((grupo, h) => {
+      anio1: cruza ? rango(y1) : `AÑO ${anio}`, anio2: cruza ? rango(y2) : `AÑO ${anio}`,
+      fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined, __extra: extra };
+    const hojas = partes(filas, cap).map((grupo, h) => {
       const v = { ...base };
-      grupo.forEach((c, i) => {
-        const e = eqs(c.equipo_id);
+      grupo.forEach((r, i) => {
+        const e = eqs(r.equipo_id);
         const it = e.hv?.nr?.item ? 'NR' : val(e, 'item');
-        Object.assign(v, { [`r${i}_item`]: String(it || h * cap + i + 1), [`r${i}_cod`]: val(e, 'codigo_inv'), [`r${i}_af`]: val(e, 'activo_fijo'), [`r${i}_equipo`]: tipo === 'capacitacion' ? c.tema || e.nombre || '' : val(e, 'nombre'),
+        Object.assign(v, { [`r${i}_item`]: String(it || h * cap + i + 1), [`r${i}_cod`]: val(e, 'codigo_inv'), [`r${i}_af`]: val(e, 'activo_fijo'), [`r${i}_equipo`]: tipo === 'capacitacion' ? r.tema || e.nombre || '' : val(e, 'nombre'),
           [`r${i}_marca`]: val(e, 'marca'), [`r${i}_modelo`]: val(e, 'modelo'), [`r${i}_serie`]: val(e, 'serie') });
-        Object.entries(c.plan || {}).forEach(([k, val]) => { if (val) v[`r${i}_w${k}`] = { fill: val }; });
+        ventana.forEach((w, p) => {
+          const plan = r.cr[w.y]?.plan || {};
+          [1, 2, 3, 4].forEach((s) => { const x = plan[`${w.m}-${s}`]; if (x) v[`r${i}_w${p + 1}-${s}`] = { fill: x }; });
+        });
       });
       return v;
     });
