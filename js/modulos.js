@@ -94,6 +94,14 @@
   };
 
   // ------------------------------------------------------------ Cronogramas
+  // Fechas de un ciclo que puede pasar de un año a otro: paso en meses desde (mes, año)
+  //  alcance '12' = 12 meses, '24' = 24 meses, 'anio' = hasta diciembre del año de inicio
+  A.fechasCiclo = (paso, mes, anio, alcance = '12') => {
+    if (!paso) return [];
+    const fin = alcance === 'anio' ? 12 - mes + 1 : +alcance || 12, r = [];
+    for (let k = 0; k < fin; k += paso) { const abs = mes - 1 + k; r.push({ anio: anio + Math.floor(abs / 12), mes: (abs % 12) + 1 }); }
+    return r;
+  };
   A.planDesde = (per, mesIni = 1, semana = 2) => { const p = {}, paso = CAT.PERIODICIDAD[per] || 0; if (!paso) return p; for (let m = +mesIni; m <= 12; m += paso) p[`${m}-${semana}`] = 'P'; return p; };
   A.G.crono = async (el, { ent }, tipo) => {
     let anio = st.cronoAnio || anioAct;
@@ -180,14 +188,45 @@
         },
         generar: () => modal({
           titulo: 'Generar cronograma automáticamente', size: 'sm',
-          cuerpo: `<div class="form"><p class="muted">Se creará la programación de ${anio} para cada equipo activo que aún no esté en el cronograma, según su periodicidad de ${tipo === 'metrologia' ? 'metrología' : 'mantenimiento'}.</p><div class="fields">${f.sel('mes', 'Mes de inicio', CAT.MESES.map((m, i) => [i + 1, m]), 1)}${f.sel('sem', 'Semana', [1, 2, 3, 4], 2)}</div></div>`,
+          cuerpo: `<div class="form"><p class="muted">Programa cada equipo activo según su periodicidad de ${tipo === 'metrologia' ? 'metrología' : 'mantenimiento'}. El ciclo puede pasar al año siguiente: por ejemplo, un equipo <b>semestral</b> que empieza en <b>octubre de ${anio}</b> queda programado también en <b>abril de ${anio + 1}</b>.</p>
+            <div class="fields">${f.sel('mes', 'Mes de inicio', CAT.MESES.map((m, i) => [i + 1, m]), F.mes || new Date().getMonth() + 1)}${f.sel('anioIni', 'Año de inicio', [anio - 1, anio, anio + 1].map((y) => [y, y]), anio)}${f.sel('sem', 'Semana', [1, 2, 3, 4], 2)}
+            ${f.sel('alcance', 'Programar', [['12', '12 meses desde el mes de inicio (puede pasar al año siguiente)'], ['24', '24 meses desde el mes de inicio'], ['anio', 'Solo hasta diciembre del año de inicio']], '12', { full: true })}</div>
+            <label class="checks" style="margin-top:8px"><input type="checkbox" name="incluir" data-single checked> Incluir los equipos que ya están en el cronograma (se agregan las fechas que falten; no se borra nada de lo programado o ejecutado)</label>
+            <p class="muted" data-gprev style="font-size:.85rem;margin-top:8px"></p></div>`,
+          alAbrir: (m) => {
+            const prev = () => {
+              const d = leer(m.body); const ej = A.fechasCiclo(6, +d.mes, +d.anioIni, d.alcance);
+              m.body.querySelector('[data-gprev]').innerHTML = `Ejemplo semestral: ${ej.map((x) => `<b>${CAT.MESES[x.mes - 1]} ${x.anio}</b>`).join(', ')}.`;
+            };
+            m.body.addEventListener('change', prev); prev();
+          },
           acciones: [{ t: 'Cancelar' }, { t: 'Generar', cls: 'pri', fn: async (m) => {
-            const d = leer(m.body); let n = 0;
-            for (const e of eqs.filter((x) => x.estado !== 'Dado de baja' && !cronos.some((c) => c.equipo_id === x.id))) {
-              const per = tipo === 'metrologia' ? e.periodicidad_metro : e.periodicidad_mto; if (!CAT.PERIODICIDAD[per]) continue;
-              await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: e.id, tipo, anio, plan: A.planDesde(per, d.mes, d.sem) }); n++;
+            const d = leer(m.body); const anioIni = +d.anioIni, sem = +d.sem;
+            let nNuevo = 0, nAct = 0; const anios = new Set();
+            const cache = {};
+            const delAnio = async (y) => (cache[y] = cache[y] || await S.list('cronogramas', { entidad_id: ent.id, tipo, anio: y }));
+            for (const e of eqs.filter((x) => x.estado !== 'Dado de baja')) {
+              const paso = CAT.PERIODICIDAD[tipo === 'metrologia' ? e.periodicidad_metro : e.periodicidad_mto]; if (!paso) continue;
+              const porAnio = {};
+              A.fechasCiclo(paso, +d.mes, anioIni, d.alcance).forEach((x) => { (porAnio[x.anio] = porAnio[x.anio] || []).push(x.mes); });
+              for (const [yS, meses] of Object.entries(porAnio)) {
+                const y = +yS, lista = await delAnio(y), c = lista.find((k) => k.equipo_id === e.id);
+                if (c && !d.incluir) continue;
+                const plan = { ...(c?.plan || {}) }; let cambio = false;
+                meses.forEach((mm) => {
+                  // si ese mes ya tiene algo (en cualquier semana) no se toca
+                  if (Object.entries(plan).some(([k, v]) => v && +k.split('-')[0] === mm)) return;
+                  plan[`${mm}-${sem}`] = 'P'; cambio = true;
+                });
+                if (!cambio) continue;
+                if (c) { const u = await S.update('cronogramas', c.id, { plan }); Object.assign(c, u || { plan }); nAct++; }
+                else { const nv = await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: e.id, tipo, anio: y, plan }); lista.push(nv); nNuevo++; }
+                anios.add(y);
+              }
             }
-            toast(n ? `${n} equipos programados` : 'Todos los equipos ya estaban programados'); pintar();
+            const ys = [...anios].sort();
+            toast(nNuevo || nAct ? `Cronograma generado${ys.length ? ' en ' + ys.join(' y ') : ''}: ${nNuevo} filas nuevas, ${nAct} equipos actualizados` : 'Todos los equipos ya tenían esas fechas programadas');
+            pintar();
           } }],
         }),
         agregar: () => modal({
