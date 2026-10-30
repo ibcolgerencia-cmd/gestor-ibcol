@@ -451,3 +451,18 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
   .app.menu .side { width: min(280px, 86vw); box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .45); }
   .topbar [data-menu] { display: none; }
 }
+
+/* v37 · quitar carpetas por entidad */
+.folder-w { position: relative; display: grid; }
+.folder-w .folder { padding-right: 34px; }
+.folder-x { all: unset; position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .15s, background .15s; }
+.folder-x svg { width: 15px; height: 15px; }
+.folder-w:hover .folder-x, .folder-x:focus-visible { opacity: 1; }
+.folder-x:hover { background: var(--bad-soft); color: var(--bad); }
+.folder-x:focus-visible { outline: 2px solid var(--accent-2); }
+@media (hover: none) { .folder-x { opacity: .7; } }
+.cfg-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 10px; }
+.cfg-cols fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px 10px; margin: 0; display: grid; gap: 2px; align-content: start; }
+.cfg-cols legend { font-weight: 600; padding: 0 6px; font-size: .9rem; }
+.cfg-cols .cfg-carp { padding: 4px 0; display: flex !important; align-items: center; gap: 8px; flex-wrap: nowrap; grid-template-columns: none; }
+.cfg-cols .cfg-carp input { margin: 0; flex: none; }
