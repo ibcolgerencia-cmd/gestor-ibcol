@@ -435,7 +435,7 @@ window.APP = (() => {
         <div class="hv-sum" style="flex:1;min-width:260px">
         <div><span>Registro sanitario</span><b class="mono">${h(eq.registro_sanitario || 'NR')}</b></div>
         <div><span>Código ECRI</span><b class="mono">${h(eq.hv?.ecri || 'Sin asignar')}</b></div>
-        <div><span>Clasificación de riesgo</span><b>${h(CAT.RIESGO[eq.clase_riesgo] || 'NR')}</b></div>
+        <div><span>Clasificación de riesgo</span><b>${h(FMT.marca(eq, 'clase_riesgo') || CAT.RIESGO[eq.clase_riesgo] || 'NR')}</b></div>
         <div><span>Activo fijo</span><b class="mono">${h(eq.activo_fijo || '—')}</b></div>
         <div><span>Mantenimiento</span><b>${h(eq.periodicidad_mto || '—')}</b></div>
         <div><span>Próximo mantenimiento</span><b>${dd(eq.fecha_prox_mto)}</b></div>

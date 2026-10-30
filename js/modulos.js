@@ -58,7 +58,7 @@
         <input type="search" data-q placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar en el inventario">
         <span class="muted" data-cuenta></span>
         ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
-      ${esProp() ? '<p class="muted edit-hint" data-hint hidden>Modo edición: cambie cualquier dato y presione Enter o salga de la casilla para guardar. Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista.</p>' : ''}
+      ${esProp() ? '<p class="muted edit-hint" data-hint hidden>Modo edición: cambie cualquier dato y presione Enter o salga de la casilla para guardar. Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
       ${A.datalistNR}
       <div class="tbl-wrap"><table class="tbl tbl-eq"><thead><tr>${A.COLS_EQ.map((c) => `<th style="min-width:${c.w}px">${c.t}</th>`).join('')}<th>Estado</th></tr></thead><tbody></tbody></table></div></section>`;
     pintar();
@@ -84,7 +84,7 @@
         const lista = visibles(); const V = FMT.val;
         const aoa = [[`INVENTARIO · ${st.fmt.inventario.codigo} · Versión ${st.fmt.inventario.version}`], [ent.razon_social], [`NIT: ${ent.nit || ''}`, '', `REPS: ${ent.reps || ''}`], [],
           ['ÍTEM', 'CÓDIGO DE INV.', 'N° DE A.F.', 'EQUIPO', 'MARCA', 'MODELO', 'SERIE', 'UBICACIÓN / ÁREA', 'CLASIFICACIÓN POR RIESGO SANITARIO', 'REGISTRO SANITARIO O PERMISO DE COMERCIALIZACIÓN', 'ESTADO'],
-          ...lista.map((e, i) => [(e.hv?.nr?.item ? FMT.NOREG : e.hv?.item) || i + 1, V(e, 'codigo_inv'), V(e, 'activo_fijo'), V(e, 'nombre'), V(e, 'marca'), V(e, 'modelo'), V(e, 'serie'), e.hv?.nr?.ubicacion ? FMT.NOREG : `${cn(e.consultorio_id)}${e.ubicacion ? ' / ' + e.ubicacion : ''}`, e.hv?.nr?.clase_riesgo ? FMT.NOREG : e.clase_riesgo || '', V(e, 'registro_sanitario'), e.estado])];
+          ...lista.map((e, i) => [(e.hv?.nr?.item ? FMT.NOREG : e.hv?.item) || i + 1, V(e, 'codigo_inv'), V(e, 'activo_fijo'), V(e, 'nombre'), V(e, 'marca'), V(e, 'modelo'), V(e, 'serie'), e.hv?.nr?.ubicacion ? FMT.marca(e, 'ubicacion') : `${cn(e.consultorio_id)}${e.ubicacion ? ' / ' + e.ubicacion : ''}`, e.hv?.nr?.clase_riesgo ? FMT.marca(e, 'clase_riesgo') : e.clase_riesgo || '', V(e, 'registro_sanitario'), e.estado])];
         const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = [6, 14, 12, 28, 16, 16, 16, 26, 12, 24, 14].map((w) => ({ wch: w }));
         const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'FMB-001');
         UI.descargar(new Blob([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Inventario_${ent.razon_social}.xlsx`);
@@ -175,7 +175,7 @@
           ${esProp() && !cap ? `<span class="sp"></span><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
         ${resumen}
         <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span>${esProp() ? `<span>Toque una semana para cambiar su estado${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses'}.</span>` : ''}</div>
-        ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista.</p>' : ''}
+        ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
         ${A.datalistNR}
         ${visibles.length ? `<div class="crono-wrap"><table class="crono ${esProp() ? 'edit' : ''} ${editar ? 'editando' : ''}"><thead>
           ${dosAnios && vis.length > 1 ? `<tr>${cap ? '<th colspan="3"></th>' : `<th colspan="${colsInfo.length}"></th>`}${anios.map((y) => { const n = vis.filter((v) => v.y === y).length; return n ? `<th colspan="${n * 4}" class="crono-anio">AÑO ${y}</th>` : ''; }).join('')}${esProp() ? '<th></th>' : ''}</tr>` : ''}
@@ -529,7 +529,7 @@
     modal({
       titulo: `Hoja de vida · ${eq.codigo_inv}`, size: 'wide',
       cuerpo: `<form class="form" onsubmit="return false">${tabs(T)}
-        <div data-panel="0"><div class="fields">${camposEquipo({ ...eq, ...Object.fromEntries(Object.keys(hv.nr || {}).filter((k) => hv.nr[k] && !['item', 'clase_riesgo'].includes(k)).map((k) => [k, FMT.NOREG])) }, cons)}<div class="field full"><span class="lbl">1.1 Registro sanitario o permiso de comercialización: marque una opción</span><div class="actions" style="gap:6px;flex-wrap:wrap">${[['RS', 'Registro sanitario'], ['PC', 'Permiso de comercialización'], ['NA', 'No aplica'], ['NR', 'No registra']].map(([v, t]) => `<label class="btn sm" style="gap:6px;cursor:pointer"><input type="radio" name="${x('tipo_registro')}" value="${v}" ${(hv.tipo_registro || (eq.registro_sanitario ? 'RS' : 'NR')) === v ? 'checked' : ''}> <b>${v}</b> <span class="muted">${t}</span></label>`).join('')}</div></div>
+        <div data-panel="0"><div class="fields">${camposEquipo({ ...eq, ...Object.fromEntries(Object.keys(hv.nr || {}).filter((k) => hv.nr[k] && !['item', 'clase_riesgo'].includes(k)).map((k) => [k, FMT.marca(eq, k)])) }, cons)}<div class="field full"><span class="lbl">1.1 Registro sanitario o permiso de comercialización: marque una opción</span><div class="actions" style="gap:6px;flex-wrap:wrap">${[['RS', 'Registro sanitario'], ['PC', 'Permiso de comercialización'], ['NA', 'No aplica'], ['NR', 'No registra']].map(([v, t]) => `<label class="btn sm" style="gap:6px;cursor:pointer"><input type="radio" name="${x('tipo_registro')}" value="${v}" ${(hv.tipo_registro || (eq.registro_sanitario ? 'RS' : 'NR')) === v ? 'checked' : ''}> <b>${v}</b> <span class="muted">${t}</span></label>`).join('')}</div></div>
           <div class="field full"><label for="f_hv_ecri">1.2 Código ECRI (UMDNS)</label><div class="actions" style="gap:6px;flex-wrap:nowrap"><input id="f_hv_ecri" name="${x('ecri')}" value="${h(hv.ecri || '')}" placeholder="ej: 12-853 Oxímetros" style="flex:1"><button type="button" class="btn sm" data-ecri>Buscar en listado ECRI</button></div><div class="actions" data-ecri-sug style="gap:6px;margin-top:6px"></div></div>
           ${f.input(x('distintivo'), '1.4 Distintivo de habilitación', hv.distintivo)}${f.input(x('funcion'), '2.1 Función del equipo', hv.funcion)}${f.sel(x('movil'), '2.9 / 2.10 Tipo', ['Móvil', 'Fijo'], hv.movil || 'Móvil')}
           <div class="field"><span class="lbl">Foto del equipo (sale en la hoja de vida)</span><div class="actions" style="align-items:center"><img data-fprev src="${hv.foto || ''}" alt="" style="max-height:60px;${hv.foto ? '' : 'display:none'}"><label class="btn sm">${I.subir} Cargar foto<input type="file" accept="image/*" hidden data-foto></label></div></div></div></div>
@@ -581,8 +581,8 @@
         Object.entries(d).forEach(([k, v]) => { if (k.startsWith('hv_anexo_')) nhv.anexos[k.slice(9)] = v; else if (k.startsWith('hv_')) nhv[k.slice(3)] = v; else cols[k] = v; });
         nhv.accesorios = repLeer(m.body, 'acc'); nhv.foto = foto; nhv.mediciones_tabla = nhv.mediciones_aplica === 'No aplica' ? [] : repLeer(m.body, 'med');
         if (!cols.nombre || !cols.codigo_inv) { toast('Nombre y código de inventario son obligatorios', true); return false; }
-        nhv.nr = { ...(hv.nr || {}) }; Object.keys(nhv.nr).forEach((k) => { if (k in cols && cols[k] && !/^(no registra|nr)$/i.test(cols[k]) && cols[k] !== eq[k]) delete nhv.nr[k]; });
-        Object.keys(cols).forEach((k) => { if (/^(no registra)$/i.test(cols[k] || '') && !['codigo_inv', 'nombre'].includes(k)) { nhv.nr[k] = true; cols[k] = ''; } });
+        nhv.nr = { ...(hv.nr || {}) }; Object.keys(nhv.nr).forEach((k) => { if (k in cols && cols[k] && !/^(no registra|nr|no aplica)$/i.test(cols[k]) && cols[k] !== eq[k]) delete nhv.nr[k]; });
+        Object.keys(cols).forEach((k) => { if (/^(no registra|no aplica)$/i.test(cols[k] || '') && !['codigo_inv', 'nombre'].includes(k)) { nhv.nr[k] = /aplica/i.test(cols[k]) ? 'NA' : true; cols[k] = ''; } });
         await S.update('equipos', eq.id, { ...limpiarEquipo(cols), hv: nhv }); toast('Hoja de vida actualizada'); A.recargar();
       } }],
     });

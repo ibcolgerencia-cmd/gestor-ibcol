@@ -18,12 +18,13 @@
   ];
   const OBLIG = ['codigo_inv', 'nombre']; // columnas que no se pueden dejar vacías en la base de datos
   A.val = FMT.val;
+  const NOAPL = FMT.NOAPL;
   const marcado = (e, k) => !!e?.hv?.nr?.[k];
-  const pillNR = '<span class="pill nr">NO REGISTRA</span>';
+  const pillNR = (e, k) => `<span class="pill nr">${FMT.marca(e, k)}</span>`;
 
   // Celda en modo consulta
   A.celdaVer = (e, k, i, cons = []) => {
-    if (marcado(e, k)) return pillNR;
+    if (marcado(e, k)) return pillNR(e, k);
     if (k === 'item') return h(e.hv?.item || String(i + 1));
     if (k === 'clase_riesgo') return A.riesgo(e.clase_riesgo) || '';
     if (k === 'ubicacion') { const c = cons.find((x) => x.id === e.consultorio_id); return `${h(c?.nombre || '—')}${e.ubicacion ? ' / ' + h(e.ubicacion) : ''}`; }
@@ -34,9 +35,9 @@
   // Celda en modo edición
   A.celdaEdit = (e, k, i, cons = []) => {
     const at = `data-eqid="${e.id}" data-eqk="${k}"`;
-    const v = marcado(e, k) ? NOREG : k === 'item' ? (e.hv?.item ?? '') : (e[k] ?? '');
+    const v = marcado(e, k) ? FMT.marca(e, k) : k === 'item' ? (e.hv?.item ?? '') : (e[k] ?? '');
     if (k === 'clase_riesgo') {
-      const op = [['', '—'], ...Object.keys(CAT.RIESGO).map((r) => [r, `Clase ${r}`]), [NOREG, NOREG]];
+      const op = [['', '—'], ...Object.keys(CAT.RIESGO).map((r) => [r, `Clase ${r}`]), [NOREG, NOREG], [NOAPL, NOAPL]];
       return `<select class="cel" ${at} aria-label="Riesgo">${op.map(([o, t]) => `<option value="${h(o)}" ${String(o) === String(v) ? 'selected' : ''}>${h(t)}</option>`).join('')}</select>`;
     }
     if (k === 'ubicacion') {
@@ -45,16 +46,16 @@
     }
     return `<input class="cel" ${at} value="${h(v)}" list="dl-noreg" placeholder="${k === 'item' ? String(i + 1) : ''}" aria-label="${h(A.COLS_EQ.find((c) => c.k === k)?.t || k)}" ${k === 'item' ? 'style="width:52px"' : ''}>`;
   };
-  A.datalistNR = '<datalist id="dl-noreg"><option value="NO REGISTRA"><option value="NA"></datalist>';
+  A.datalistNR = '<datalist id="dl-noreg"><option value="NO REGISTRA"><option value="NO APLICA"></datalist>';
 
   // Guarda un dato del equipo. "NO REGISTRA" o "NR" quedan marcados sin romper reglas de la base de datos
   A.guardarDatoEq = async (e, k, crudo) => {
     const v = String(crudo ?? '').trim();
     const hv = { ...(e.hv || {}) }; const nr = { ...(hv.nr || {}) }; const cols = {};
-    const esNR = /^(no registra|nr)$/i.test(v);
+    const esNR = /^(no registra|nr)$/i.test(v), esNA = /^(no aplica|n\/?a)$/i.test(v);
     if (k === 'consultorio_id') cols.consultorio_id = v || null;
-    else if (esNR) {
-      nr[k] = true;
+    else if (esNR || esNA) {
+      nr[k] = esNA ? 'NA' : true;
       if (k === 'item') delete hv.item; else if (!OBLIG.includes(k)) cols[k] = null;
     } else {
       delete nr[k];
@@ -79,7 +80,7 @@
         try {
           const ok = await A.guardarDatoEq(e, el.dataset.eqk, el.value);
           if (ok === false) { el.value = el.dataset.ini; return; }
-          if (/^(no registra|nr)$/i.test(el.value.trim())) el.value = NOREG;
+          if (/^(no registra|nr)$/i.test(el.value.trim())) el.value = NOREG; else if (/^(no aplica|n\/?a)$/i.test(el.value.trim())) el.value = NOAPL;
           el.dataset.ini = el.value; el.classList.add('ok'); setTimeout(() => el.classList.remove('ok'), 900);
           alGuardar?.(e);
         } catch (er) { toast(er.message, true); el.value = el.dataset.ini; } finally { el.classList.remove('saving'); }

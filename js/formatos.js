@@ -134,8 +134,11 @@ window.FMT = (() => {
   const X = (b) => (b ? 'X' : '');
   // Valor de un dato del equipo: respeta la marca "NO REGISTRA" (eq.hv.nr) y el ítem manual (eq.hv.item)
   const NOREG = 'NO REGISTRA';
-  const val = (e, k) => { if (!e) return ''; if (e.hv?.nr?.[k]) return NOREG; if (k === 'item') return e.hv?.item ?? ''; return e[k] ?? ''; };
-  const riesgoTxt = (e) => (e?.hv?.nr?.clase_riesgo ? NOREG : e?.clase_riesgo ? `CLASE ${String(e.clase_riesgo).toUpperCase()}` : 'NR');
+  // hv.nr[k]: true = NO REGISTRA · 'NA' = NO APLICA
+  const NOAPL = 'NO APLICA';
+  const marca = (e, k) => { const x = e?.hv?.nr?.[k]; return x === 'NA' ? NOAPL : x ? NOREG : ''; };
+  const val = (e, k) => { if (!e) return ''; const mk = marca(e, k); if (mk) return mk; if (k === 'item') return e.hv?.item ?? ''; return e[k] ?? ''; };
+  const riesgoTxt = (e) => (marca(e, 'clase_riesgo') || (e?.clase_riesgo ? `CLASE ${String(e.clase_riesgo).toUpperCase()}` : 'NR'));
   // 9.5 Recomendaciones para mediciones: tabla parámetro / cantidad / unidad
   const textoMediciones = (hv = {}) => {
     if (hv.mediciones_aplica === 'No aplica') return 'NO APLICA';
@@ -357,5 +360,5 @@ window.FMT = (() => {
     return render('cuenta_cobro', [v]);
   }
 
-  return { val, NOREG, textoMediciones, render, cuentaCobro, hojaVida, mtoPreventivo, mtoCorrectivo, metrologia, cronograma, inventario, alertas, cargar };
+  return { val, marca, NOAPL, NOREG, textoMediciones, render, cuentaCobro, hojaVida, mtoPreventivo, mtoCorrectivo, metrologia, cronograma, inventario, alertas, cargar };
 })();
