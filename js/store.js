@@ -34,6 +34,20 @@ window.Store = (() => {
       if (!p.activo) { await sb.auth.signOut(); throw new Error('Usuario desactivado. Contacte a IBCOL.'); }
       perfil = p; return p;
     }
+    // Si en otra pestaña del mismo navegador se entra con OTRO usuario, la sesión de Supabase
+    // cambia para todas las pestañas: se avisa para recargar (si no, esta pestaña seguiría
+    // mostrando el menú del propietario pero guardaría como el otro usuario → "No tiene permiso").
+    const avisarCambio = (uid) => { if (perfil && uid !== perfil.id) window.dispatchEvent(new CustomEvent('ibcol-sesion-cambio', { detail: { uid } })); };
+    sb.auth.onAuthStateChange((_ev, session) => avisarCambio(session?.user?.id || null));
+    window.addEventListener('storage', (e) => {
+      if (!e.key || !/^sb-.*-auth-token$/.test(e.key)) return;
+      let uid = null; try { uid = JSON.parse(e.newValue || 'null')?.user?.id || null; } catch {}
+      avisarCambio(uid);
+    });
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState !== 'visible' || !perfil) return;
+      try { const { data } = await sb.auth.getSession(); avisarCambio(data.session?.user?.id || null); } catch {}
+    });
     function aplicar(q, filtros) {
       Object.entries(filtros || {}).forEach(([k, v]) => { q = v === null ? q.is(k, null) : q.eq(k, v); });
       return q;
@@ -48,7 +62,7 @@ window.Store = (() => {
         this.log('LOGIN', 'perfiles', p.id, 'Ingreso al sistema');
         return p;
       },
-      async logout() { try { await this.log('LOGOUT', 'perfiles', perfil?.id, 'Salida'); } catch {} await sb.auth.signOut(); perfil = null; },
+      async logout() { try { await this.log('LOGOUT', 'perfiles', perfil?.id, 'Salida'); } catch {} perfil = null; await sb.auth.signOut(); },
       async list(t, filtros, orden) {
         let q = aplicar(sb.from(t).select('*'), filtros);
         if (orden) q = q.order(orden.replace('-', ''), { ascending: !orden.startsWith('-') });

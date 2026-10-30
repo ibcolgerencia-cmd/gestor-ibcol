@@ -20,6 +20,14 @@ window.APP = (() => {
     } catch (e) { console.error(e); root.innerHTML = `<div class="loading">No se pudo iniciar: ${h(e.message)}</div>`; }
   };
 
+  // Otra pestaña entró con otro usuario (o cerró sesión): se recarga para no guardar con el usuario equivocado
+  let avisoSesion = false;
+  window.addEventListener('ibcol-sesion-cambio', () => {
+    if (avisoSesion) return; avisoSesion = true;
+    root.innerHTML = `<div class="loading" style="text-align:center;padding:40px 16px;line-height:1.6"><b>Se cambió el usuario en otra pestaña de este navegador.</b><br>Esta página se recarga con el usuario que quedó activo…<br><small class="muted">Para trabajar a la vez como propietario y como cliente, use otro navegador o una ventana de incógnito para el cliente.</small></div>`;
+    setTimeout(() => location.reload(), 2500);
+  });
+
   function aplicarTema() { let t = null; try { t = localStorage.getItem('ibcol_tema'); } catch {} if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }
   function cambiarTema() {
     const act = document.documentElement.dataset.theme;
