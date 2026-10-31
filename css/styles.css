@@ -105,6 +105,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.pri:hover { filter: brightness(1.08); }
 .btn.danger { color: var(--bad); }
 .btn.danger:hover { border-color: var(--bad); }
+.btn.pri.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
 .btn.sm { padding: 4px 8px; font-size: .84rem; }
 .btn.ghost { border-color: transparent; background: transparent; }
 .btn svg { width: 16px; height: 16px; }
@@ -483,3 +484,5 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .folder.sede .ic::before { background: var(--warn); }
 .folder.sede .ic::after { background: var(--side); }
 .folder.sede b { letter-spacing: .02em; }
+.radio-line { display: flex !important; align-items: flex-start; gap: 8px; flex-wrap: nowrap; grid-column: 1 / -1; }
+.radio-line input { margin-top: 3px; flex: none; }
