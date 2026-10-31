@@ -355,7 +355,7 @@ window.APP = (() => {
     const k = A.kpis({ equipos: eqs, cronos: cronos.filter(enSede), mtos: mtos.filter(enSede), eventos: evs, alertas: als, anio });
     const nEqSede = (sd) => { const ids = new Set(consE.filter((c) => (c.sede || 'Sede principal') === sd).map((c) => c.id)); return eqsT.filter((e) => ids.has(e.consultorio_id) && e.estado !== 'Dado de baja').length; };
     const nDocSede = (sd) => docsT.filter((d) => !d.equipo_id && (d.subcarpeta || '').split('/')[0] === sd).length;
-    const tarjetasSedes = porSedes && !sede ? `<section class="folder-group"><span class="eyebrow">Sedes · abra una sede para ver sus carpetas</span><div class="folders">${sedesE.map((sd) => `<div class="folder-w"><button class="folder sede" data-act="abrirSede" data-s="${h(sd)}"><span class="ic"></span><b>${h(sd.toUpperCase())}</b><small>${nEqSede(sd)} equipo${nEqSede(sd) === 1 ? "" : "s"} · ${nDocSede(sd)} archivo${nDocSede(sd) === 1 ? "" : "s"}</small></button></div>`).join('')}</div></section>` : '';
+    const tarjetasSedes = porSedes && !sede ? `<section class="folder-group"><span class="eyebrow">Sedes · abra una sede para ver sus carpetas</span><div class="folders">${sedesE.map((sd) => `<div class="folder-w">${esProp() ? `<div class="folder-tools"><button class="folder-x del" data-act="borrarSede" data-s="${h(sd)}" title="Eliminar esta sede" aria-label="Eliminar la sede ${h(sd)}">${I.x}</button></div>` : ''}<button class="folder sede" data-act="abrirSede" data-s="${h(sd)}"><span class="ic"></span><b>${h(sd.toUpperCase())}</b><small>${nEqSede(sd)} equipo${nEqSede(sd) === 1 ? "" : "s"} · ${nDocSede(sd)} archivo${nDocSede(sd) === 1 ? "" : "s"}</small></button></div>`).join('')}</div></section>` : '';
     const nDocs = (c) => (c.k === CARP_EQ ? eqs.filter((e) => e.estado !== 'Dado de baja').length : docs.filter((d) => d.carpeta === c.k && (c.todos || !d.equipo_id)).length);
     const etiqueta = (c) => { const n = nDocs(c); return c.k === CARP_EQ ? `${n} equipo${n === 1 ? '' : 's'} por área` : `${n} archivo${n === 1 ? '' : 's'}${c.gen ? ' · registros' : ''}`; };
     const ocE = A.ocultas(ent, 'ent');
@@ -365,7 +365,7 @@ window.APP = (() => {
       ${sede ? migas([...A.rutaEnt(ent), sede.toUpperCase()]) : esProp() ? migas([['Entidades', 'entidades'], ent.razon_social]) : ''}
       <div class="page-head"><div><span class="eyebrow">${sede ? `Sede · ${h(ent.razon_social)}` : 'Carpeta digital de la entidad'}</span><h1>${h(sede ? sede.toUpperCase() : ent.razon_social)}</h1>
         <span class="muted">NIT <span class="mono">${h(ent.nit || '—')}</span> · REPS <span class="mono">${h(ent.reps || '—')}</span> · ${h(ent.ciudad || '')}</span></div>
-        ${esProp() ? `<div class="actions"><button class="btn" data-act="editEnt">${I.edit} Editar</button><button class="btn" data-act="usuariosEnt">${I.users} Accesos</button>${!sede ? `<button class="btn" data-act="nuevaSede" title="Agregar una sede o servicio (ej. HOME CARE)">${I.mas} Sede</button>` : ''}<button class="btn" data-act="configCarp" title="Quitar o volver a mostrar carpetas para esta entidad">${I.carpeta} Carpetas${ocE.size + A.ocultas(ent, 'eq').size ? ` <span class="pill">${ocE.size + A.ocultas(ent, 'eq').size} quitadas</span>` : ''}</button><button class="btn pri" data-act="importarDrive">${I.subir} Importar carpeta de la entidad</button></div>` : ''}</div>
+        ${esProp() ? `<div class="actions"><button class="btn" data-act="editEnt">${I.edit} Editar</button><button class="btn" data-act="usuariosEnt">${I.users} Accesos</button>${sede ? `<button class="btn danger" data-act="borrarSede" data-s="${h(sede)}">${I.del} Eliminar sede</button>` : ''}${!sede ? `<button class="btn" data-act="nuevaSede" title="Agregar una sede o servicio (ej. HOME CARE)">${I.mas} Sede</button>` : ''}<button class="btn" data-act="configCarp" title="Quitar o volver a mostrar carpetas para esta entidad">${I.carpeta} Carpetas${ocE.size + A.ocultas(ent, 'eq').size ? ` <span class="pill">${ocE.size + A.ocultas(ent, 'eq').size} quitadas</span>` : ''}</button><button class="btn pri" data-act="importarDrive">${I.subir} Importar carpeta de la entidad</button></div>` : ''}</div>
       ${tarjetasSedes}
       ${A.kpiTiles(k, ['mp', 'mm', 'mv', 'disp'])}
       <section class="panel"><header><h2>Alertas de vencimiento</h2><span class="muted">Mantenimientos, calibraciones, garantías y documentos</span></header>${A.listaVenc(venc)}</section>
@@ -374,6 +374,7 @@ window.APP = (() => {
       abrirEq: (d) => go('equipo', { id: d.id }),
       carpeta: (d) => (d.k === CARP_EQ ? go('areas', { id, ...(sede ? { sede } : {}) }) : go('carpeta', { ent: id, k: d.k, ...(sede ? { sede } : {}) })),
       abrirSede: (d) => go('entidad', { id, sede: d.s }),
+      borrarSede: (d) => A.eliminarSede(ent, d.s, consE, sedesE, eqsT, docsT),
       nuevaSede: () => modal({
         titulo: 'Agregar sede', size: 'sm',
         cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre de la sede o servicio', '', { full: true, attrs: 'placeholder="ej: SIEMPREE SEDE TIMBÍO"' })}</div><p class="muted" style="font-size:.85rem">Con dos o más sedes, la entidad se abre por sedes y cada una tiene todas sus carpetas. Los servicios de cada sede se crean en “Información del equipo” o al importar su carpeta.</p></form>`,
@@ -985,6 +986,47 @@ window.APP = (() => {
         if (!(await guardarConfig(ent, cfg))) return false;
         S.log('EDITAR', 'entidades', ent.id, `Carpetas: ${cfg.ocultas_ent.length + cfg.ocultas_eq.length} quitadas`);
         toast('Carpetas actualizadas'); A.recargar();
+      } }],
+    });
+  };
+
+  // ---------------------------------------------------------------- eliminar una sede
+  // Sus servicios y equipos se pueden pasar a otra sede, o eliminarse con sus documentos.
+  A.eliminarSede = (ent, sede, consE, sedesE, eqsT, docsT) => {
+    const sedeC = (c) => c.sede || 'Sede principal';
+    const consS = consE.filter((c) => sedeC(c) === sede);
+    const ids = new Set(consS.map((c) => c.id));
+    const eqsS = eqsT.filter((e) => ids.has(e.consultorio_id));
+    const docsS = docsT.filter((d) => !d.equipo_id && (d.subcarpeta || '').split('/')[0] === sede);
+    const otras = sedesE.filter((x) => x !== sede);
+    const vacia = !consS.length && !docsS.length;
+    modal({
+      titulo: `Eliminar la sede ${sede}`, size: 'sm',
+      cuerpo: `<form class="form" onsubmit="return false">
+        <p>La sede tiene <b>${consS.length}</b> servicio${consS.length === 1 ? '' : 's'}, <b>${eqsS.length}</b> equipo${eqsS.length === 1 ? '' : 's'} y <b>${docsS.length}</b> archivo${docsS.length === 1 ? '' : 's'} propio${docsS.length === 1 ? '' : 's'}. Los documentos generales de la entidad no se tocan.</p>
+        ${vacia ? '' : `<div class="fields">
+          ${otras.length ? `<label class="checks full radio-line"><input type="radio" name="modo" value="mover" checked> Pasar sus servicios, equipos y archivos a otra sede</label>${f.sel('destino', 'Sede de destino', otras, otras[0], { full: true })}` : ''}
+          <label class="checks full radio-line"><input type="radio" name="modo" value="borrar" ${otras.length ? '' : 'checked'}> Eliminar también sus servicios, equipos y documentos (no se puede deshacer)</label>
+          ${f.input('confirma', 'Para eliminar todo escriba ELIMINAR', '', { full: true, attrs: 'autocomplete="off"' })}
+        </div>`}</form>`,
+      acciones: [{ t: 'Cancelar' }, { t: `${I.del} Eliminar sede`, cls: 'pri danger', fn: async (m) => {
+        const d = leer(m.body); const modo = vacia ? 'vacia' : d.modo;
+        if (modo === 'borrar' && d.confirma.trim().toUpperCase() !== 'ELIMINAR') { toast('Escriba ELIMINAR para confirmar que se borran los equipos y documentos', true); return false; }
+        if (modo === 'mover') {
+          const dest = d.destino;
+          for (const c of consS) await S.update('consultorios', c.id, { sede: dest });
+          for (const x of docsS) await S.update('documentos', x.id, { subcarpeta: [dest, ...(x.subcarpeta || '').split('/').slice(1)].join('/') });
+        } else if (modo === 'borrar') {
+          const docsEq = (await S.list('documentos', { entidad_id: ent.id })).filter((x) => x.equipo_id && eqsS.some((e) => e.id === x.equipo_id));
+          for (const x of [...docsEq, ...docsS]) { try { await S.removeFile(x.archivo); } catch {} }
+          for (const x of docsS) await S.remove('documentos', x.id);
+          for (const e of eqsS) await S.remove('equipos', e.id);
+          for (const c of consS) await S.remove('consultorios', c.id);
+        }
+        const cfg = { ...(ent.config || {}), sedes: (ent.config?.sedes || []).filter((x) => x !== sede) };
+        try { await S.update('entidades', ent.id, { config: cfg }); ent.config = cfg; } catch {}
+        S.log('ELIMINAR', 'entidades', ent.id, `Sede ${sede} eliminada${modo === 'mover' ? ' (pasada a ' + d.destino + ')' : modo === 'borrar' ? ` con ${eqsS.length} equipos` : ''}`);
+        toast(`Sede “${sede}” eliminada`); go('entidad', { id: ent.id });
       } }],
     });
   };
