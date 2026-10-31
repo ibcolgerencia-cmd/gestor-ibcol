@@ -478,3 +478,8 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .crono-tabs .ctab-sel select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; }
 .crono th.crono-anio { background: var(--accent-soft); color: var(--accent); font-size: .78rem; }
 .crono td.y-ini, .crono th.y-ini { border-left: 2px solid var(--accent); }
+
+/* v42 · entidad organizada por sedes */
+.folder.sede .ic::before { background: var(--warn); }
+.folder.sede .ic::after { background: var(--side); }
+.folder.sede b { letter-spacing: .02em; }
