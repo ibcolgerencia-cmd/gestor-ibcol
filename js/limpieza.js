@@ -34,11 +34,11 @@
   const tipoDia = (a, m, d) => { const dt = new Date(a, m - 1, d); return festivos(a).has(`${m}-${d}`) ? 'fest' : dt.getDay() === 0 || dt.getDay() === 6 ? 'fds' : ''; };
 
   // ------------------------------------------------------------------ vista de la carpeta
-  A.G.limpieza = async (el, { ent }) => {
+  A.G.limpieza = async (el, { ent, sede = null }) => {
     const hoy = new Date();
     st.lcF = st.lcF || {}; const F = (st.lcF[ent.id] = st.lcF[ent.id] || { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1, cons: '' });
     let [consAll, eqs] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id })]);
-    const cons = A.ordenar(consAll).filter((c) => eqs.some((e) => e.consultorio_id === c.id && e.estado !== 'Dado de baja'));
+    const cons = A.ordenar(consAll).filter((c) => (!sede || (c.sede || 'Sede principal') === sede) && eqs.some((e) => e.consultorio_id === c.id && e.estado !== 'Dado de baja'));
     if (!F.cons || !cons.some((c) => c.id === F.cons)) F.cons = cons[0]?.id || '';
     let lista = null, guardando = null;
     const pintar = async () => {

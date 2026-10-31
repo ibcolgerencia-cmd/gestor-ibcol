@@ -36,9 +36,9 @@
 
   // =================================================================== GENERADORES DE CARPETA
   // ------------------------------------------------------------ Inventario
-  A.G.inventario = async (el, { ent }) => {
+  A.G.inventario = async (el, { ent, sede: sedeCtx = null }) => {
     const [eqs, cons] = await Promise.all([S.list('equipos', { entidad_id: ent.id }, 'codigo_inv'), S.list('consultorios', { entidad_id: ent.id })]).then(([e, c]) => { const co = A.ordenar(c); const idx = (x) => co.findIndex((k) => k.id === x.consultorio_id); return [[...e].sort((a, b) => (idx(a) - idx(b)) || ((a.orden ?? 9999) - (b.orden ?? 9999)) || String(a.codigo_inv).localeCompare(String(b.codigo_inv))), co]; });
-    let filtro = '', q = '', editar = false, sedeF = '';
+    let filtro = '', q = '', editar = false, sedeF = sedeCtx || '';
     const cn = (id) => cons.find((c) => c.id === id)?.nombre || '—';
     const sedeC = (c) => c?.sede || 'Sede principal';
     const sedesL = [...new Set(cons.map(sedeC))];
@@ -54,7 +54,7 @@
     el.innerHTML = `<section class="panel"><header><div><h2>Equipos registrados por servicio</h2><span class="muted" style="font-size:.85rem">Se crean al cargar el inventario. Cada equipo queda dentro de su servicio en “3. Información del equipo”.</span></div><div class="actions">
         ${esProp() ? `<button class="btn pri" data-act="cargarInv">${I.subir} Cargar inventario (PDF o Excel)</button>` : ''}
         <button class="btn" data-act="invPDF">${I.pdf} PDF (FMB-001)</button>${esProp() ? `<button class="btn" data-act="invXLS">${I.excel} Excel</button>` : ''}${esProp() ? `<button class="btn" data-act="nuevoEq">${I.mas} Equipo</button>` : ''}</div></header>
-      <div class="tbl-tools">${sedesL.length > 1 ? `<div class="field" style="min-width:170px"><select aria-label="Filtrar por sede" data-sedef><option value="">Todas las sedes</option>${sedesL.map((x) => `<option value="${h(x)}">${h(x)}</option>`).join('')}</select></div>` : ''}<div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}${sedesL.length > 1 ? ' · ' + h(sedeC(c)) : ''}</option>`).join('')}</select></div>
+      <div class="tbl-tools">${sedesL.length > 1 ? `<div class="field" style="min-width:170px"><select aria-label="Filtrar por sede" data-sedef><option value="">Todas las sedes</option>${sedesL.map((x) => `<option value="${h(x)}" ${sedeF === x ? 'selected' : ''}>${h(x)}</option>`).join('')}</select></div>` : ''}<div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}${sedesL.length > 1 ? ' · ' + h(sedeC(c)) : ''}</option>`).join('')}</select></div>
         <input type="search" data-q placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar en el inventario">
         <span class="muted" data-cuenta></span>
         ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
@@ -64,7 +64,9 @@
     pintar();
     el.querySelector('[data-filtro]').onchange = (e) => { filtro = e.target.value; pintar(); };
     const sf = el.querySelector('[data-sedef]');
-    if (sf) sf.onchange = (e) => { sedeF = e.target.value; filtro = ''; const fs = el.querySelector('[data-filtro]'); fs.value = ''; [...fs.options].forEach((o) => { if (o.value) o.hidden = !!sedeF && sedeC(cons.find((c) => c.id === o.value)) !== sedeF; }); pintar(); };
+    const ocultarCons = () => { const fs = el.querySelector('[data-filtro]'); [...fs.options].forEach((o) => { if (o.value) o.hidden = !!sedeF && sedeC(cons.find((c) => c.id === o.value)) !== sedeF; }); };
+    if (sf) sf.onchange = (e) => { sedeF = e.target.value; filtro = ''; el.querySelector('[data-filtro]').value = ''; ocultarCons(); pintar(); };
+    ocultarCons();
     let tq; el.querySelector('[data-q]').oninput = (e) => { clearTimeout(tq); tq = setTimeout(() => { q = nrmQ(e.target.value); pintar(); }, 150); };
     A.acts({
       editTabla: () => { editar = !editar; const hn = el.querySelector('[data-hint]'); if (hn) hn.hidden = !editar; pintar(); },
@@ -103,7 +105,7 @@
     return r;
   };
   A.planDesde = (per, mesIni = 1, semana = 2) => { const p = {}, paso = CAT.PERIODICIDAD[per] || 0; if (!paso) return p; for (let m = +mesIni; m <= 12; m += paso) p[`${m}-${semana}`] = 'P'; return p; };
-  A.G.crono = async (el, { ent }, tipo) => {
+  A.G.crono = async (el, { ent, sede: sedeCtx = null }, tipo) => {
     let anio = st.cronoAnio || anioAct;
     const [eqs, consAll] = await Promise.all([S.list('equipos', { entidad_id: ent.id }, 'codigo_inv'), S.list('consultorios', { entidad_id: ent.id })]);
     const cons = A.ordenar(consAll);
@@ -111,6 +113,7 @@
     const cap = tipo === 'capacitacion';
     const fk = `${ent.id}|${tipo}`; st.cronoF = st.cronoF || {}; const F = (st.cronoF[fk] = st.cronoF[fk] || { mes: 0, q: '', estado: '', editar: false, mesIni: 1, serv: '' });
     if (!F.mesIni) F.mesIni = 1;
+    if (sedeCtx) F.serv = 'sede:' + sedeCtx;
     const eqd = (id) => eqs.find((e) => e.id === id) || {};
     const sedeC = (c) => c?.sede || 'Sede principal';
     const sedes = [...new Set(cons.map(sedeC))];

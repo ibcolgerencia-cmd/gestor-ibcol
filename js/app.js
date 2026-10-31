@@ -333,29 +333,59 @@ window.APP = (() => {
   const CARP_EQ = 'equipos';
 
   // ---------------------------------------------------------------- Entidad (carpeta principal)
-  V.entidad = async ({ id }) => {
+  // Sedes de una entidad (según sus servicios). Con 2 o más, la entidad se abre por sedes.
+  A.sedesDe = (cons, ent = null) => { const l = [...new Set(A.ordenar(cons).map((c) => c.sede || 'Sede principal'))]; (ent?.config?.sedes || []).forEach((x) => { if (!l.includes(x)) l.push(x); }); return (ent?.config?.sedes || []).length && l.includes('Sede principal') && !cons.some((c) => !c.sede || c.sede === 'Sede principal') ? l.filter((x) => x !== 'Sede principal') : l; };
+  // Documento general (subcarpeta sin nombre de sede) o de esta sede (subcarpeta "SEDE/…")
+  A.esDeSede = (d, sede, sedes) => { const r = (d.subcarpeta || '').split('/')[0]; return r === sede || !sedes.includes(r); };
+  V.entidad = async ({ id, sede = null }) => {
     const anio = new Date().getFullYear();
-    const [ent, eqs, docs, cronos, mtos, evs, als] = await Promise.all([S.get('entidades', id), S.list('equipos', { entidad_id: id }), S.list('documentos', { entidad_id: id }), S.list('cronogramas', { entidad_id: id }), S.list('mantenimientos', { entidad_id: id }), S.list('eventos', { entidad_id: id }), S.list('alertas', { entidad_id: id })]);
+    const consE = await S.list('consultorios', { entidad_id: id });
+    const [ent, eqsT, docsT, cronos, mtos, evs, als] = await Promise.all([S.get('entidades', id), S.list('equipos', { entidad_id: id }), S.list('documentos', { entidad_id: id }), S.list('cronogramas', { entidad_id: id }), S.list('mantenimientos', { entidad_id: id }), S.list('eventos', { entidad_id: id }), S.list('alertas', { entidad_id: id })]);
     if (!ent) throw new Error('Entidad no encontrada o sin permiso');
     st.ent = ent;
+    const sedesE = A.sedesDe(consE, ent);
+    if (sede && !sedesE.includes(sede)) sede = null;
+    const porSedes = sedesE.length > 1;
+    // Dentro de una sede: sus equipos y los documentos de su subcarpeta (más los generales de la entidad)
+    const idsSede = new Set(consE.filter((c) => (c.sede || 'Sede principal') === sede).map((c) => c.id));
+    const eqs = sede ? eqsT.filter((e) => idsSede.has(e.consultorio_id)) : eqsT;
+    const docs = sede ? docsT.filter((d) => d.equipo_id ? eqs.some((e) => e.id === d.equipo_id) : A.esDeSede(d, sede, sedesE)) : docsT;
     const venc = A.vencimientos(eqs, docs.filter((d) => d.fecha_vencimiento));
-    const k = A.kpis({ equipos: eqs, cronos, mtos, eventos: evs, alertas: als, anio });
+    const enSede = (x) => !sede || eqs.some((e) => e.id === x.equipo_id);
+    const k = A.kpis({ equipos: eqs, cronos: cronos.filter(enSede), mtos: mtos.filter(enSede), eventos: evs, alertas: als, anio });
+    const nEqSede = (sd) => { const ids = new Set(consE.filter((c) => (c.sede || 'Sede principal') === sd).map((c) => c.id)); return eqsT.filter((e) => ids.has(e.consultorio_id) && e.estado !== 'Dado de baja').length; };
+    const nDocSede = (sd) => docsT.filter((d) => !d.equipo_id && (d.subcarpeta || '').split('/')[0] === sd).length;
+    const tarjetasSedes = porSedes && !sede ? `<section class="folder-group"><span class="eyebrow">Sedes · abra una sede para ver sus carpetas</span><div class="folders">${sedesE.map((sd) => `<div class="folder-w"><button class="folder sede" data-act="abrirSede" data-s="${h(sd)}"><span class="ic"></span><b>${h(sd.toUpperCase())}</b><small>${nEqSede(sd)} equipo${nEqSede(sd) === 1 ? "" : "s"} · ${nDocSede(sd)} archivo${nDocSede(sd) === 1 ? "" : "s"}</small></button></div>`).join('')}</div></section>` : '';
     const nDocs = (c) => (c.k === CARP_EQ ? eqs.filter((e) => e.estado !== 'Dado de baja').length : docs.filter((d) => d.carpeta === c.k && (c.todos || !d.equipo_id)).length);
     const etiqueta = (c) => { const n = nDocs(c); return c.k === CARP_EQ ? `${n} equipo${n === 1 ? '' : 's'} por área` : `${n} archivo${n === 1 ? '' : 's'}${c.gen ? ' · registros' : ''}`; };
     const ocE = A.ocultas(ent, 'ent');
     const visiblesE = CAT.CARPETAS_ENTIDAD.filter((c) => !ocE.has(c.k));
     const grupos = [...new Set(visiblesE.map((c) => c.g))];
     content().innerHTML = `
-      ${esProp() ? migas([['Entidades', 'entidades'], ent.razon_social]) : ''}
-      <div class="page-head"><div><span class="eyebrow">Carpeta digital de la entidad</span><h1>${h(ent.razon_social)}</h1>
+      ${sede ? migas([...A.rutaEnt(ent), sede.toUpperCase()]) : esProp() ? migas([['Entidades', 'entidades'], ent.razon_social]) : ''}
+      <div class="page-head"><div><span class="eyebrow">${sede ? `Sede · ${h(ent.razon_social)}` : 'Carpeta digital de la entidad'}</span><h1>${h(sede ? sede.toUpperCase() : ent.razon_social)}</h1>
         <span class="muted">NIT <span class="mono">${h(ent.nit || '—')}</span> · REPS <span class="mono">${h(ent.reps || '—')}</span> · ${h(ent.ciudad || '')}</span></div>
-        ${esProp() ? `<div class="actions"><button class="btn" data-act="editEnt">${I.edit} Editar</button><button class="btn" data-act="usuariosEnt">${I.users} Accesos</button><button class="btn" data-act="configCarp" title="Quitar o volver a mostrar carpetas para esta entidad">${I.carpeta} Carpetas${ocE.size + A.ocultas(ent, 'eq').size ? ` <span class="pill">${ocE.size + A.ocultas(ent, 'eq').size} quitadas</span>` : ''}</button><button class="btn pri" data-act="importarDrive">${I.subir} Importar carpeta de la entidad</button></div>` : ''}</div>
+        ${esProp() ? `<div class="actions"><button class="btn" data-act="editEnt">${I.edit} Editar</button><button class="btn" data-act="usuariosEnt">${I.users} Accesos</button>${!sede ? `<button class="btn" data-act="nuevaSede" title="Agregar una sede o servicio (ej. HOME CARE)">${I.mas} Sede</button>` : ''}<button class="btn" data-act="configCarp" title="Quitar o volver a mostrar carpetas para esta entidad">${I.carpeta} Carpetas${ocE.size + A.ocultas(ent, 'eq').size ? ` <span class="pill">${ocE.size + A.ocultas(ent, 'eq').size} quitadas</span>` : ''}</button><button class="btn pri" data-act="importarDrive">${I.subir} Importar carpeta de la entidad</button></div>` : ''}</div>
+      ${tarjetasSedes}
       ${A.kpiTiles(k, ['mp', 'mm', 'mv', 'disp'])}
       <section class="panel"><header><h2>Alertas de vencimiento</h2><span class="muted">Mantenimientos, calibraciones, garantías y documentos</span></header>${A.listaVenc(venc)}</section>
-      ${grupos.map((g) => `<section class="folder-group"><span class="eyebrow">${h(g)}</span><div class="folders">${visiblesE.filter((c) => c.g === g).map((c) => A.tarjetaCarpeta(c, etiqueta(c), 'ent', ent)).join('')}</div></section>`).join('')}`;
+      ${porSedes && !sede ? '<h2 class="sede-tit" style="margin-top:8px">TODA LA ENTIDAD (TODAS LAS SEDES)</h2>' : ''}${grupos.map((g) => `<section class="folder-group"><span class="eyebrow">${h(g)}</span><div class="folders">${visiblesE.filter((c) => c.g === g).map((c) => A.tarjetaCarpeta(c, etiqueta(c), 'ent', ent)).join('')}</div></section>`).join('')}`;
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
-      carpeta: (d) => (d.k === CARP_EQ ? go('areas', { id }) : go('carpeta', { ent: id, k: d.k })),
+      carpeta: (d) => (d.k === CARP_EQ ? go('areas', { id, ...(sede ? { sede } : {}) }) : go('carpeta', { ent: id, k: d.k, ...(sede ? { sede } : {}) })),
+      abrirSede: (d) => go('entidad', { id, sede: d.s }),
+      nuevaSede: () => modal({
+        titulo: 'Agregar sede', size: 'sm',
+        cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre de la sede o servicio', '', { full: true, attrs: 'placeholder="ej: SIEMPREE SEDE TIMBÍO"' })}</div><p class="muted" style="font-size:.85rem">Con dos o más sedes, la entidad se abre por sedes y cada una tiene todas sus carpetas. Los servicios de cada sede se crean en “Información del equipo” o al importar su carpeta.</p></form>`,
+        acciones: [{ t: 'Cancelar' }, { t: 'Agregar', cls: 'pri', fn: async (m) => {
+          const v = leer(m.body).nombre.replace(/\s+/g, ' ').trim(); if (!v) { toast('Escriba el nombre', true); return false; }
+          if (sedesE.some((x) => norm(x) === norm(v))) { toast('Esa sede ya existe', true); return false; }
+          const actuales = sedesE.filter((x) => x !== 'Sede principal' || consE.some((c) => !c.sede || c.sede === 'Sede principal'));
+          const cfg = { ...(ent.config || {}), sedes: [...new Set([...actuales, v])] };
+          if (!(await guardarConfig(ent, cfg))) return false;
+          S.log('EDITAR', 'entidades', ent.id, `Nueva sede ${v}`); toast(`Sede “${v}” agregada`); A.recargar();
+        } }],
+      }),
       editEnt: () => A.formEntidad(ent),
       usuariosEnt: () => go('usuarios', { ent: id }),
       importarDrive: () => A.importarEntidad(ent),
@@ -366,23 +396,24 @@ window.APP = (() => {
   };
 
   // ---------------------------------------------------------------- 3. Áreas / consultorios → equipos
-  V.areas = async ({ id }) => {
+  V.areas = async ({ id, sede: sedeP = null }) => {
     const [ent, consR, eqsR] = await Promise.all([S.get('entidades', id), S.list('consultorios', { entidad_id: id }), S.list('equipos', { entidad_id: id })]);
     const cons = A.numerado(consR);
     const sedeC = (c) => c.sede || 'Sede principal';
-    const sedesL = [...new Set(A.ordenar(consR).map(sedeC))];
-    st.sedeSel = st.sedeSel || {}; const sedeSel = sedesL.includes(st.sedeSel[id]) ? st.sedeSel[id] : '';
+    const sedesL = A.sedesDe(consR, ent);
+    st.sedeSel = st.sedeSel || {}; if (sedeP) st.sedeSel[id] = sedeP;
+    const sedeSel = sedesL.includes(st.sedeSel[id]) ? st.sedeSel[id] : '';
     const titulo = A.nomCarpeta(ent, 'ent', CARP_EQ);
     const sinCons = A.numerado(eqsR.filter((e) => !cons.some((c) => c.id === e.consultorio_id)));
     const fila = (e) => `<button class="eq-row" data-act="abrirEq" data-id="${e.id}"><span class="cod">${e._n}. ${h(e.codigo_inv)}</span><span class="nm"><b>${h(e.nombre)}</b><small>${h([e.marca, e.modelo].filter(Boolean).join(' · '))}</small></span><span class="mm muted mono" style="font-size:.8rem">S/N ${h(e.serie || '—')}</span><span class="badges">${A.riesgo(e.clase_riesgo)}${A.estadoPill(e.estado)}</span></button>`;
     const sala = (c, lista) => `<section class="room"><header><h3>${c ? `${c._n}. ${h(c.nombre.toUpperCase())}` : 'SIN SERVICIO ASIGNADO'} ${c?.sede ? `<small class="muted" style="font-family:var(--f-body);font-weight:400;font-size:.85rem">${h(c.sede)}${c.servicio ? ' · ' + h(c.servicio) : ''}</small>` : ''}</h3>
         <div class="actions"><span class="pill">${lista.length} equipo${lista.length === 1 ? '' : 's'}</span>${esProp() && c ? `<button class="icon-btn" data-act="editCons" data-id="${c.id}" aria-label="Editar área">${I.edit}</button><button class="btn sm" data-act="nuevoEq" data-cons="${c.id}">${I.mas} Equipo</button>` : ''}</div></header>
         <div class="eq-list">${lista.map(fila).join('') || '<div class="empty">Sin equipos registrados.</div>'}</div></section>`;
-    content().innerHTML = `${migas([...A.rutaEnt(ent), titulo])}
+    content().innerHTML = `${migas([...A.rutaEnt(ent), ...(sedeSel && sedesL.length > 1 ? [[sedeSel.toUpperCase(), 'entidad', { id, sede: sedeSel }]] : []), titulo])}
       <div class="page-head"><div><span class="eyebrow">Servicios o consultorios · carpeta por equipo</span><h1>${h(titulo)}</h1></div>
         ${esProp() ? `<div class="actions"><button class="btn" data-act="revisarDocs">${I.ia} Revisar documentos (IA)</button><button class="btn" data-act="importarDrive">${I.subir} Importar servicios y equipos</button><button class="btn" data-act="nuevoCons">${I.mas} Servicio / consultorio</button><button class="btn pri" data-act="nuevoEq">${I.mas} Equipo</button></div>` : ''}</div>
       ${sedesL.length > 1 ? `<div class="chips sede-chips" role="tablist" aria-label="Sedes"><button class="chip ${!sedeSel ? 'on' : ''}" data-act="verSede" data-s="">Todas las sedes</button>${sedesL.map((s) => `<button class="chip ${sedeSel === s ? 'on' : ''}" data-act="verSede" data-s="${h(s)}">${h(s)} <small>${eqsR.filter((e) => consR.some((c) => c.id === e.consultorio_id && sedeC(c) === s)).length}</small></button>`).join('')}</div>` : ''}
-      ${sedesL.filter((s) => !sedeSel || s === sedeSel).map((s) => `${sedesL.length > 1 || esProp() ? `<h2 class="sede-tit">${h(s.toUpperCase())}${esProp() ? ` <button class="icon-btn" data-act="renSede" data-s="${h(s)}" title="Cambiar el nombre de la sede" aria-label="Cambiar nombre de la sede ${h(s)}">${I.edit}</button>` : ''}</h2>` : ''}${A.numerado(cons.filter((c) => sedeC(c) === s)).map((c) => sala(c, A.numerado(eqsR.filter((e) => e.consultorio_id === c.id)))).join('')}`).join('')}
+      ${sedesL.filter((s) => !sedeSel || s === sedeSel).map((s) => `${sedesL.length > 1 || esProp() ? `<h2 class="sede-tit">${h(s.toUpperCase())}${esProp() ? ` <button class="icon-btn" data-act="renSede" data-s="${h(s)}" title="Cambiar el nombre de la sede" aria-label="Cambiar nombre de la sede ${h(s)}">${I.edit}</button>` : ''}</h2>` : ''}${A.numerado(cons.filter((c) => sedeC(c) === s)).map((c) => sala(c, A.numerado(eqsR.filter((e) => e.consultorio_id === c.id)))).join('') || `<div class="empty">Esta sede aún no tiene servicios o consultorios.${esProp() ? ' Use “+ Servicio / consultorio” o importe la carpeta de la sede.' : ''}</div>`}`).join('')}
       ${(sinCons.length || !cons.length) && !sedeSel ? sala(null, sinCons) : ''}`;
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
@@ -394,11 +425,12 @@ window.APP = (() => {
           const v = leer(m.body).nombre.replace(/\s+/g, ' ').trim(); if (!v) { toast('Escriba el nombre', true); return false; }
           if (v === d.s) return;
           for (const c of consR.filter((x) => sedeC(x) === d.s)) await S.update('consultorios', c.id, { sede: v });
+          if ((ent.config?.sedes || []).includes(d.s)) { try { await S.update('entidades', ent.id, { config: { ...ent.config, sedes: ent.config.sedes.map((x) => (x === d.s ? v : x)) } }); } catch {} }
           if (st.sedeSel[id] === d.s) st.sedeSel[id] = v;
           S.log('EDITAR', 'consultorios', id, `Sede ${d.s} → ${v}`); toast('Sede renombrada'); A.recargar();
         } }],
       }),
-      nuevoCons: () => A.formConsultorio(id, null, cons.length + 1),
+      nuevoCons: () => A.formConsultorio(id, null, (sedeSel ? cons.filter((c) => sedeC(c) === sedeSel).length : cons.length) + 1, sedeSel || null),
       editCons: (d) => A.formConsultorio(id, cons.find((c) => c.id === d.id)),
       nuevoEq: (d) => A.formEquipo({ entidad_id: id, consultorio_id: d.cons || cons[0]?.id, orden: eqsR.filter((e) => e.consultorio_id === (d.cons || cons[0]?.id)).length + 1 }, cons),
       importarDrive: () => A.importarEntidad(ent, true),
@@ -406,9 +438,9 @@ window.APP = (() => {
     });
   };
 
-  A.formConsultorio = (entidad_id, c = null, ordenSug = 1) => modal({
+  A.formConsultorio = (entidad_id, c = null, ordenSug = 1, sedeSug = null) => modal({
     titulo: c ? 'Editar área / consultorio' : 'Nueva área / consultorio',
-    cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('orden', 'N° (orden)', c?.orden ?? ordenSug, { type: 'number', attrs: 'min="0"' })}${f.input('nombre', 'Nombre del área o consultorio *', c?.nombre, { full: true, attrs: 'placeholder="ej: CONSULTORIO MÉDICO"' })}${f.input('sede', 'Sede', c?.sede || 'Sede principal')}${f.input('servicio', 'Servicio habilitado', c?.servicio)}</div></form>`,
+    cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('orden', 'N° (orden)', c?.orden ?? ordenSug, { type: 'number', attrs: 'min="0"' })}${f.input('nombre', 'Nombre del área o consultorio *', c?.nombre, { full: true, attrs: 'placeholder="ej: CONSULTORIO MÉDICO"' })}${f.input('sede', 'Sede', c?.sede || sedeSug || 'Sede principal')}${f.input('servicio', 'Servicio habilitado', c?.servicio)}</div></form>`,
     acciones: [
       ...(c ? [{ t: `${I.del} Eliminar`, cls: 'danger', fn: async () => { if (!(await confirmar('¿Eliminar esta área? Sus equipos quedarán sin área asignada.'))) return false; await S.remove('consultorios', c.id); A.recargar(); } }] : []),
       { t: 'Cancelar' },
@@ -493,18 +525,20 @@ window.APP = (() => {
   };
 
   // ---------------------------------------------------------------- Carpeta (genérica)
-  V.carpeta = async ({ ent: entId, eq: eqId, k }) => {
+  V.carpeta = async ({ ent: entId, eq: eqId, k, sede = null }) => {
     const ent = await S.get('entidades', entId);
+    const sedesE = sede && !eqId ? A.sedesDe(await S.list('consultorios', { entidad_id: entId }), ent) : [];
+    if (!sedesE.includes(sede)) sede = null;
     const eq = eqId ? await S.get('equipos', eqId) : null;
     const def = (eq ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD).find((c) => c.k === k);
     const nomDef = A.nomCarpeta(ent, eq ? 'eq' : 'ent', k);
-    const ruta = [...A.rutaEnt(ent), ...(eq ? [[A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], [eq.nombre.toUpperCase(), 'equipo', { id: eq.id }]] : []), nomDef];
+    const ruta = [...A.rutaEnt(ent), ...(sede ? [[sede.toUpperCase(), 'entidad', { id: ent.id, sede }]] : []), ...(eq ? [[A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], [eq.nombre.toUpperCase(), 'equipo', { id: eq.id }]] : []), nomDef];
     content().innerHTML = `${migas(ruta)}
-      <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : 'Carpeta de la entidad'}</span><h1>${h(nomDef)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
+      <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : sede ? `Sede ${h(sede)}` : 'Carpeta de la entidad'}</span><h1>${h(nomDef)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
       ${k === 'inventarios' ? '<section class="panel" id="archivos"></section>' : ''}
       ${def.gen ? '<div id="gen" style="display:grid;gap:18px"></div>' : ''}
       ${k === 'inventarios' ? '' : '<section class="panel" id="archivos"></section>'}`;
-    const ctx = { ent, eq, k, def };
+    const ctx = { ent, eq, k, def, sede };
     A.acts({ ia: () => A.asistenteIA({ ent, eq, carpeta: k }), google: () => A.buscarGoogleEquipo(eq, ent) });
     if (def.gen) {
       const [tipo, sub] = def.gen.split(':');
@@ -514,21 +548,30 @@ window.APP = (() => {
     if (def.subsAnio) for (let a = new Date().getFullYear(); a >= new Date().getFullYear() - 3; a--) subs.push(def.subsAnio(a));
     await A.archivos(document.getElementById('archivos'), {
       entidad_id: entId, equipo_id: def.rel ? null : (eqId || null), carpeta: def.carpetaReal || k, titulo: k === 'inventarios' ? 'Archivos del inventario' : 'Archivos y subcarpetas',
-      subs, todos: !!def.todos, relEquipo: def.rel ? eqId : null,
+      subs, todos: !!def.todos, relEquipo: def.rel ? eqId : null, sede, sedes: sedesE,
     });
   };
 
   // ---------------------------------------------------------------- Archivos de una carpeta (con subcarpetas)
   st.subSel = st.subSel || {};
   A.archivos = async (cont, opts) => {
-    const { entidad_id, equipo_id, carpeta, titulo = 'Archivos', subs = [], todos = false, relEquipo = null } = opts;
+    const { entidad_id, equipo_id, carpeta, titulo = 'Archivos', subs = [], todos = false, relEquipo = null, sede = null, sedes = [] } = opts;
     const recargar = () => A.archivos(cont, opts);
     const filtros = { carpeta, entidad_id: entidad_id || null };
     let docs = await S.list('documentos', filtros, '-created_at');
+    // Dentro de una sede: se ven los documentos de "SEDE/…" (sin el nombre de la sede) y los generales de la entidad
+    const conSede = (sub) => (sede ? [sede, sub].filter(Boolean).join('/') : sub) || null;
+    if (sede && !equipo_id && !relEquipo) {
+      docs = docs.filter((d) => d.equipo_id || A.esDeSede(d, sede, sedes)).map((d) => {
+        const p = (d.subcarpeta || '').split('/');
+        return p[0] === sede ? { ...d, subcarpeta: p.slice(1).join('/') || null, _sede: true } : { ...d, _general: true };
+      });
+    }
+    const subReal = (d, sub) => (d._sede ? conSede(sub) : sub || null);
     if (!esProp()) docs = docs.filter((d) => !window.IBCOL_ES_EXCEL(d.nombre));
     if (relEquipo) docs = docs.filter((d) => d.equipo_id === relEquipo || (d.equipos_rel || []).includes(relEquipo));
     else if (!todos) docs = docs.filter((d) => (d.equipo_id || null) === (equipo_id || null));
-    const llave = `${entidad_id}|${equipo_id || relEquipo || ''}|${carpeta}`;
+    const llave = `${entidad_id}|${equipo_id || relEquipo || ''}|${carpeta}${sede ? '|' + sede : ''}`;
     st.subExtra = st.subExtra || {};
     const raiz = (d) => (d.subcarpeta || '').split('/')[0];
     const listaSubs = [...new Set([...subs, ...[...new Set([...(st.subExtra[llave] || []), ...docs.map(raiz).filter(Boolean)])].filter((x) => !subs.includes(x)).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))])];
@@ -544,7 +587,7 @@ window.APP = (() => {
         const dv = UI.diasHasta(d.fecha_vencimiento);
         return `<div class="file"><span class="ext ${tipoExt(d.nombre)}">${h(UI.ext(d.nombre).slice(0, 4).toUpperCase())}</span>
           <div class="info"><b>${h(d.nombre)}</b><small>${d.subcarpeta && d.subcarpeta !== sel ? `<span class="pill acc">${h(sel ? d.subcarpeta.slice(sel.length + 1) : d.subcarpeta)}</span>` : ''}${d.fecha_documento ? `<span>Fecha: ${UI.fecha(d.fecha_documento)}</span>` : ''}${d.tamano ? `<span>${UI.tam(d.tamano)}</span>` : ''}
-            ${d.fecha_vencimiento ? `<span class="pill ${dv < 0 ? 'bad' : dv <= 30 ? 'warn' : 'ok'}">Vence ${UI.fecha(d.fecha_vencimiento)}</span>` : ''}${d.firmado ? '<span class="pill ok">Firmado</span>' : ''}${esProp() && d.visible_cliente === false ? '<span class="pill">Oculto al cliente</span>' : ''}</small></div>
+            ${d.fecha_vencimiento ? `<span class="pill ${dv < 0 ? 'bad' : dv <= 30 ? 'warn' : 'ok'}">Vence ${UI.fecha(d.fecha_vencimiento)}</span>` : ''}${d.firmado ? '<span class="pill ok">Firmado</span>' : ''}${sede && d._general && !d.equipo_id ? '<span class="pill">Toda la entidad</span>' : ''}${esProp() && d.visible_cliente === false ? '<span class="pill">Oculto al cliente</span>' : ''}</small></div>
           <div class="tools"><button class="icon-btn" data-act="verDoc" data-id="${d.id}" aria-label="Ver">${I.ver}</button><button class="icon-btn" data-act="bajarDoc" data-id="${d.id}" aria-label="Descargar">${I.bajar}</button><button class="icon-btn" data-act="enviarDoc" data-id="${d.id}" aria-label="Enviar por WhatsApp o correo" title="Enviar por WhatsApp o correo">${I.mail}</button>
             ${esProp() && carpeta === 'inventarios' && /^(pdf|xlsx?|csv)$/.test(UI.ext(d.nombre)) ? `<button class="btn sm" data-act="usarInv" data-id="${d.id}">Crear servicios y equipos</button>` : ''}
             ${esProp() ? `${UI.ext(d.nombre) === 'pdf' ? `<button class="icon-btn" data-act="firmarDoc" data-id="${d.id}" aria-label="Firmar">${I.firma}</button>` : ''}<button class="icon-btn" data-act="editDoc" data-id="${d.id}" aria-label="Modificar">${I.edit}</button><button class="icon-btn bad" data-act="delDoc" data-id="${d.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></div>`;
@@ -557,7 +600,7 @@ window.APP = (() => {
       for (const fl of files) {
         if (fl.size > 50 * 1048576) { toast(`${fl.name}: supera 50 MB`, true); continue; }
         const rel = conRutas ? (fl.webkitRelativePath || '').split('/').slice(1, -1).join('/') : '';
-        const subcarpeta = [sel, rel].filter(Boolean).join('/') || null;
+        const subcarpeta = conSede([sel, rel].filter(Boolean).join('/'));
         const path = ruta(fl);
         await S.upload(path, fl);
         await S.insert('documentos', { entidad_id, equipo_id: equipo_id || relEquipo || null, carpeta, subcarpeta, nombre: fl.name, archivo: path, mime: fl.type, tamano: fl.size, fecha_documento: UI.hoy(), visible_cliente: true, ...(relEquipo ? { equipos_rel: [relEquipo] } : {}) });
@@ -609,7 +652,7 @@ window.APP = (() => {
           acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
             const v = leer(m.body).nombre.replace(/\//g, '-').replace(/\s+/g, ' ').trim(); if (!v) { toast('Escriba el nombre', true); return false; }
             if (v === viejo) return;
-            for (const d of afectados) { const resto = (d.subcarpeta || '').split('/').slice(1); await S.update('documentos', d.id, { subcarpeta: [v, ...resto].join('/') }); }
+            for (const d of afectados) { const resto = (d.subcarpeta || '').split('/').slice(1); await S.update('documentos', d.id, { subcarpeta: subReal(d, [v, ...resto].join('/')) }); }
             st.subExtra[llave] = [...(st.subExtra[llave] || []).filter((x) => x !== viejo), ...(afectados.length ? [] : [v])];
             st.subSel[llave] = v; S.log('EDITAR', 'documentos', entidad_id, `Subcarpeta ${viejo} → ${v}`); toast('Subcarpeta renombrada'); recargar();
           } }],
@@ -631,7 +674,7 @@ window.APP = (() => {
             <div class="field full">${window.IBCOL_ES_EXCEL(d.nombre) ? '<span class="muted">Formato en Excel: solo lo ve IBCOL (las entidades no tienen acceso).</span>' : `<label class="checks"><input type="checkbox" name="visible_cliente" data-single ${d.visible_cliente !== false ? 'checked' : ''}> Visible para el cliente</label>`}</div>
             <div class="field full"><span class="lbl">Reemplazar archivo (la versión anterior se conserva)</span><input type="file" data-rep></div></div></form>`,
           acciones: [{ t: 'Cancelar' }, { t: 'Guardar cambios', cls: 'pri', fn: async (m) => {
-            const v = leer(m.body); const cambios = { nombre: v.nombre || d.nombre, subcarpeta: v.subcarpeta || null, fecha_documento: v.fecha_documento || null, fecha_vencimiento: v.fecha_vencimiento || null, visible_cliente: v.visible_cliente };
+            const v = leer(m.body); const cambios = { nombre: v.nombre || d.nombre, subcarpeta: d._general ? (v.subcarpeta || null) : subReal({ _sede: !!sede }, v.subcarpeta), fecha_documento: v.fecha_documento || null, fecha_vencimiento: v.fecha_vencimiento || null, visible_cliente: v.visible_cliente };
             if (nuevo) {
               const path = ruta(nuevo);
               await S.upload(path, nuevo);
