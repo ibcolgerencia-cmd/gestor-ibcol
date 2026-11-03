@@ -171,7 +171,10 @@ window.APP = (() => {
   function migas(items) {
     st.migas = items;
     A.acts({ miga: (d) => { const [, vista, params] = st.migas[+d.i]; go(vista, params || {}, vista === 'entidades' || (vista === 'entidad' && !esProp())); } });
-    return `<nav class="crumbs" aria-label="Ruta">${items.map((t, i) => (Array.isArray(t) ? `<button data-act="miga" data-i="${i}">${h(t[0])}</button><span class="sep">/</span>` : `<span>${h(t)}</span>`)).join('')}</nav>`;
+    // Flecha para volver a la carpeta anterior (el último enlace de la ruta)
+    let ant = -1; items.forEach((t, i) => { if (Array.isArray(t)) ant = i; });
+    const volver = ant >= 0 ? `<button class="btn-volver" data-act="miga" data-i="${ant}" title="Volver a ${h(items[ant][0])}" aria-label="Volver a ${h(items[ant][0])}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Volver</span></button>` : '';
+    return `<nav class="crumbs" aria-label="Ruta">${volver}${items.map((t, i) => (Array.isArray(t) ? `<button data-act="miga" data-i="${i}">${h(t[0])}</button><span class="sep">/</span>` : `<span>${h(t)}</span>`)).join('')}</nav>`;
   }
   A.migasNav = migas;
   A.rutaEnt = (ent) => [...(esProp() ? [['Entidades', 'entidades']] : []), [ent.razon_social, 'entidad', { id: ent.id }]];
