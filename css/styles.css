@@ -486,3 +486,10 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .folder.sede b { letter-spacing: .02em; }
 .radio-line { display: flex !important; align-items: flex-start; gap: 8px; flex-wrap: nowrap; grid-column: 1 / -1; }
 .radio-line input { margin-top: 3px; flex: none; }
+
+/* v44 · botón volver a la carpeta anterior */
+.crumbs .btn-volver { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px 5px 8px; margin-right: 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--accent); font-weight: 600; font-size: .86rem; }
+.crumbs .btn-volver:hover { border-color: var(--accent); background: var(--accent-soft); text-decoration: none; }
+.crumbs .btn-volver:focus-visible { outline: 2px solid var(--accent-2); }
+.crumbs .btn-volver svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 640px) { .crumbs .btn-volver { padding: 7px 14px 7px 10px; } }
