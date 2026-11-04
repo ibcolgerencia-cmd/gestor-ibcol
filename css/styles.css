@@ -522,3 +522,17 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .eq-wrap:hover .eq-edit, .eq-wrap .eq-edit:focus-visible { opacity: 1; }
 @media (hover: none) { .eq-wrap .eq-edit { opacity: .85; } }
 h1 .icon-btn { vertical-align: middle; }
+
+/* v51 · carpetas de servicios (ej. EXTRAMURAL con los KIT) */
+.sede-tit .sp { flex: 1; }
+.srv-folder { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); margin: 0 0 14px; }
+.srv-folder > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; font-family: var(--f-display); }
+.srv-folder > summary::-webkit-details-marker { display: none; }
+.srv-folder > summary::before { content: "▸"; color: var(--muted); transition: transform .15s; }
+.srv-folder[open] > summary::before { transform: rotate(90deg); }
+.srv-folder > summary b { font-size: 1.05rem; letter-spacing: .03em; }
+.srv-folder > summary .muted { font-family: var(--f-body); font-size: .85rem; }
+.srv-folder > summary .ic-f svg { width: 22px; height: 22px; color: var(--accent); }
+.srv-folder > summary .sp { flex: 1; }
+.srv-folder-in { display: grid; gap: 12px; padding: 0 12px 12px 28px; }
+.srv-folder-in .room { margin: 0; }
