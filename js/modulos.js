@@ -38,7 +38,7 @@
   // ------------------------------------------------------------ Inventario
   A.G.inventario = async (el, { ent, sede: sedeCtx = null }) => {
     const [eqs, cons] = await Promise.all([S.list('equipos', { entidad_id: ent.id }, 'codigo_inv'), S.list('consultorios', { entidad_id: ent.id })]).then(([e, c]) => { const co = A.ordenar(c); const idx = (x) => co.findIndex((k) => k.id === x.consultorio_id); return [[...e].sort((a, b) => (idx(a) - idx(b)) || ((a.orden ?? 9999) - (b.orden ?? 9999)) || String(a.codigo_inv).localeCompare(String(b.codigo_inv))), co]; });
-    let filtro = '', q = '', editar = false, sedeF = sedeCtx || '';
+    let filtro = '', q = '', editar = false, sedeF = sedeCtx || '', porServ = true, borrar = false; const selB = new Set();
     const cn = (id) => cons.find((c) => c.id === id)?.nombre || '—';
     const sedeC = (c) => c?.sede || 'Sede principal';
     const sedesL = [...new Set(cons.map(sedeC))];
@@ -47,7 +47,26 @@
     const pintar = () => {
       const lista = visibles();
       el.querySelector('[data-edit]')?.classList.toggle('pri', editar);
-      el.querySelector('tbody').innerHTML = lista.map((e, i) => `<tr ${editar ? '' : `class="clic" data-act="abrirEq" data-id="${e.id}"`}>${A.COLS_EQ.map((c) => `<td class="${c.mono && !editar ? 'mono' : ''} ${c.k === 'item' ? 'num' : ''}">${editar ? A.celdaEdit(e, c.k, i, cons) : A.celdaVer(e, c.k, i, cons)}</td>`).join('')}<td>${A.estadoPill(e.estado)}</td></tr>`).join('') || '<tr><td colspan="11" class="empty">Sin equipos.</td></tr>';
+      const nCol = A.COLS_EQ.length + 1 + (borrar ? 1 : 0);
+      el.querySelector('[data-thsel]').hidden = !borrar;
+      let antes = null, n = 0;
+      el.querySelector('tbody').innerHTML = lista.map((e, i) => {
+        let cab = '';
+        if (porServ && e.consultorio_id !== antes) {
+          antes = e.consultorio_id; n = 0; const c = cons.find((k) => k.id === e.consultorio_id); const enS = lista.filter((x) => x.consultorio_id === e.consultorio_id);
+          cab = `<tr class="inv-grp"><th colspan="${nCol}">${borrar ? `<input type="checkbox" data-selserv="${e.consultorio_id}" ${enS.every((x) => selB.has(x.id)) ? 'checked' : ''} aria-label="Seleccionar todo el servicio"> ` : ''}${sedesL.length > 1 && !sedeF ? `<span class="muted">${h(sedeC(c))} ›</span> ` : ''}${h(c?.nombre || 'SIN SERVICIO')} <small class="muted">${enS.length} equipo${enS.length === 1 ? '' : 's'}</small></th></tr>`;
+        }
+        const k = porServ ? n++ : i;
+        return `${cab}<tr ${editar || borrar ? '' : `class="clic" data-act="abrirEq" data-id="${e.id}"`}>${borrar ? `<td><input type="checkbox" data-selb="${e.id}" ${selB.has(e.id) ? 'checked' : ''} aria-label="Seleccionar ${h(e.nombre)}"></td>` : ''}${A.COLS_EQ.map((c) => `<td class="${c.mono && !editar ? 'mono' : ''} ${c.k === 'item' ? 'num' : ''}">${editar ? A.celdaEdit(e, c.k, k, cons) : A.celdaVer(e, c.k, k, cons)}</td>`).join('')}<td>${A.estadoPill(e.estado)}</td></tr>`;
+      }).join('') || `<tr><td colspan="${nCol}" class="empty">Sin equipos.</td></tr>`;
+      const bb = el.querySelector('[data-borrarbar]');
+      if (bb) { bb.hidden = !borrar; bb.querySelector('[data-nsel]').textContent = selB.size; }
+      el.querySelector('[data-act=porServ]')?.classList.toggle('pri', porServ);
+      el.querySelector('[data-act=modoBorrar]')?.classList.toggle('danger', borrar);
+      if (borrar) {
+        el.querySelectorAll('[data-selb]').forEach((x) => { x.onchange = () => { x.checked ? selB.add(x.dataset.selb) : selB.delete(x.dataset.selb); pintar(); }; });
+        el.querySelectorAll('[data-selserv]').forEach((x) => { x.onchange = () => { lista.filter((e) => e.consultorio_id === x.dataset.selserv).forEach((e) => (x.checked ? selB.add(e.id) : selB.delete(e.id))); pintar(); }; });
+      }
       el.querySelector('[data-cuenta]').textContent = `${lista.length} de ${eqs.length} equipos`;
       if (editar) A.bindCeldas(el.querySelector('tbody'), eqs);
     };
@@ -57,10 +76,11 @@
       <div class="tbl-tools">${sedesL.length > 1 ? `<div class="field" style="min-width:170px"><select aria-label="Filtrar por sede" data-sedef><option value="">Todas las sedes</option>${sedesL.map((x) => `<option value="${h(x)}" ${sedeF === x ? 'selected' : ''}>${h(x)}</option>`).join('')}</select></div>` : ''}<div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}${sedesL.length > 1 ? ' · ' + h(sedeC(c)) : ''}</option>`).join('')}</select></div>
         <input type="search" data-q placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar en el inventario">
         <span class="muted" data-cuenta></span>
-        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
+        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}<button class="btn pri" data-act="porServ" title="Agrupar el inventario por servicio">${I.carpeta} Por servicios</button>${esProp() ? `<button class="btn" data-act="modoBorrar">${I.del} Borrar equipos</button>` : ''}</div>
+      ${esProp() ? `<div class="borrar-bar" data-borrarbar hidden><span>Marque los equipos (o un servicio completo) que desea eliminar · <b data-nsel>0</b> seleccionados</span><span class="sp"></span><button class="btn sm" data-act="selTodosB">Seleccionar los visibles</button><button class="btn sm" data-act="selNingunoB">Quitar selección</button><button class="btn sm pri danger" data-act="borrarSel">${I.del} Eliminar seleccionados</button></div>` : ''}
       ${esProp() ? '<p class="muted edit-hint" data-hint hidden>Modo edición: cambie cualquier dato y presione Enter o salga de la casilla para guardar. Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
       ${A.datalistNR}
-      <div class="tbl-wrap"><table class="tbl tbl-eq"><thead><tr>${A.COLS_EQ.map((c) => `<th style="min-width:${c.w}px">${c.t}</th>`).join('')}<th>Estado</th></tr></thead><tbody></tbody></table></div></section>`;
+      <div class="tbl-wrap"><table class="tbl tbl-eq"><thead><tr><th data-thsel hidden></th>${A.COLS_EQ.map((c) => `<th style="min-width:${c.w}px">${c.t}</th>`).join('')}<th>Estado</th></tr></thead><tbody></tbody></table></div></section>`;
     pintar();
     el.querySelector('[data-filtro]').onchange = (e) => { filtro = e.target.value; pintar(); };
     const sf = el.querySelector('[data-sedef]');
@@ -71,6 +91,18 @@
     A.acts({
       editTabla: () => { editar = !editar; const hn = el.querySelector('[data-hint]'); if (hn) hn.hidden = !editar; pintar(); },
       llenarNR: () => A.completarNR(visibles(), pintar),
+      porServ: () => { porServ = !porServ; pintar(); },
+      modoBorrar: () => { borrar = !borrar; if (!borrar) selB.clear(); if (borrar) editar = false; pintar(); },
+      selTodosB: () => { visibles().forEach((e) => selB.add(e.id)); pintar(); },
+      selNingunoB: () => { selB.clear(); pintar(); },
+      borrarSel: async () => {
+        const lista = eqs.filter((e) => selB.has(e.id)); if (!lista.length) return toast('Marque al menos un equipo', true);
+        const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => d.equipo_id && selB.has(d.equipo_id));
+        if (!(await confirmar(`¿Eliminar definitivamente ${lista.length} equipo${lista.length === 1 ? '' : 's'}${docs.length ? ` y sus ${docs.length} documento${docs.length === 1 ? '' : 's'}` : ''} (hoja de vida, mantenimientos, cronogramas)? No se puede deshacer. Si solo salieron de servicio, es mejor cambiar su estado a “Dado de baja”.`, 'Eliminar'))) return;
+        for (const d of docs) { try { await S.removeFile(d.archivo); } catch {} }
+        for (const e of lista) { await S.remove('equipos', e.id); S.log('ELIMINAR', 'equipos', e.id, `${e.codigo_inv} ${e.nombre}`); }
+        toast(`${lista.length} equipo${lista.length === 1 ? '' : 's'} eliminado${lista.length === 1 ? '' : 's'}`); selB.clear(); borrar = false; A.recargar();
+      },
       llenarArch: () => A.llenarDesdeArchivos(ent, { sede: sedeCtx || sedeF || null, alTerminar: () => A.recargar() }),
       googleInv: () => A.buscarGoogleInventario(ent, visibles()),
       abrirEq: (d) => A.go('equipo', { id: d.id }),
