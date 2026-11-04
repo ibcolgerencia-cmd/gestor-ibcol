@@ -361,17 +361,31 @@
   // Núcleo: lee los documentos y completa los equipos (eqsS) y la programación del cronograma.
   // tipo: 'mantenimiento' | 'metrologia' | 'auto' (lo deduce del nombre o subcarpeta del archivo) | null (no programa)
   const tipoDeDoc = (doc) => { const t = norm(`${doc.subcarpeta || ''} ${doc.nombre}`); return /CAPACIT/.test(t) ? null : /METROLOG|CALIBRA/.test(t) ? 'metrologia' : 'mantenimiento'; };
-  async function procesarDocs(ent, eqsS, docsSel, { datos = true, reemplazar = false, tipo = null, anioPlan = new Date().getFullYear(), prog = () => {}, eqsDe = null } = {}) {
+  async function procesarDocs(ent, eqsS, docsSel, { datos = true, reemplazar = false, codigos = false, tipo = null, anioPlan = new Date().getFullYear(), prog = () => {}, eqsDe = null } = {}) {
     let nAct = 0, nPlan = 0; const sinMatch = new Set(), errores = [], actIds = new Set();
     const cronCache = {};
-    const buscarEn = (lista, r) => {
-      if (r.codigo) { const c = comp(r.codigo); const e = lista.find((x) => comp(x.codigo_inv) === c) || (c.length >= 5 && lista.find((x) => comp(x.codigo_inv).includes(c))); if (e) return e; }
-      const n = comp(r.nombre), sr = comp(r.serie);
-      return (sr.length >= 4 && lista.find((x) => comp(x.serie) === sr)) || lista.find((x) => comp(x.nombre) === n && (!sr || !x.serie || comp(x.serie) === sr) && lista.filter((y) => comp(y.nombre) === n).length === 1) || null;
+    const consN = {}; (await S.list('consultorios', { entidad_id: ent.id })).forEach((c) => { consN[c.id] = comp(c.nombre); });
+    const lev = (a, b) => { if (Math.abs(a.length - b.length) > 2) return 9; const d = [...Array(b.length + 1).keys()]; for (let i = 1; i <= a.length; i++) { let prev = d[0]; d[0] = i; for (let j = 1; j <= b.length; j++) { const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; } } return d[b.length]; };
+    const parecido = (a, b) => (!a || !b ? 0 : a === b ? 3 : (a.length >= 5 && b.length >= 5 && (a.startsWith(b) || b.startsWith(a))) ? 2 : lev(a, b) <= 2 && Math.min(a.length, b.length) >= 6 ? 1 : 0);
+    // código → serie → mismo servicio + nombre parecido (uno a uno) → nombre único
+    const buscarEn = (lista, r, usados) => {
+      const libre = (x) => !usados.has(x.id);
+      if (r.codigo) { const c = comp(r.codigo); const e = lista.find((x) => comp(x.codigo_inv) === c); if (e) return e; }
+      const sr = comp(r.serie); if (sr.length >= 4 && !/^(NR|NOREGISTRA)$/.test(sr)) { const e = lista.find((x) => comp(x.serie) === sr); if (e) return e; }
+      const n = comp(r.nombre); if (!n) return null;
+      const sv = comp(r.servicio);
+      if (sv) {
+        const mismos = lista.filter((x) => libre(x) && consN[x.consultorio_id] && (consN[x.consultorio_id] === sv || consN[x.consultorio_id].includes(sv) || sv.includes(consN[x.consultorio_id])));
+        let mejor = null, pt = 0; mismos.forEach((x) => { const p = parecido(comp(x.nombre), n); if (p > pt) { pt = p; mejor = x; } });
+        if (mejor) return mejor;
+      }
+      const iguales = lista.filter((x) => libre(x) && comp(x.nombre) === n);
+      return iguales.length === 1 ? iguales[0] : null;
     };
     for (const doc of docsSel) {
       prog(`Leyendo ${doc.nombre}…`);
-      const lista = eqsDe ? eqsDe(doc) : eqsS; const buscar = (r) => buscarEn(lista, r);
+      const lista = eqsDe ? eqsDe(doc) : eqsS; const usados = new Set(); const usadosP = new Set();
+      const buscar = (r, u = usados) => { const e = buscarEn(lista, r, u); if (e) u.add(e.id); return e; };
       const tipoD = tipo === 'auto' ? tipoDeDoc(doc) : tipo;
       let file;
       try { const b = await S.fileBlob(doc.archivo); if (!b) throw new Error('no disponible'); file = new File([b], doc.nombre, { type: b.type || doc.mime || '' }); }
@@ -385,9 +399,9 @@
       if (datos) {
         for (const r of filas) {
           const e = buscar(r); if (!e) { if (r.nombre) sinMatch.add(`${r.codigo ? r.codigo + ' · ' : ''}${r.nombre}`); continue; }
-          const cand = { activo_fijo: r.af, marca: r.marca, modelo: r.modelo, serie: r.serie && !/^N\/?R$/i.test(r.serie) ? r.serie : '', registro_sanitario: r.rs, clase_riesgo: riesgoDe(r.riesgo), ubicacion: r.ubicacion || '' };
+          const cand = { ...(codigos && r.codigo ? { codigo_inv: r.codigo } : {}), activo_fijo: r.af, marca: r.marca, modelo: r.modelo, serie: r.serie && !/^N\/?R$/i.test(r.serie) ? r.serie : '', registro_sanitario: r.rs, clase_riesgo: riesgoDe(r.riesgo), ubicacion: r.ubicacion || '' };
           const cambios = {};
-          Object.entries(cand).forEach(([k, v]) => { v = String(v || '').trim(); if (!v || /^(NO REGISTRA|NR|N\/A)$/i.test(v)) return; if (reemplazar || !e[k]) { if (e[k] !== v) cambios[k] = v; } });
+          Object.entries(cand).forEach(([k, v]) => { v = String(v || '').trim(); if (!v || /^(NO REGISTRA|NR|N\/A)$/i.test(v)) return; if (reemplazar || !e[k] || k === 'codigo_inv') { if (e[k] !== v) cambios[k] = v; } });
           if (Object.keys(cambios).length) { const u = await S.update('equipos', e.id, cambios); Object.assign(e, u || cambios); if (!actIds.has(e.id)) { actIds.add(e.id); nAct++; } }
         }
       }
@@ -396,7 +410,7 @@
         const y = plan.anio || anioPlan; const ck = `${tipoD}-${y}`;
         cronCache[ck] = cronCache[ck] || await S.list('cronogramas', { entidad_id: ent.id, tipo: tipoD, anio: y });
         for (const r of plan.filas) {
-          const e = buscar(r); if (!e || !Object.keys(r.plan).length) continue;
+          const e = buscar(r, usadosP); if (!e || !Object.keys(r.plan).length) continue;
           const c = cronCache[ck].find((x) => x.equipo_id === e.id);
           const nuevo = { ...(c?.plan || {}) }; let cambio = false;
           Object.entries(r.plan).forEach(([k, v]) => { if (!nuevo[k]) { nuevo[k] = v; cambio = true; } });
@@ -415,9 +429,10 @@
     if (!ents.length) return toast('No hay entidades', true);
     modal({
       titulo: 'Llenar todas las entidades con sus archivos cargados', size: 'wide',
-      cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Para cada entidad y cada sede se leen los inventarios y cronogramas en Excel subidos a las carpetas <b>1. Inventarios</b> y <b>2. Cronogramas</b> (del más reciente al más antiguo). Cada equipo se busca por su <b>código de inventario</b> (o por nombre y serie) dentro de su sede; con eso quedan llenos el inventario y las columnas del cronograma.</p>
+      cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Para cada entidad y cada sede se leen los inventarios y cronogramas en Excel subidos a las carpetas <b>1. Inventarios</b> y <b>2. Cronogramas</b> (del más reciente al más antiguo). Cada equipo se busca dentro de su sede por <b>código de inventario</b>, serie o <b>servicio y nombre</b>; con eso quedan llenos el inventario y las columnas del cronograma.</p>
         <div class="tbl-wrap" style="max-height:240px;overflow:auto"><table class="tbl"><thead><tr><th></th><th>Entidad</th></tr></thead><tbody>${ents.map((e) => `<tr><td><input type="checkbox" name="ent" value="${e.id}" checked aria-label="Incluir ${h(e.razon_social)}"></td><td>${h(e.razon_social)}</td></tr>`).join('')}</tbody></table></div>
         <label class="checks full radio-line"><input type="checkbox" name="reemplazar" data-single> Reemplazar también los datos que ya tienen (si no, solo se llenan los vacíos)</label>
+        <label class="checks full radio-line"><input type="checkbox" name="codigos" data-single> Cambiar el código de inventario por el del archivo cuando el equipo se encontró por servicio y nombre</label>
         <label class="checks full radio-line"><input type="checkbox" name="plan" data-single checked> Pasar también los meses y semanas marcados en los cronogramas en Excel (mantenimiento o metrología según el nombre del archivo; no borra lo ya programado)</label>
         <label class="checks full radio-line"><input type="checkbox" name="pdf" data-single> Leer también los inventarios en PDF</label>
         <div class="muted" data-prog style="margin-top:8px"></div></form>`,
@@ -434,7 +449,7 @@
           const sedes = A.sedesDe ? A.sedesDe(cons, ent) : [];
           const sedeCons = (sd) => new Set(cons.filter((c) => (c.sede || 'Sede principal') === sd).map((c) => c.id));
           const eqsDe = (doc) => { if (sedes.length < 2 || !A.esDeSede) return eqs; const sds = sedes.filter((sd) => A.esDeSede(doc, sd, sedes)); if (sds.length !== 1) return eqs; const ids = sedeCons(sds[0]); const l = eqs.filter((e) => ids.has(e.consultorio_id)); return l.length ? l : eqs; };
-          const r = await procesarDocs(ent, eqs, docs, { datos: true, reemplazar: d.reemplazar, tipo: d.plan ? 'auto' : null, eqsDe, prog: (t) => { pg.textContent = `${ent.razon_social}: ${t}`; } });
+          const r = await procesarDocs(ent, eqs, docs, { datos: true, reemplazar: d.reemplazar, codigos: d.codigos, tipo: d.plan ? 'auto' : null, eqsDe, prog: (t) => { pg.textContent = `${ent.razon_social}: ${t}`; } });
           S.log('EDITAR', 'equipos', ent.id, `Llenado desde archivos (todas): ${r.nAct} equipos, ${r.nPlan} cronogramas`);
           res.push({ ent, n: docs.length, ...r });
         }
@@ -464,6 +479,7 @@
         </tbody></table></div>
         <label class="checks full radio-line"><input type="checkbox" name="datos" data-single checked> Completar los datos vacíos de los equipos: A.F., marca, modelo, serie, riesgo, registro sanitario y ubicación</label>
         <label class="checks full radio-line"><input type="checkbox" name="reemplazar" data-single> Reemplazar también los datos que ya tienen (usar lo que dice el archivo)</label>
+        <label class="checks full radio-line"><input type="checkbox" name="codigos" data-single> Cambiar el código de inventario por el del archivo cuando el equipo se encontró por servicio y nombre</label>
         ${tipo ? `<label class="checks full radio-line"><input type="checkbox" name="plan" data-single checked> Pasar al cronograma de ${h(tipoTxt)} los meses y semanas marcados en los cronogramas en Excel (no borra lo ya programado)</label>
         <div class="fields">${f.sel('anioPlan', 'Año del cronograma si el archivo no lo dice', [anio - 1, anio, anio + 1].map((y) => [y, y]), anio)}</div>` : ''}
         <div class="muted" data-prog style="margin-top:8px"></div></form>`,
@@ -471,7 +487,7 @@
         const d = leer(m.body); const sel = Array.isArray(d.doc) ? d.doc : [];
         if (!sel.length) { toast('Marque al menos un archivo', true); return false; }
         const prog = m.body.querySelector('[data-prog]');
-        const { nAct, nPlan, sinMatch, errores } = await procesarDocs(ent, eqsS, sel.map((id) => docs.find((x) => x.id === id)), { datos: d.datos, reemplazar: d.reemplazar, tipo: d.plan ? tipo : null, anioPlan: +d.anioPlan || anio, prog: (t) => { prog.textContent = t; } });
+        const { nAct, nPlan, sinMatch, errores } = await procesarDocs(ent, eqsS, sel.map((id) => docs.find((x) => x.id === id)), { datos: d.datos, reemplazar: d.reemplazar, codigos: d.codigos, tipo: d.plan ? tipo : null, anioPlan: +d.anioPlan || anio, prog: (t) => { prog.textContent = t; } });
         S.log('EDITAR', 'equipos', ent.id, `Llenado desde archivos: ${nAct} equipos, ${nPlan} cronogramas`);
         const faltan = [...sinMatch];
         modal({ titulo: 'Resultado', size: 'sm', cuerpo: `<p><b>${nAct}</b> equipo${nAct === 1 ? '' : 's'} con datos completados${tipo ? ` · <b>${nPlan}</b> fila${nPlan === 1 ? '' : 's'} del cronograma programadas` : ''}.</p>
