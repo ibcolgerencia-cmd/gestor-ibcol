@@ -410,9 +410,10 @@ window.APP = (() => {
     const titulo = A.nomCarpeta(ent, 'ent', CARP_EQ);
     const sinCons = A.numerado(eqsR.filter((e) => !cons.some((c) => c.id === e.consultorio_id)));
     const fila = (e) => `<button class="eq-row" data-act="abrirEq" data-id="${e.id}"><span class="cod">${e._n}. ${h(e.codigo_inv)}</span><span class="nm"><b>${h(e.nombre)}</b><small>${h([e.marca, e.modelo].filter(Boolean).join(' · '))}</small></span><span class="mm muted mono" style="font-size:.8rem">S/N ${h(e.serie || '—')}</span><span class="badges">${A.riesgo(e.clase_riesgo)}${A.estadoPill(e.estado)}</span></button>`;
+    const filaEq = (e) => (esProp() ? `<div class="eq-wrap">${fila(e)}<button class="icon-btn bad eq-del" data-act="borrarEqLista" data-id="${e.id}" title="Eliminar este equipo" aria-label="Eliminar ${h(e.nombre)} (${h(e.codigo_inv)})">${I.del}</button></div>` : fila(e));
     const sala = (c, lista) => `<section class="room"><header><h3>${c ? `${c._n}. ${h(c.nombre.toUpperCase())}` : 'SIN SERVICIO ASIGNADO'} ${c?.sede ? `<small class="muted" style="font-family:var(--f-body);font-weight:400;font-size:.85rem">${h(c.sede)}${c.servicio ? ' · ' + h(c.servicio) : ''}</small>` : ''}</h3>
         <div class="actions"><span class="pill">${lista.length} equipo${lista.length === 1 ? '' : 's'}</span>${esProp() && c ? `<button class="icon-btn" data-act="editCons" data-id="${c.id}" aria-label="Editar área">${I.edit}</button><button class="btn sm" data-act="nuevoEq" data-cons="${c.id}">${I.mas} Equipo</button>` : ''}</div></header>
-        <div class="eq-list">${lista.map(fila).join('') || '<div class="empty">Sin equipos registrados.</div>'}</div></section>`;
+        <div class="eq-list">${lista.map(filaEq).join('') || '<div class="empty">Sin equipos registrados.</div>'}</div></section>`;
     content().innerHTML = `${migas([...A.rutaEnt(ent), ...(sedeSel && sedesL.length > 1 ? [[sedeSel.toUpperCase(), 'entidad', { id, sede: sedeSel }]] : []), titulo])}
       <div class="page-head"><div><span class="eyebrow">Servicios o consultorios · carpeta por equipo</span><h1>${h(titulo)}</h1></div>
         ${esProp() ? `<div class="actions"><button class="btn" data-act="revisarDocs">${I.ia} Revisar documentos (IA)</button><button class="btn" data-act="importarDrive">${I.subir} Importar servicios y equipos</button><button class="btn" data-act="nuevoCons">${I.mas} Servicio / consultorio</button><button class="btn pri" data-act="nuevoEq">${I.mas} Equipo</button></div>` : ''}</div>
@@ -421,6 +422,14 @@ window.APP = (() => {
       ${(sinCons.length || !cons.length) && !sedeSel ? sala(null, sinCons) : ''}`;
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
+      borrarEqLista: async (d) => {
+        const e = eqsR.find((x) => x.id === d.id); if (!e) return;
+        const docs = await S.list('documentos', { equipo_id: e.id });
+        if (!(await confirmar(`¿Eliminar definitivamente ${e.nombre} (${e.codigo_inv})${docs.length ? ` y sus ${docs.length} documento${docs.length === 1 ? '' : 's'}` : ''}? No se puede deshacer. Si solo salió de servicio, es mejor usar "Cambiar estado → Dado de baja" para conservar el historial.`))) return;
+        for (const x of docs) { try { await S.removeFile(x.archivo); } catch {} }
+        await S.remove('equipos', e.id); S.log('ELIMINAR', 'equipos', e.id, `${e.codigo_inv} ${e.nombre}`);
+        toast('Equipo eliminado'); A.recargar();
+      },
       verSede: (d) => { st.sedeSel[id] = d.s; A.recargar(); },
       renSede: (d) => modal({
         titulo: 'Cambiar nombre de la sede', size: 'sm',
