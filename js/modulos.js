@@ -193,8 +193,8 @@
           <tr>${cap ? '<th rowspan="2">Ítem</th><th rowspan="2">Tema</th><th rowspan="2">Equipo</th>' : colsInfo.map((c) => `<th rowspan="2" style="min-width:${editar ? c.w : 0}px">${c.t}</th>`).join('')}${vis.map((v) => { const m = CAT.MESES[v.m - 1]; return `<th colspan="4" class="${F.mes === v.m ? 'mes-sel' : ''}" data-act="verMes" data-m="${v.m}" style="cursor:pointer" title="${F.mes === v.m ? 'Quitar filtro' : 'Filtrar ' + m + ' ' + v.y}">${vis.length === 1 ? `${m.toUpperCase()} ${v.y}` : m.slice(0, 3)}</th>`; }).join('')}${esProp() ? '<th rowspan="2"></th>' : ''}</tr>
           <tr>${vis.map((v) => [1, 2, 3, 4].map((s) => `<th class="${F.mes === v.m ? 'mes-sel' : ''}" style="font-size:.66rem;padding:2px">${s}</th>`).join('')).join('')}</tr></thead><tbody>
           ${visibles.map((r) => { const e = eqd(r.equipo_id); const i = filas.indexOf(r); const nn = grupo ? visibles.indexOf(r) : i; return `<tr>${cap ? `<td class="num">${nn + 1}</td><td>${h(r.tema || '')}</td><td>${h(e.nombre || '—')}</td>` : colsInfo.map((col) => `<td class="${col.mono && !editar ? 'mono' : ''}">${e.id ? (editar ? A.celdaEdit(e, col.k, nn, cons) : A.celdaVer(e, col.k, nn, cons)) : ''}</td>`).join('')}
-            ${vis.map((v) => [1, 2, 3, 4].map((s) => { const val = (r.cr[v.y]?.plan || {})[`${v.m}-${s}`] || ''; return `<td class="w ${val} ${v.y === anioAct && v.m === mesAct ? 'now' : ''} ${F.mes === v.m ? 'mes-sel' : ''} ${dosAnios && v.p === 12 - F.mesIni + 1 && s === 1 ? 'y-ini' : ''}" ${esProp() ? `data-act="celda" data-r="${i}" data-y="${v.y}" data-k="${v.m}-${s}"` : ''} title="${CAT.MESES[v.m - 1]} ${v.y} · semana ${s}">${val}</td>`; }).join('')).join('')}
-            ${esProp() ? `<td style="white-space:nowrap">${cap ? '' : `<button class="icon-btn" data-act="meses" data-r="${i}" aria-label="Cambiar meses" title="Cambiar meses">${I.edit}</button>`}<button class="icon-btn bad" data-act="quitar" data-r="${i}" aria-label="Quitar fila">${I.del}</button></td>` : ''}</tr>`; }).join('')}
+            ${vis.map((v) => { const pl = r.cr[v.y]?.plan || {}; const nt = pl.notas?.[v.m] || ''; const sNt = nt ? ([1, 2, 3, 4].find((s) => pl[`${v.m}-${s}`]) || 1) : 0; return [1, 2, 3, 4].map((s) => { const val = pl[`${v.m}-${s}`] || ''; return `<td class="w ${val} ${s === sNt ? 'nt' : ''} ${v.y === anioAct && v.m === mesAct ? 'now' : ''} ${F.mes === v.m ? 'mes-sel' : ''} ${dosAnios && v.p === 12 - F.mesIni + 1 && s === 1 ? 'y-ini' : ''}" ${esProp() ? `data-act="celda" data-r="${i}" data-y="${v.y}" data-k="${v.m}-${s}"` : ''} title="${CAT.MESES[v.m - 1]} ${v.y} · semana ${s}${nt ? ' · Nota: ' + h(nt) : ''}">${val}</td>`; }).join(''); }).join('')}
+            ${esProp() ? `<td style="white-space:nowrap">${cap ? '' : `<button class="icon-btn ${anios.some((y) => Object.values(r.cr[y]?.plan?.notas || {}).some(Boolean)) ? 'con-nota' : ''}" data-act="notas" data-r="${i}" aria-label="Anotaciones" title="Anotaciones de la fila (pasan al reporte)">${I.nota}</button>`}${cap ? '' : `<button class="icon-btn" data-act="meses" data-r="${i}" aria-label="Cambiar meses" title="Cambiar meses">${I.edit}</button>`}<button class="icon-btn bad" data-act="quitar" data-r="${i}" aria-label="Quitar fila">${I.del}</button></td>` : ''}</tr>`; }).join('')}
           </tbody></table></div>` : `<div class="empty">${filas.length ? 'Ningún registro coincide con la búsqueda o el servicio elegido.' : `No hay cronograma para ${periodoTxt}.${esProp() && !cap ? ' Use “Generar desde periodicidad” para crearlo automáticamente con la frecuencia de cada equipo.' : ''}`}</div>`}</section>`;
       el.querySelector('[data-mes]').onchange = (ev) => { F.mes = +ev.target.value; if (!F.mes) F.estado = ''; pintar(); };
       el.querySelector('[data-serv]').onchange = (ev) => { F.serv = ev.target.value; pintar(); };
@@ -226,6 +226,40 @@
           c.plan = plan; b.classList.remove('P', 'E', 'N'); if (nv) b.classList.add(nv); b.textContent = nv;
           await S.update('cronogramas', c.id, { plan });
         },
+        notas: async (d) => {
+          const r = filas[+d.r]; const e = eqd(r.equipo_id);
+          const tipoRep = tipo === 'metrologia' ? 'metrologia' : 'preventivo';
+          const est = (v) => { const pl = r.cr[v.y]?.plan || {}; const x = [1, 2, 3, 4].map((s) => [s, pl[`${v.m}-${s}`]]).find(([, z]) => z); return x ? `<span class="chip-est ${x[1]}">${{ P: 'Programado', E: 'Ejecutado', N: 'No ejecutado' }[x[1]]} · sem ${x[0]}</span>` : ''; };
+          const nota = (v) => r.cr[v.y]?.plan?.notas?.[v.m] || '';
+          const orden = [...ventana].sort((a, b) => (est(b) || nota(b) ? 1 : 0) - (est(a) || nota(a) ? 1 : 0) || a.p - b.p);
+          modal({ titulo: `Anotaciones · ${e.codigo_inv ? e.codigo_inv + ' · ' : ''}${e.nombre || ''}`, size: 'wide',
+            cuerpo: `<form class="form notas-crono" onsubmit="return false"><p class="muted">Escriba lo que debe quedar en el reporte de ${tipoRep === 'metrologia' ? 'metrología' : 'mantenimiento preventivo'} de ese mes (hallazgos, repuestos pendientes, ubicación, quién recibe…). Al crear el reporte del equipo en ese mes, la nota se pasa a <b>Observaciones</b>.</p>
+              ${orden.map((v) => `<div class="nota-mes ${est(v) ? 'prog' : ''}"><div class="nota-cab"><b>${CAT.MESES[v.m - 1]} ${v.y}</b> ${est(v)}<span class="sp"></span><button type="button" class="btn sm" data-pasar="${v.y}-${v.m}">${I.pdf} Pasar al reporte</button></div>
+                <textarea name="n_${v.y}_${v.m}" rows="${est(v) || nota(v) ? 2 : 1}" placeholder="Sin anotación" aria-label="Nota de ${CAT.MESES[v.m - 1]} ${v.y}">${h(nota(v))}</textarea></div>`).join('')}</form>`,
+            alAbrir: (m) => {
+              m.body.querySelectorAll('[data-pasar]').forEach((b) => { b.onclick = async () => {
+                const [y, mm] = b.dataset.pasar.split('-').map(Number);
+                await guardarNotas(m); m.cerrar();
+                const hoyD = new Date(); const pl = r.cr[y]?.plan || {}; const semP = [1, 2, 3, 4].find((z) => pl[`${mm}-${z}`]) || 1;
+                const fecha = hoyD.getFullYear() === y && hoyD.getMonth() + 1 === mm ? UI.hoy() : `${y}-${String(mm).padStart(2, '0')}-${String(7 * semP - 3).padStart(2, '0')}`;
+                A.formMto({ eq: e, ent, cons, tipo: tipoRep, nota: { anio: y, mes: mm, texto: r.cr[y]?.plan?.notas?.[mm] || '' }, fecha });
+              }; });
+            },
+            acciones: [{ t: 'Cancelar' }, { t: 'Guardar anotaciones', cls: 'pri', fn: async (m) => { await guardarNotas(m); toast('Anotaciones guardadas'); pintar(); } }] });
+          async function guardarNotas(m) {
+            const v = leer(m.body); const porAnio = {};
+            Object.entries(v).forEach(([k, t]) => { const [, y, mm] = k.split('_'); (porAnio[y] = porAnio[y] || {})[mm] = t; });
+            for (const [yS, ns] of Object.entries(porAnio)) {
+              const y = +yS; const prev = r.cr[y]?.plan?.notas || {};
+              const nuevas = { ...prev }; let cambio = false;
+              Object.entries(ns).forEach(([mm, t]) => { if ((prev[mm] || '') !== t) { cambio = true; if (t) nuevas[mm] = t; else delete nuevas[mm]; } });
+              if (!cambio) continue;
+              const c = await cronoDe(r, y); const plan = { ...(c.plan || {}), notas: nuevas };
+              if (!Object.keys(nuevas).length) delete plan.notas;
+              await S.update('cronogramas', c.id, { plan }); c.plan = plan;
+            }
+          }
+        },
         meses: async (d) => {
           const r = filas[+d.r]; const e = eqd(r.equipo_id);
           const abrir = async (y) => A.cambiarMeses(await cronoDe(r, y), e, tipo, pintar, y);
@@ -244,6 +278,7 @@
             const c = r.cr[y]; const plan = { ...(c.plan || {}) };
             mesDe(c, F.mes).filter((x) => x.v !== 'E').forEach((x) => delete plan[x.k]);
             if (!mesDe({ plan }, destino).length) plan[`${destino}-${sem}`] = 'P';
+            if (plan.notas?.[F.mes]) { plan.notas = { ...plan.notas }; plan.notas[destino] = [plan.notas[destino], plan.notas[F.mes]].filter(Boolean).join('\n'); delete plan.notas[F.mes]; }
             await S.update('cronogramas', c.id, { plan });
           }
           toast(`Programación movida a ${CAT.MESES[destino - 1]}`); F.mes = destino; pintar();
@@ -392,7 +427,7 @@
 
   // Cambiar los meses programados de una fila del cronograma
   A.cambiarMeses = (c, e, tipo, alGuardar, y = c?.anio) => {
-    const meses = (p) => new Set(Object.entries(p || {}).filter(([, v]) => v).map(([k]) => +k.split('-')[0]));
+    const meses = (p) => new Set(Object.entries(p || {}).filter(([k, v]) => v && k !== 'notas').map(([k]) => +k.split('-')[0]));
     const act = meses(c.plan);
     const perAct = tipo === 'metrologia' ? e.periodicidad_metro : e.periodicidad_mto;
     const estadoMes = (m) => { const x = Object.entries(c.plan || {}).find(([k, v]) => v && +k.split('-')[0] === m); return x ? { P: 'Programado', E: 'Ejecutado', N: 'No ejecutado' }[x[1]] + ` · sem ${x[0].split('-')[1]}` : ''; };
@@ -415,6 +450,7 @@
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar meses', cls: 'pri', fn: async (m) => {
         const d = leer(m.body); const sel = new Set(d.mes.map(Number)); const plan = {};
         Object.entries(c.plan || {}).forEach(([k, v]) => { if (v && sel.has(+k.split('-')[0])) plan[k] = v; });
+        if (c.plan?.notas) plan.notas = c.plan.notas;
         sel.forEach((n) => { if (!Object.keys(plan).some((k) => +k.split('-')[0] === n)) plan[`${n}-${d.sem}`] = 'P'; });
         await S.update('cronogramas', c.id, { plan }); c.plan = plan;
         if (d.guardar_per && e.id) await S.update('equipos', e.id, { [tipo === 'metrologia' ? 'periodicidad_metro' : 'periodicidad_mto']: d.per });
@@ -673,8 +709,18 @@
   };
 
   // ------------------------------------------------------------ Mantenimiento / metrología
-  A.formMto = async ({ eq, ent, cons, tipo, m = null }) => {
+  A.formMto = async ({ eq, ent, cons, tipo, m = null, nota = null, fecha: fechaIni = null }) => {
     const todos = await S.list('mantenimientos', { entidad_id: ent.id });
+    // anotaciones hechas en el cronograma (mantenimiento o metrología) para este equipo
+    let notasCr = [];
+    if (!m && tipo !== 'correctivo') {
+      const tc = tipo === 'metrologia' ? 'metrologia' : 'mantenimiento'; const y0 = +(fechaIni || UI.hoy()).slice(0, 4);
+      const crs = (await S.list('cronogramas', { entidad_id: ent.id, equipo_id: eq.id, tipo: tc })).filter((c) => Math.abs(c.anio - y0) <= 1);
+      crs.forEach((c) => Object.entries(c.plan?.notas || {}).forEach(([mm, t]) => { if (t) notasCr.push({ anio: c.anio, mes: +mm, texto: t }); }));
+      notasCr.sort((a, b) => a.anio - b.anio || a.mes - b.mes);
+    }
+    const fRef = fechaIni || UI.hoy();
+    const notaAuto = nota?.texto ? nota : notasCr.find((n) => n.anio === +fRef.slice(0, 4) && n.mes === +fRef.slice(5, 7)) || null;
     const serieN = { preventivo: 'mto_preventivo', correctivo: 'mto_correctivo' }[tipo];
     const sugerido = m ? null : serieN ? await A.CONS.siguiente(serieN, UI.hoy()) : null;
     const numero = m?.numero || sugerido || A.consecutivo(todos.filter((x) => x.tipo === tipo), 'numero', '').padStart(5, '0');
@@ -687,12 +733,13 @@
     const actsSel = d.actividades || (pm?.actividades?.length ? pm.actividades : fp.actividades);
     const actsTodas = [...new Set([...(fp.actividades || []), ...(pm?.actividades || []), ...(d.actividades || [])])];
     const herrSel = d.herramientas || (pm?.herramientas?.length ? (fp.herramientas || []).filter((x) => pm.herramientas.some((y) => y.toLowerCase().includes(x.toLowerCase()) || x.toLowerCase().includes(y.toLowerCase()))) : []);
-    const obsIni = d.observaciones ?? (pm?.observaciones || '');
+    const obsBase = d.observaciones ?? (pm?.observaciones || '');
+    const obsIni = notaAuto?.texto && !obsBase.includes(notaAuto.texto) ? [notaAuto.texto, obsBase].filter(Boolean).join('\n') : obsBase;
     const val = d.valoracion || (m ? [] : ['Equipo queda en funcionamiento', 'Equipo encontrado en servicio', 'Servicio concluido']);
     const titulo = { preventivo: 'Mantenimiento preventivo', correctivo: 'Mantenimiento correctivo', metrologia: 'Metrología / calibración' }[tipo];
     let cert = null;
     const cuerpo = `<form class="form" onsubmit="return false">
-      <div class="fields">${f.input('numero', 'Reporte N°', numero)}${f.input('fecha', tipo === 'correctivo' ? 'Fecha de cierre' : 'Fecha', m?.fecha || UI.hoy(), { type: 'date' })}
+      <div class="fields">${f.input('numero', 'Reporte N°', numero)}${f.input('fecha', tipo === 'correctivo' ? 'Fecha de cierre' : 'Fecha', m?.fecha || fechaIni || UI.hoy(), { type: 'date' })}
         ${tipo === 'preventivo' ? `${f.sel('frecuencia', 'Frecuencia', Object.keys(CAT.PERIODICIDAD), d.frecuencia || eq.periodicidad_mto)}${f.input('tiempo', 'Tiempo empleado (hh:mm)', d.tiempo || '01:00')}` : ''}
         ${tipo === 'correctivo' ? `${f.input('fecha_reporte', 'Fecha de reporte de la falla', d.fecha_reporte || UI.hoy(), { type: 'date' })}${f.input('horas', 'Horas de trabajo', d.horas, { type: 'number', attrs: 'step="0.5" min="0"' })}` : ''}
       </div>
@@ -707,7 +754,8 @@
         <div class="field full"><span class="lbl">Adjuntar certificado (PDF) — se guarda en la carpeta Metrología con alerta de vencimiento</span><input type="file" accept="application/pdf,image/*" data-cert></div></div></fieldset>` : ''}
       ${tipo !== 'metrologia' ? `<fieldset><legend>3. Estado de valoración</legend>${f.checks('valoracion', '', CAT.VALORACION, val)}</fieldset>
         <fieldset><legend>4. Herramienta, insumos y repuestos</legend>${tipo === 'preventivo' ? `<div data-herr-box>${f.checks('herramientas', 'Herramientas e insumos', fp.herramientas || [], herrSel)}</div>` : ''}<span class="lbl">Partes utilizadas (insumos o repuestos)</span>${rep('repuestos', [{ k: 'd', ph: 'Descripción', w: '3fr' }, { k: 'c', ph: 'Cant.', type: 'number' }], d.repuestos || [])}</fieldset>` : ''}
-      <div class="fields">${f.area('observaciones', '5. Observaciones generales', tipo === 'preventivo' ? obsIni : d.observaciones, { rows: 3 })}</div>
+      ${notasCr.length ? `<div class="notas-rep"><span class="lbl">Anotaciones del cronograma${notaAuto ? ` — la de ${CAT.MESES[notaAuto.mes - 1]} ${notaAuto.anio} ya se pasó a Observaciones` : ''}</span>${notasCr.map((n, i) => `<div class="nota-rep"><b>${CAT.MESES[n.mes - 1]} ${n.anio}:</b> <span>${h(n.texto)}</span> <button type="button" class="btn sm" data-addnota="${i}">Agregar a observaciones</button></div>`).join('')}</div>` : ''}
+      <div class="fields">${f.area('observaciones', '5. Observaciones generales', tipo !== 'correctivo' && !m ? obsIni : d.observaciones, { rows: 3 })}</div>
       ${tipo !== 'metrologia' ? `<fieldset><legend>Firmas</legend><div class="fields">${f.input('recibe_nombre', 'Recibido a satisfacción: nombre', d.recibe_nombre)}${f.input('recibe_cargo', 'Cargo', d.recibe_cargo)}</div>
         <div class="grid2">${firmaBtn('Firma de quien recibe', fRecibe)}${firmaBtn(`Firma de quien realizó (${h(st.emp.responsable)})`, fRealizo)}</div>
         <label class="checks" style="margin-top:8px"><input type="checkbox" name="firmar_digital" data-single ${m && !d.firma_digital ? '' : 'checked'}> <b>Firmar digitalmente</b> <span class="muted">— estampa la firma en “REALIZÓ” y genera un código de verificación del reporte</span></label></fieldset>` : ''}
@@ -716,6 +764,7 @@
       titulo: `${titulo} · ${eq.nombre}`, size: 'wide', cuerpo,
       alAbrir: (mm) => {
         repBind(mm.body);
+        mm.body.querySelectorAll('[data-addnota]').forEach((b) => { b.onclick = () => { const t = notasCr[+b.dataset.addnota].texto; const ob = mm.body.querySelector('[name=observaciones]'); if (ob.value.includes(t)) return toast('Esa anotación ya está en Observaciones'); ob.value = [ob.value.trim(), t].filter(Boolean).join('\n'); toast('Anotación agregada a Observaciones'); }; });
         firmaBind(mm.body, null, (i, dd) => { if (i === 0) { fRecibe = dd; recibeNueva = true; } else fRealizo = dd; }, { titulos: ['Firma de quien recibe', 'Firma de quien realizó'], actual: [null, st.firma] });
         const c = mm.body.querySelector('[data-cert]'); if (c) c.onchange = (e) => { cert = e.target.files[0] || null; };
         // Completar con IA: manuales / fichas / guías del equipo + Google
