@@ -586,7 +586,7 @@ window.APP = (() => {
     const visibles = docs.filter((d) => !sel || raiz(d) === sel).sort((a, b) => fechaDoc(b).localeCompare(fechaDoc(a)) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
     const cuenta = (s) => docs.filter((d) => raiz(d) === s).length;
     const tipoExt = (n) => { const e = UI.ext(n); return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(e) ? 'img' : e; };
-    cont.innerHTML = `<header><h2>${h(titulo)}</h2>${esProp() ? `<div class="actions">${sel && cuenta(sel) ? `<button class="btn" data-act="renSub" title="Cambiar el nombre de la subcarpeta “${h(sel)}”">${I.edit} Renombrar subcarpeta</button>` : ''}<button class="btn" data-act="nuevaSub">${I.mas} Subcarpeta</button><label class="btn">${I.subir} Importar carpeta<input type="file" webkitdirectory multiple hidden data-dir></label><label class="btn pri">${I.subir} Subir archivos<input type="file" multiple hidden data-up></label></div>` : ''}</header>
+    cont.innerHTML = `<header><h2>${h(titulo)}</h2>${esProp() ? `<div class="actions">${sel && cuenta(sel) ? `<button class="btn" data-act="renSub" title="Cambiar el nombre de la subcarpeta “${h(sel)}”">${I.edit} Renombrar subcarpeta</button>` : ''}${sel && (cuenta(sel) || !subs.includes(sel)) ? `<button class="btn danger" data-act="delSub" title="Eliminar la subcarpeta “${h(sel)}”">${I.del} Eliminar subcarpeta</button>` : ''}<button class="btn" data-act="nuevaSub">${I.mas} Subcarpeta</button><label class="btn">${I.subir} Importar carpeta<input type="file" webkitdirectory multiple hidden data-dir></label><label class="btn pri">${I.subir} Subir archivos<input type="file" multiple hidden data-up></label></div>` : ''}</header>
       ${listaSubs.length ? `<div class="subs" role="tablist"><button class="sub ${sel ? '' : 'on'}" data-act="sub" data-s="">Todo <span>${docs.length}</span></button>${listaSubs.map((s) => `<button class="sub ${s === sel ? 'on' : ''}" data-act="sub" data-s="${h(s)}">${h(s)} <span>${cuenta(s)}</span></button>`).join('')}</div>` : ''}
       ${esProp() ? `<div class="drop" data-drop>Arrastre aquí archivos para guardarlos en <b>${h(sel || 'esta carpeta')}</b></div>` : ''}
       ${visibles.length ? `<div class="files">${visibles.map((d) => {
@@ -649,6 +649,30 @@ window.APP = (() => {
     };
     A.acts({
       sub: (dd) => { st.subSel[llave] = dd.s; recargar(); },
+      delSub: () => {
+        const viejo = sel; if (!viejo) return;
+        const afectados = docs.filter((d) => raiz(d) === viejo);
+        const fija = subs.includes(viejo);
+        const fin = () => { st.subExtra[llave] = (st.subExtra[llave] || []).filter((x) => x !== viejo); st.subSel[llave] = ''; recargar(); };
+        if (!afectados.length) { fin(); toast('Subcarpeta eliminada'); return; }
+        modal({
+          titulo: `Eliminar la subcarpeta “${viejo}”`, size: 'sm',
+          cuerpo: `<form class="form" onsubmit="return false"><p>Tiene <b>${afectados.length}</b> archivo${afectados.length === 1 ? '' : 's'} (incluidas sus subcarpetas internas).${fija ? ' Es una subcarpeta propia del formato: queda vacía pero no desaparece.' : ''}</p>
+            <label class="checks full radio-line"><input type="radio" name="modo" value="mover" checked> Conservar los archivos: pasarlos a la carpeta principal</label>
+            <label class="checks full radio-line"><input type="radio" name="modo" value="borrar"> Eliminar también los archivos (no se puede deshacer)</label>
+            <div class="fields">${f.input('confirma', 'Para eliminar los archivos escriba ELIMINAR', '', { full: true, attrs: 'autocomplete="off"' })}</div></form>`,
+          acciones: [{ t: 'Cancelar' }, { t: `${I.del} Eliminar subcarpeta`, cls: 'pri danger', fn: async (m) => {
+            const v = leer(m.body);
+            if (v.modo === 'borrar' && v.confirma.trim().toUpperCase() !== 'ELIMINAR') { toast('Escriba ELIMINAR para confirmar que se borran los archivos', true); return false; }
+            for (const d of afectados) {
+              if (v.modo === 'borrar') { await S.remove('documentos', d.id); try { await S.removeFile(d.archivo); } catch {} }
+              else { const resto = (d.subcarpeta || '').split('/').slice(1).join('/'); await S.update('documentos', d.id, { subcarpeta: subReal(d, resto) }); }
+            }
+            S.log('ELIMINAR', 'documentos', entidad_id, `Subcarpeta ${viejo} eliminada (${v.modo === 'borrar' ? afectados.length + ' archivos borrados' : 'archivos pasados a la carpeta principal'})`);
+            toast(v.modo === 'borrar' ? 'Subcarpeta y archivos eliminados' : 'Subcarpeta eliminada; los archivos quedaron en la carpeta principal'); fin();
+          } }],
+        });
+      },
       renSub: () => {
         const viejo = sel; if (!viejo) return;
         const afectados = docs.filter((d) => raiz(d) === viejo);
