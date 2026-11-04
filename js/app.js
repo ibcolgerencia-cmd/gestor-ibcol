@@ -578,17 +578,23 @@ window.APP = (() => {
     const llave = `${entidad_id}|${equipo_id || relEquipo || ''}|${carpeta}${sede ? '|' + sede : ''}`;
     st.subExtra = st.subExtra || {};
     const raiz = (d) => (d.subcarpeta || '').split('/')[0];
-    const listaSubs = [...new Set([...subs, ...[...new Set([...(st.subExtra[llave] || []), ...docs.map(raiz).filter(Boolean)])].filter((x) => !subs.includes(x)).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))])];
+    const listaSubs = [...new Set([...subs, ...[...new Set([...(st.subExtra[llave] || []).map((x) => x.split('/')[0]), ...docs.map(raiz).filter(Boolean)])].filter((x) => !subs.includes(x)).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))])];
     let sel = st.subSel[llave] ?? '';
-    if (sel && !listaSubs.includes(sel)) sel = '';
+    // sel puede ser una ruta "SUB/SUBSUB/…" (subcarpetas dentro de subcarpetas)
+    if (sel && !listaSubs.includes(sel.split('/')[0])) sel = '';
+    const dentro = (d, ruta) => { const x = d.subcarpeta || ''; return x === ruta || x.startsWith(ruta + '/'); };
+    const selRaiz = sel.split('/')[0];
+    const hijos = sel ? [...new Set([...docs.filter((d) => (d.subcarpeta || '').startsWith(sel + '/')).map((d) => d.subcarpeta.slice(sel.length + 1).split('/')[0]), ...(st.subExtra[llave] || []).filter((x) => x.startsWith(sel + '/')).map((x) => x.slice(sel.length + 1).split('/')[0])])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'es', { numeric: true })) : [];
+    const cuentaRuta = (r) => docs.filter((d) => dentro(d, r)).length;
     // Del más reciente al más antiguo: fecha del documento (o de carga), luego hora de carga
     const fechaDoc = (d) => String(d.fecha_documento || d.created_at || '').slice(0, 10);
-    const visibles = docs.filter((d) => !sel || raiz(d) === sel).sort((a, b) => fechaDoc(b).localeCompare(fechaDoc(a)) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
+    const visibles = docs.filter((d) => !sel || dentro(d, sel)).sort((a, b) => fechaDoc(b).localeCompare(fechaDoc(a)) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
     const cuenta = (s) => docs.filter((d) => raiz(d) === s).length;
     const tipoExt = (n) => { const e = UI.ext(n); return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(e) ? 'img' : e; };
-    cont.innerHTML = `<header><h2>${h(titulo)}</h2>${esProp() ? `<div class="actions">${sel && cuenta(sel) ? `<button class="btn" data-act="renSub" title="Cambiar el nombre de la subcarpeta “${h(sel)}”">${I.edit} Renombrar subcarpeta</button>` : ''}${sel && (cuenta(sel) || !subs.includes(sel)) ? `<button class="btn danger" data-act="delSub" title="Eliminar la subcarpeta “${h(sel)}”">${I.del} Eliminar subcarpeta</button>` : ''}<button class="btn" data-act="nuevaSub">${I.mas} Subcarpeta</button><label class="btn">${I.subir} Importar carpeta<input type="file" webkitdirectory multiple hidden data-dir></label><label class="btn pri">${I.subir} Subir archivos<input type="file" multiple hidden data-up></label></div>` : ''}</header>
-      ${listaSubs.length ? `<div class="subs" role="tablist"><button class="sub ${sel ? '' : 'on'}" data-act="sub" data-s="">Todo <span>${docs.length}</span></button>${listaSubs.map((s) => `<button class="sub ${s === sel ? 'on' : ''}" data-act="sub" data-s="${h(s)}">${h(s)} <span>${cuenta(s)}</span></button>`).join('')}</div>` : ''}
-      ${esProp() ? `<div class="drop" data-drop>Arrastre aquí archivos para guardarlos en <b>${h(sel || 'esta carpeta')}</b></div>` : ''}
+    cont.innerHTML = `<header><h2>${h(titulo)}</h2>${esProp() ? `<div class="actions">${sel && cuentaRuta(sel) ? `<button class="btn" data-act="renSub" title="Cambiar el nombre de la subcarpeta “${h(sel)}”">${I.edit} Renombrar subcarpeta</button>` : ''}${sel && (cuentaRuta(sel) || !subs.includes(sel)) ? `<button class="btn danger" data-act="delSub" title="Eliminar la subcarpeta “${h(sel)}”">${I.del} Eliminar subcarpeta</button>` : ''}<button class="btn" data-act="nuevaSub">${I.mas} ${sel ? 'Subcarpeta aquí' : 'Subcarpeta'}</button><label class="btn">${I.subir} Importar carpeta<input type="file" webkitdirectory multiple hidden data-dir></label><label class="btn pri">${I.subir} Subir archivos<input type="file" multiple hidden data-up></label></div>` : ''}</header>
+      ${listaSubs.length ? `<div class="subs" role="tablist"><button class="sub ${sel ? '' : 'on'}" data-act="sub" data-s="">Todo <span>${docs.length}</span></button>${listaSubs.map((s) => `<button class="sub ${s === selRaiz ? 'on' : ''}" data-act="sub" data-s="${h(s)}">${h(s)} <span>${cuenta(s)}</span></button>`).join('')}</div>` : ''}
+      ${sel && (sel.includes('/') || hijos.length) ? `<div class="subs subs-in" aria-label="Subcarpetas de ${h(sel)}">${sel.split('/').map((seg, i, arr) => { const r = arr.slice(0, i + 1).join('/'); return `<button class="sub ruta ${r === sel ? 'on' : ''}" data-act="sub" data-s="${h(r)}">${i ? '› ' : ''}${h(seg)}</button>`; }).join('')}${hijos.map((c) => `<button class="sub" data-act="sub" data-s="${h(sel + '/' + c)}">${I.carpeta} ${h(c)} <span>${cuentaRuta(sel + '/' + c)}</span></button>`).join('')}</div>` : ''}
+      ${esProp() ? `<div class="drop" data-drop>Arrastre aquí archivos para guardarlos en <b>${h((sel || 'esta carpeta').replace(/\//g, ' › '))}</b></div>` : ''}
       ${visibles.length ? `<div class="files">${visibles.map((d) => {
         const dv = UI.diasHasta(d.fecha_vencimiento);
         return `<div class="file"><span class="ext ${tipoExt(d.nombre)}">${h(UI.ext(d.nombre).slice(0, 4).toUpperCase())}</span>
@@ -651,14 +657,15 @@ window.APP = (() => {
       sub: (dd) => { st.subSel[llave] = dd.s; recargar(); },
       delSub: () => {
         const viejo = sel; if (!viejo) return;
-        const afectados = docs.filter((d) => raiz(d) === viejo);
+        const afectados = docs.filter((d) => dentro(d, viejo));
         const fija = subs.includes(viejo);
-        const fin = () => { st.subExtra[llave] = (st.subExtra[llave] || []).filter((x) => x !== viejo); st.subSel[llave] = ''; recargar(); };
+        const padre = viejo.split('/').slice(0, -1).join('/');
+        const fin = () => { st.subExtra[llave] = (st.subExtra[llave] || []).filter((x) => x !== viejo && !x.startsWith(viejo + '/')); st.subSel[llave] = padre; recargar(); };
         if (!afectados.length) { fin(); toast('Subcarpeta eliminada'); return; }
         modal({
           titulo: `Eliminar la subcarpeta “${viejo}”`, size: 'sm',
           cuerpo: `<form class="form" onsubmit="return false"><p>Tiene <b>${afectados.length}</b> archivo${afectados.length === 1 ? '' : 's'} (incluidas sus subcarpetas internas).${fija ? ' Es una subcarpeta propia del formato: queda vacía pero no desaparece.' : ''}</p>
-            <label class="checks full radio-line"><input type="radio" name="modo" value="mover" checked> Conservar los archivos: pasarlos a la carpeta principal</label>
+            <label class="checks full radio-line"><input type="radio" name="modo" value="mover" checked> Conservar los archivos: pasarlos a ${padre ? `“${h(padre.split('/').pop())}”` : 'la carpeta principal'}</label>
             <label class="checks full radio-line"><input type="radio" name="modo" value="borrar"> Eliminar también los archivos (no se puede deshacer)</label>
             <div class="fields">${f.input('confirma', 'Para eliminar los archivos escriba ELIMINAR', '', { full: true, attrs: 'autocomplete="off"' })}</div></form>`,
           acciones: [{ t: 'Cancelar' }, { t: `${I.del} Eliminar subcarpeta`, cls: 'pri danger', fn: async (m) => {
@@ -666,7 +673,7 @@ window.APP = (() => {
             if (v.modo === 'borrar' && v.confirma.trim().toUpperCase() !== 'ELIMINAR') { toast('Escriba ELIMINAR para confirmar que se borran los archivos', true); return false; }
             for (const d of afectados) {
               if (v.modo === 'borrar') { await S.remove('documentos', d.id); try { await S.removeFile(d.archivo); } catch {} }
-              else { const resto = (d.subcarpeta || '').split('/').slice(1).join('/'); await S.update('documentos', d.id, { subcarpeta: subReal(d, resto) }); }
+              else { const resto = (d.subcarpeta || '').slice(viejo.length + 1); await S.update('documentos', d.id, { subcarpeta: subReal(d, [padre, resto].filter(Boolean).join('/')) }); }
             }
             S.log('ELIMINAR', 'documentos', entidad_id, `Subcarpeta ${viejo} eliminada (${v.modo === 'borrar' ? afectados.length + ' archivos borrados' : 'archivos pasados a la carpeta principal'})`);
             toast(v.modo === 'borrar' ? 'Subcarpeta y archivos eliminados' : 'Subcarpeta eliminada; los archivos quedaron en la carpeta principal'); fin();
@@ -675,22 +682,24 @@ window.APP = (() => {
       },
       renSub: () => {
         const viejo = sel; if (!viejo) return;
-        const afectados = docs.filter((d) => raiz(d) === viejo);
+        const afectados = docs.filter((d) => dentro(d, viejo));
+        const padre = viejo.split('/').slice(0, -1).join('/'), nomV = viejo.split('/').pop();
         modal({
           titulo: 'Cambiar nombre de la subcarpeta', size: 'sm',
-          cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nuevo nombre', viejo, { full: true })}</div><p class="muted" style="font-size:.85rem">Se cambia en ${afectados.length} archivo${afectados.length === 1 ? '' : 's'} de esta subcarpeta (y sus subcarpetas internas).</p></form>`,
+          cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nuevo nombre', nomV, { full: true })}</div><p class="muted" style="font-size:.85rem">Se cambia en ${afectados.length} archivo${afectados.length === 1 ? '' : 's'} de esta subcarpeta (y sus subcarpetas internas).</p></form>`,
           acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
             const v = leer(m.body).nombre.replace(/\//g, '-').replace(/\s+/g, ' ').trim(); if (!v) { toast('Escriba el nombre', true); return false; }
-            if (v === viejo) return;
-            for (const d of afectados) { const resto = (d.subcarpeta || '').split('/').slice(1); await S.update('documentos', d.id, { subcarpeta: subReal(d, [v, ...resto].join('/')) }); }
-            st.subExtra[llave] = [...(st.subExtra[llave] || []).filter((x) => x !== viejo), ...(afectados.length ? [] : [v])];
-            st.subSel[llave] = v; S.log('EDITAR', 'documentos', entidad_id, `Subcarpeta ${viejo} → ${v}`); toast('Subcarpeta renombrada'); recargar();
+            if (v === nomV) return;
+            const nueva = [padre, v].filter(Boolean).join('/');
+            for (const d of afectados) { const resto = (d.subcarpeta || '').slice(viejo.length); await S.update('documentos', d.id, { subcarpeta: subReal(d, nueva + resto) }); }
+            st.subExtra[llave] = (st.subExtra[llave] || []).map((x) => (x === viejo || x.startsWith(viejo + '/') ? nueva + x.slice(viejo.length) : x));
+            st.subSel[llave] = nueva; S.log('EDITAR', 'documentos', entidad_id, `Subcarpeta ${viejo} → ${v}`); toast('Subcarpeta renombrada'); recargar();
           } }],
         });
       },
       usarInv: async (dd) => { const ent = await S.get('entidades', entidad_id); await A.inventarioDesdeDoc(ent, doc(dd.id)); },
-      nuevaSub: () => modal({ titulo: 'Nueva subcarpeta', size: 'sm', cuerpo: `<div class="form">${f.input('nombre', 'Nombre de la subcarpeta', '', { attrs: 'placeholder="ej: 2026-CONSULTA ALERTAS E INFORMES DE SEGURIDAD"' })}<p class="muted">Quedará guardada cuando suba el primer archivo en ella.</p></div>`,
-        acciones: [{ t: 'Cancelar' }, { t: 'Crear', cls: 'pri', fn: (m) => { const v = leer(m.body).nombre.replace(/\//g, '-').trim(); if (!v) { toast('Escriba el nombre', true); return false; } st.subExtra[llave] = [...(st.subExtra[llave] || []), v]; st.subSel[llave] = v; recargar(); } }] }),
+      nuevaSub: () => modal({ titulo: sel ? `Nueva subcarpeta dentro de “${sel.split('/').pop()}”` : 'Nueva subcarpeta', size: 'sm', cuerpo: `<div class="form">${sel ? `<p class="muted" style="font-size:.85rem">Se creará dentro de <b>${h(sel.replace(/\//g, ' › '))}</b>. Para crearla al primer nivel, toque antes “Todo”.</p>` : ''}${f.input('nombre', 'Nombre de la subcarpeta', '', { attrs: 'placeholder="ej: 2026-CONSULTA ALERTAS E INFORMES DE SEGURIDAD"' })}<p class="muted">Quedará guardada cuando suba el primer archivo en ella.</p></div>`,
+        acciones: [{ t: 'Cancelar' }, { t: 'Crear', cls: 'pri', fn: (m) => { const n = leer(m.body).nombre.replace(/\//g, '-').trim(); if (!n) { toast('Escriba el nombre', true); return false; } const v = sel ? `${sel}/${n}` : n; st.subExtra[llave] = [...(st.subExtra[llave] || []), v]; st.subSel[llave] = v; recargar(); } }] }),
       verDoc: (dd) => verDoc(doc(dd.id)),
       enviarDoc: (dd) => { const d = doc(dd.id); A.enviarDoc({ nombre: d.nombre, archivo: d.archivo, obtenerBlob: () => blobDe(d), registro: d.id }); },
       bajarDoc: async (dd) => { const d = doc(dd.id); UI.descargar(await blobDe(d), d.nombre); S.log('DESCARGA', 'documentos', d.id, d.nombre); },
