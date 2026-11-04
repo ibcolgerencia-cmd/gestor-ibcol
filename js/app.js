@@ -581,7 +581,9 @@ window.APP = (() => {
     const listaSubs = [...new Set([...subs, ...[...new Set([...(st.subExtra[llave] || []), ...docs.map(raiz).filter(Boolean)])].filter((x) => !subs.includes(x)).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))])];
     let sel = st.subSel[llave] ?? '';
     if (sel && !listaSubs.includes(sel)) sel = '';
-    const visibles = docs.filter((d) => !sel || raiz(d) === sel).sort((a, b) => String(a.subcarpeta || '').localeCompare(String(b.subcarpeta || ''), 'es', { numeric: true }) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
+    // Del más reciente al más antiguo: fecha del documento (o de carga), luego hora de carga
+    const fechaDoc = (d) => String(d.fecha_documento || d.created_at || '').slice(0, 10);
+    const visibles = docs.filter((d) => !sel || raiz(d) === sel).sort((a, b) => fechaDoc(b).localeCompare(fechaDoc(a)) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
     const cuenta = (s) => docs.filter((d) => raiz(d) === s).length;
     const tipoExt = (n) => { const e = UI.ext(n); return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(e) ? 'img' : e; };
     cont.innerHTML = `<header><h2>${h(titulo)}</h2>${esProp() ? `<div class="actions">${sel && cuenta(sel) ? `<button class="btn" data-act="renSub" title="Cambiar el nombre de la subcarpeta “${h(sel)}”">${I.edit} Renombrar subcarpeta</button>` : ''}<button class="btn" data-act="nuevaSub">${I.mas} Subcarpeta</button><label class="btn">${I.subir} Importar carpeta<input type="file" webkitdirectory multiple hidden data-dir></label><label class="btn pri">${I.subir} Subir archivos<input type="file" multiple hidden data-up></label></div>` : ''}</header>
