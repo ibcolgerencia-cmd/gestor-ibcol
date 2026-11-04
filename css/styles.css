@@ -506,3 +506,13 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .eq-wrap .eq-del { margin-right: 10px; opacity: .55; }
 .eq-wrap:hover .eq-del, .eq-wrap .eq-del:focus-visible { opacity: 1; }
 @media (hover: none) { .eq-wrap .eq-del { opacity: .85; } }
+
+/* v49 · cronogramas por servicios (GENERAL, EXTRAMURAL…) */
+.crono-grupos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
+.crono-grupos > .muted { font-size: .85rem; margin-right: 2px; }
+.crono-grupos .chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .86rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.crono-grupos .chip svg { width: 14px; height: 14px; }
+.crono-grupos .chip small { color: var(--muted); }
+.crono-grupos .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.crono-grupos .chip.on small { color: inherit; opacity: .8; }
+.cfg-cols legend .btn.sm { margin-left: 6px; padding: 2px 8px; font-size: .75rem; }
