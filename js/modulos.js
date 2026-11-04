@@ -347,6 +347,8 @@
       sugeridos = [...new Set(docs.filter((d) => (d.subcarpeta || '').startsWith(pre)).map((d) => d.subcarpeta.slice(pre.length).split('/')[0]).filter(Boolean))];
     } catch {}
     const marcado = new Set(g?.cons || []);
+    const mapaC = ent.config?.carpetas_serv || {};
+    const carps = [...new Set(lista.map((c) => mapaC[c.id]).filter(Boolean))];
     const eqsN = {}; try { (await S.list('equipos', { entidad_id: ent.id })).forEach((e) => { if (e.estado !== 'Dado de baja') eqsN[e.consultorio_id] = (eqsN[e.consultorio_id] || 0) + 1; }); } catch {}
     const guardar = async (grupos) => {
       const cfg = { ...(ent.config || {}), crono_grupos: grupos };
@@ -360,8 +362,9 @@
           <datalist id="dl-gcrono">${sugeridos.map((x) => `<option value="${h(x)}">`).join('')}</datalist></div>
         ${sugeridos.length && !g ? `<p class="muted" style="font-size:.85rem">Subcarpetas existentes en ${h(subTipo)}: ${sugeridos.map((x) => `<b>${h(x)}</b>`).join(', ')}. Use el mismo nombre para que el PDF se guarde allí.</p>` : ''}
         <p class="muted" style="font-size:.85rem;margin-top:10px">Marque los servicios${sedes.length > 1 ? ' de cada sede' : ''} que entran en este cronograma:</p>
+        ${carps.length ? `<div class="actions" style="gap:6px;margin:4px 0 6px">${carps.map((cp) => `<button type="button" class="btn sm" data-carp="${h(cp)}">${I.carpeta} Marcar carpeta ${h(cp)}</button>`).join('')}</div>` : ''}
         <div class="cfg-cols">${sedes.map((sd) => `<fieldset><legend>${h(sd)} <button type="button" class="btn sm" data-todos="${h(sd)}">Todos</button></legend>${lista.filter((c) => sedeC(c) === sd).map((c) => `<label class="checks cfg-carp"><input type="checkbox" name="cons" value="${c.id}" data-sede="${h(sd)}" ${marcado.has(c.id) ? 'checked' : ''}> ${h(c.nombre)} <small class="muted">(${eqsN[c.id] || 0} equipos)</small></label>`).join('') || '<span class="muted">Sin servicios</span>'}</fieldset>`).join('') || '<div class="empty">Esta entidad aún no tiene servicios.</div>'}</div></form>`,
-      alAbrir: (m) => m.body.querySelectorAll('[data-todos]').forEach((b) => { b.onclick = () => { const cs = m.body.querySelectorAll(`[name=cons][data-sede="${CSS.escape(b.dataset.todos)}"]`); const todos = [...cs].every((x) => x.checked); cs.forEach((x) => { x.checked = !todos; }); }; }),
+      alAbrir: (m) => (m.body.querySelectorAll('[data-carp]').forEach((b) => { b.onclick = () => { m.body.querySelectorAll('[name=cons]').forEach((x) => { if (mapaC[x.value] === b.dataset.carp) x.checked = true; }); const n = m.body.querySelector('[name=nombre]'); if (n && !n.value) n.value = b.dataset.carp; }; }), m.body.querySelectorAll('[data-todos]').forEach((b) => { b.onclick = () => { const cs = m.body.querySelectorAll(`[name=cons][data-sede="${CSS.escape(b.dataset.todos)}"]`); const todos = [...cs].every((x) => x.checked); cs.forEach((x) => { x.checked = !todos; }); }; })),
       acciones: [
         ...(g ? [{ t: `${I.del} Eliminar este cronograma`, cls: 'danger', fn: async () => {
           if (!(await confirmar(`¿Eliminar el cronograma “${g.nombre}”? Solo se quita la agrupación: la programación de los equipos y los PDF guardados no se borran.`, 'Eliminar'))) return false;

@@ -414,12 +414,58 @@ window.APP = (() => {
     const sala = (c, lista) => `<section class="room"><header><h3>${c ? `${c._n}. ${h(c.nombre.toUpperCase())}` : 'SIN SERVICIO ASIGNADO'} ${c?.sede ? `<small class="muted" style="font-family:var(--f-body);font-weight:400;font-size:.85rem">${h(c.sede)}${c.servicio ? ' · ' + h(c.servicio) : ''}</small>` : ''}</h3>
         <div class="actions"><span class="pill">${lista.length} equipo${lista.length === 1 ? '' : 's'}</span>${esProp() && c ? `<button class="icon-btn" data-act="editCons" data-id="${c.id}" aria-label="Editar área">${I.edit}</button><button class="btn sm" data-act="nuevoEq" data-cons="${c.id}">${I.mas} Equipo</button>` : ''}</div></header>
         <div class="eq-list">${lista.map(filaEq).join('') || '<div class="empty">Sin equipos registrados.</div>'}</div></section>`;
+    // Carpetas de servicios (ej. EXTRAMURAL con KIT 1, KIT 2…): entidades.config.carpetas_serv = { consultorioId: 'EXTRAMURAL' }
+    const mapaCarp = { ...(ent.config?.carpetas_serv || {}) };
+    const carpDe = (c) => mapaCarp[c.id] || '';
+    st.carpAbierta = st.carpAbierta || {};
+    const salasSede = (sd) => {
+      const lista = A.numerado(cons.filter((c) => sedeC(c) === sd)); const hechos = new Set(); let html = '';
+      lista.forEach((c) => {
+        const cp = carpDe(c);
+        if (!cp) { html += sala(c, A.numerado(eqsR.filter((e) => e.consultorio_id === c.id))); return; }
+        if (hechos.has(cp)) return; hechos.add(cp);
+        const miembros = A.numerado(lista.filter((x) => carpDe(x) === cp));
+        const nEq = eqsR.filter((e) => miembros.some((x) => x.id === e.consultorio_id)).length;
+        const k = `${id}|${sd}|${cp}`, abierta = st.carpAbierta[k] !== false;
+        html += `<details class="srv-folder" ${abierta ? 'open' : ''} data-k="${h(k)}"><summary><span class="ic-f">${I.carpeta}</span><b>${h(cp)}</b><span class="muted">${miembros.length} servicio${miembros.length === 1 ? '' : 's'} · ${nEq} equipo${nEq === 1 ? '' : 's'}</span>${esProp() ? `<span class="sp"></span><button class="btn sm" data-act="carpEditar" data-s="${h(sd)}" data-n="${h(cp)}">${I.edit} Servicios / nombre</button><button class="btn sm" data-act="carpQuitar" data-s="${h(sd)}" data-n="${h(cp)}" title="Quitar la carpeta (los servicios y equipos no se borran)">${I.x} Quitar carpeta</button>` : ''}</summary>
+          <div class="srv-folder-in">${miembros.map((x) => sala(x, A.numerado(eqsR.filter((e) => e.consultorio_id === x.id)))).join('')}</div></details>`;
+      });
+      return html;
+    };
+    const guardarCarp = async (nuevoMapa) => {
+      const cfg = { ...(ent.config || {}), carpetas_serv: nuevoMapa };
+      try { const u = await S.update('entidades', ent.id, { config: cfg }); ent.config = u?.config || cfg; return true; }
+      catch (e) { toast(/config/i.test(e.message) ? 'Falta activar la configuración de la entidad en la base de datos.' : e.message, true); return false; }
+    };
+    const formCarp = (sd, nombre = '') => {
+      const lista = A.ordenar(cons.filter((c) => sedeC(c) === sd));
+      const existentes = [...new Set(Object.values(mapaCarp))];
+      modal({
+        titulo: nombre ? `Carpeta “${nombre}”` : 'Nueva carpeta de servicios', size: 'sm',
+        cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre de la carpeta', nombre, { full: true, attrs: 'list="dl-carps" placeholder="ej: EXTRAMURAL"' })}<datalist id="dl-carps">${existentes.map((x) => `<option value="${h(x)}">`).join('')}</datalist></div>
+          <p class="muted" style="font-size:.85rem;margin-top:8px">Marque los servicios de ${h(sd)} que van dentro de la carpeta:</p>
+          <div class="cfg-cols"><fieldset>${lista.map((c) => { const otra = carpDe(c) && carpDe(c) !== nombre; return `<label class="checks cfg-carp"><input type="checkbox" name="cons" value="${c.id}" ${nombre && carpDe(c) === nombre ? 'checked' : ''}> ${h(c.nombre)} <small class="muted">(${eqsR.filter((e) => e.consultorio_id === c.id).length} equipos${otra ? ' · hoy en ' + h(carpDe(c)) : ''})</small></label>`; }).join('') || '<span class="muted">Sin servicios</span>'}</fieldset></div></form>`,
+        acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
+          const d = leer(m.body); const n = (d.nombre || '').replace(/\s+/g, ' ').trim().toUpperCase();
+          if (!n) { toast('Escriba el nombre de la carpeta', true); return false; }
+          const sel = Array.isArray(d.cons) ? d.cons : [];
+          if (!sel.length) { toast('Marque al menos un servicio', true); return false; }
+          const nm = { ...mapaCarp };
+          lista.forEach((c) => { if (nm[c.id] === nombre && nombre) delete nm[c.id]; });
+          sel.forEach((cid) => { nm[cid] = n; });
+          if (!(await guardarCarp(nm))) return false;
+          S.log('EDITAR', 'consultorios', id, `Carpeta de servicios ${n}: ${sel.length} servicios`);
+          toast(`Carpeta “${n}” guardada`); A.recargar();
+        } }],
+      });
+    };
     content().innerHTML = `${migas([...A.rutaEnt(ent), ...(sedeSel && sedesL.length > 1 ? [[sedeSel.toUpperCase(), 'entidad', { id, sede: sedeSel }]] : []), titulo])}
       <div class="page-head"><div><span class="eyebrow">Servicios o consultorios · carpeta por equipo</span><h1>${h(titulo)}</h1></div>
         ${esProp() ? `<div class="actions"><button class="btn" data-act="revisarDocs">${I.ia} Revisar documentos (IA)</button><button class="btn" data-act="importarDrive">${I.subir} Importar servicios y equipos</button><button class="btn" data-act="nuevoCons">${I.mas} Servicio / consultorio</button><button class="btn pri" data-act="nuevoEq">${I.mas} Equipo</button></div>` : ''}</div>
       ${sedesL.length > 1 ? `<div class="chips sede-chips" role="tablist" aria-label="Sedes"><button class="chip ${!sedeSel ? 'on' : ''}" data-act="verSede" data-s="">Todas las sedes</button>${sedesL.map((s) => `<button class="chip ${sedeSel === s ? 'on' : ''}" data-act="verSede" data-s="${h(s)}">${h(s)} <small>${eqsR.filter((e) => consR.some((c) => c.id === e.consultorio_id && sedeC(c) === s)).length}</small></button>`).join('')}</div>` : ''}
-      ${sedesL.filter((s) => !sedeSel || s === sedeSel).map((s) => `${sedesL.length > 1 || esProp() ? `<h2 class="sede-tit">${h(s.toUpperCase())}${esProp() ? ` <button class="icon-btn" data-act="renSede" data-s="${h(s)}" title="Cambiar el nombre de la sede" aria-label="Cambiar nombre de la sede ${h(s)}">${I.edit}</button>` : ''}</h2>` : ''}${A.numerado(cons.filter((c) => sedeC(c) === s)).map((c) => sala(c, A.numerado(eqsR.filter((e) => e.consultorio_id === c.id)))).join('') || `<div class="empty">Esta sede aún no tiene servicios o consultorios.${esProp() ? ' Use “+ Servicio / consultorio” o importe la carpeta de la sede.' : ''}</div>`}`).join('')}
+      ${sedesL.filter((s) => !sedeSel || s === sedeSel).map((s) => `${sedesL.length > 1 || esProp() ? `<h2 class="sede-tit">${h(s.toUpperCase())}${esProp() ? ` <button class="icon-btn" data-act="renSede" data-s="${h(s)}" title="Cambiar el nombre de la sede" aria-label="Cambiar nombre de la sede ${h(s)}">${I.edit}</button><span class="sp"></span><button class="btn sm" data-act="carpNueva" data-s="${h(s)}" title="Agrupar servicios en una carpeta (ej. EXTRAMURAL con los KIT)">${I.carpeta} Carpeta de servicios</button>` : ''}</h2>` : ''}${salasSede(s) || `<div class="empty">Esta sede aún no tiene servicios o consultorios.${esProp() ? ' Use “+ Servicio / consultorio” o importe la carpeta de la sede.' : ''}</div>`}`).join('')}
       ${(sinCons.length || !cons.length) && !sedeSel ? sala(null, sinCons) : ''}`;
+    content().querySelectorAll('details.srv-folder').forEach((dt) => dt.addEventListener('toggle', () => { st.carpAbierta[dt.dataset.k] = dt.open; }));
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
       editEqLista: (d) => { const e = eqsR.find((x) => x.id === d.id); if (e) A.editarEquipoRapido(e, consR); },
@@ -446,6 +492,13 @@ window.APP = (() => {
       }),
       nuevoCons: () => A.formConsultorio(id, null, (sedeSel ? cons.filter((c) => sedeC(c) === sedeSel).length : cons.length) + 1, sedeSel || null),
       editCons: (d) => A.formConsultorio(id, cons.find((c) => c.id === d.id)),
+      carpNueva: (d) => formCarp(d.s),
+      carpEditar: (d) => formCarp(d.s, d.n),
+      carpQuitar: async (d) => {
+        if (!(await confirmar(`¿Quitar la carpeta “${d.n}”? Sus servicios y equipos no se borran: vuelven a verse sueltos en la sede.`, 'Quitar carpeta'))) return;
+        const nm = { ...mapaCarp }; cons.filter((c) => sedeC(c) === d.s && nm[c.id] === d.n).forEach((c) => delete nm[c.id]);
+        if (await guardarCarp(nm)) { toast('Carpeta quitada'); A.recargar(); }
+      },
       nuevoEq: (d) => A.formEquipo({ entidad_id: id, consultorio_id: d.cons || cons[0]?.id, orden: eqsR.filter((e) => e.consultorio_id === (d.cons || cons[0]?.id)).length + 1 }, cons),
       importarDrive: () => A.importarEntidad(ent, true),
       revisarDocs: async () => { await A.repararEstructura(ent); A.revisarDocumentos(ent); },
