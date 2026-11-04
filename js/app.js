@@ -419,10 +419,11 @@ window.APP = (() => {
     const carpDe = (c) => mapaCarp[c.id] || '';
     st.carpAbierta = st.carpAbierta || {};
     const salasSede = (sd) => {
+      // Primero los servicios sueltos; las carpetas (ej. EXTRAMURAL) van al final de la sede
       const lista = A.numerado(cons.filter((c) => sedeC(c) === sd)); const hechos = new Set(); let html = '';
-      lista.forEach((c) => {
+      A.numerado(lista.filter((c) => !carpDe(c))).forEach((c) => { html += sala(c, A.numerado(eqsR.filter((e) => e.consultorio_id === c.id))); });
+      lista.filter((c) => carpDe(c)).forEach((c) => {
         const cp = carpDe(c);
-        if (!cp) { html += sala(c, A.numerado(eqsR.filter((e) => e.consultorio_id === c.id))); return; }
         if (hechos.has(cp)) return; hechos.add(cp);
         const miembros = A.numerado(lista.filter((x) => carpDe(x) === cp));
         const nEq = eqsR.filter((e) => miembros.some((x) => x.id === e.consultorio_id)).length;
