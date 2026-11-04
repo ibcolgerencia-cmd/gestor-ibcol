@@ -536,3 +536,17 @@ h1 .icon-btn { vertical-align: middle; }
 .srv-folder > summary .sp { flex: 1; }
 .srv-folder-in { display: grid; gap: 12px; padding: 0 12px 12px 28px; }
 .srv-folder-in .room { margin: 0; }
+/* v54: anotaciones del cronograma */
+.crono td.w.nt { position: relative; }
+.crono td.w.nt::after { content: ''; position: absolute; top: 1px; right: 1px; width: 0; height: 0; border-left: 7px solid transparent; border-top: 7px solid #1d6fb8; }
+.icon-btn.con-nota { color: #1d6fb8; background: color-mix(in srgb, #1d6fb8 12%, transparent); }
+.notas-crono { gap: 8px; }
+.nota-mes { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; }
+.nota-mes.prog { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.nota-mes textarea { width: 100%; resize: vertical; }
+.nota-cab { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nota-cab .sp { flex: 1; }
+.chip-est { font-size: .72rem; padding: 2px 8px; border-radius: 99px; background: #f6cf5e; color: #4a3700; }
+.chip-est.E { background: #5dbb7a; color: #0e3a1d; } .chip-est.N { background: #e5705f; color: #3d0d06; }
+.notas-rep { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; margin: 6px 0; display: grid; gap: 6px; font-size: .88rem; }
+.nota-rep { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
