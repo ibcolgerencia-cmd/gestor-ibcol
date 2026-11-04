@@ -26,8 +26,8 @@
       const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, defval: '' });
       const out = []; let mapa = null, servSec = '';
       for (const r of filas) {
-        const ban = r.map((c) => String(c)).find((c) => /SERVICIO\s*\/\s*AREA\s*:/.test(norm(c)));
-        if (ban) { servSec = ban.split(':').slice(1).join(':').trim(); continue; }
+        const ban = r.map((c) => String(c)).find((c) => /^SERVICIO\s*\/\s*\S/.test(norm(c)));
+        if (ban) { servSec = norm(ban).replace(/^SERVICIO\s*\/\s*(AREA\s*:?)?\s*/, '').replace(/^:\s*/, '').trim(); continue; }
         if (r.some((c) => /^EQUIPO$/.test(norm(c))) && r.some((c) => /SERIE|MARCA/.test(norm(c)))) { mapa = {}; r.forEach((c, i) => { const k = colDe(c); if (k && !(k in mapa)) mapa[k] = i; }); continue; }
         if (!mapa) continue;
         const o = {}; Object.entries(mapa).forEach(([k, i]) => { o[k] = String(r[i] ?? '').trim(); });
@@ -361,10 +361,13 @@
   // Núcleo: lee los documentos y completa los equipos (eqsS) y la programación del cronograma.
   // tipo: 'mantenimiento' | 'metrologia' | 'auto' (lo deduce del nombre o subcarpeta del archivo) | null (no programa)
   const tipoDeDoc = (doc) => { const t = norm(`${doc.subcarpeta || ''} ${doc.nombre}`); return /CAPACIT/.test(t) ? null : /METROLOG|CALIBRA/.test(t) ? 'metrologia' : 'mantenimiento'; };
-  async function procesarDocs(ent, eqsS, docsSel, { datos = true, reemplazar = false, codigos = false, tipo = null, anioPlan = new Date().getFullYear(), prog = () => {}, eqsDe = null } = {}) {
-    let nAct = 0, nPlan = 0; const sinMatch = new Set(), errores = [], actIds = new Set();
+  async function procesarDocs(ent, eqsS, docsSel, { datos = true, reemplazar = false, codigos = false, crear = false, ordenar = false, sedeDe = () => null, tipo = null, anioPlan = new Date().getFullYear(), prog = () => {}, eqsDe = null } = {}) {
+    let nAct = 0, nPlan = 0, nNuevos = 0; const sinMatch = new Set(), errores = [], actIds = new Set(), sedesOrdenadas = new Set();
     const cronCache = {};
-    const consN = {}; (await S.list('consultorios', { entidad_id: ent.id })).forEach((c) => { consN[c.id] = comp(c.nombre); });
+    const svc = (t) => comp(norm(t).replace(/\b(DE|DEL|LA|LAS|LOS|EL|Y)\b/g, ' '));
+    const consAll = await S.list('consultorios', { entidad_id: ent.id });
+    const consN = {}; consAll.forEach((c) => { consN[c.id] = svc(c.nombre); });
+    const mismoServ = (cn, sv) => !!cn && !!sv && (cn === sv || cn.includes(sv) || sv.includes(cn));
     const lev = (a, b) => { if (Math.abs(a.length - b.length) > 2) return 9; const d = [...Array(b.length + 1).keys()]; for (let i = 1; i <= a.length; i++) { let prev = d[0]; d[0] = i; for (let j = 1; j <= b.length; j++) { const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; } } return d[b.length]; };
     const parecido = (a, b) => (!a || !b ? 0 : a === b ? 3 : (a.length >= 5 && b.length >= 5 && (a.startsWith(b) || b.startsWith(a))) ? 2 : lev(a, b) <= 2 && Math.min(a.length, b.length) >= 6 ? 1 : 0);
     // código → serie → mismo servicio + nombre parecido (uno a uno) → nombre único
@@ -373,9 +376,9 @@
       if (r.codigo) { const c = comp(r.codigo); const e = lista.find((x) => comp(x.codigo_inv) === c); if (e) return e; }
       const sr = comp(r.serie); if (sr.length >= 4 && !/^(NR|NOREGISTRA)$/.test(sr)) { const e = lista.find((x) => comp(x.serie) === sr); if (e) return e; }
       const n = comp(r.nombre); if (!n) return null;
-      const sv = comp(r.servicio);
+      const sv = svc(r.servicio);
       if (sv) {
-        const mismos = lista.filter((x) => libre(x) && consN[x.consultorio_id] && (consN[x.consultorio_id] === sv || consN[x.consultorio_id].includes(sv) || sv.includes(consN[x.consultorio_id])));
+        const mismos = lista.filter((x) => libre(x) && mismoServ(consN[x.consultorio_id], sv));
         let mejor = null, pt = 0; mismos.forEach((x) => { const p = parecido(comp(x.nombre), n); if (p > pt) { pt = p; mejor = x; } });
         if (mejor) return mejor;
       }
@@ -383,7 +386,7 @@
       if (iguales.length === 1) return iguales[0];
       // el servicio del archivo no coincide (ej. el archivo no separa "TOMA DE MUESTRAS"): buscar en la sede,
       // prefiriendo los servicios que el archivo no menciona
-      const fuera = (x) => { const cn = consN[x.consultorio_id] || ''; return ![...servArch].some((sv2) => cn === sv2 || cn.includes(sv2) || sv2.includes(cn)); };
+      const fuera = (x) => { const cn = consN[x.consultorio_id] || ''; return ![...servArch].some((sv2) => mismoServ(cn, sv2)); };
       let mejor = null, pt = 0; lista.forEach((x) => { if (!libre(x)) return; const p = parecido(comp(x.nombre), n); if (!p) return; const q = p + (fuera(x) ? 10 : 0); if (q > pt) { pt = q; mejor = x; } });
       return mejor && (pt >= 10 || iguales.length === 0) ? mejor : null;
     };
@@ -402,16 +405,41 @@
       if (!filas.length && plan) filas = plan.filas;
       filas = filas.filter((r) => /[A-ZÁÉÍÓÚÑ]{3}/i.test(r.nombre || ''));
       if (!filas.length) { errores.push(`${doc.nombre}: no se encontró la tabla de equipos`); continue; }
-      servArch = new Set(filas.map((r) => comp(r.servicio)).filter(Boolean));
+      servArch = new Set(filas.map((r) => svc(r.servicio)).filter(Boolean));
       // 1) datos de los equipos
       if (datos) {
-        for (const r of filas) {
-          const e = buscar(r); if (!e) { if (r.nombre) sinMatch.add(`${r.codigo ? r.codigo + ' · ' : ''}${r.nombre}`); continue; }
+        const esInv = doc.carpeta === 'inventarios'; const sedeD = sedeDe(doc);
+        const ordenarDoc = ordenar && esInv && !sedesOrdenadas.has(sedeD || '*');
+        for (const [pos, r] of filas.entries()) {
+          let e = buscar(r);
+          if (!e && crear && esInv) {
+            // crear el equipo que falta en su servicio (y el servicio, si no existe en la sede)
+            const sv = svc(r.servicio || 'SIN SERVICIO');
+            let c = consAll.find((x) => (!sedeD || (x.sede || 'Sede principal') === sedeD) && mismoServ(consN[x.id], sv));
+            if (!c) { c = await S.insert('consultorios', { entidad_id: ent.id, nombre: titulo(r.servicio || 'SIN SERVICIO'), orden: 900 + consAll.length, sede: sedeD || 'Sede principal' }); consAll.push(c); consN[c.id] = svc(c.nombre); }
+            const todos = await S.list('equipos', { entidad_id: ent.id });
+            let cod = r.codigo || `${comp(r.nombre).slice(0, 3)}-${String(pos + 1).padStart(3, '0')}`;
+            while (todos.some((x) => comp(x.codigo_inv) === comp(cod))) cod += '-B';
+            e = await S.insert('equipos', { entidad_id: ent.id, consultorio_id: c.id, codigo_inv: cod, nombre: titulo(r.nombre), marca: r.marca || null, modelo: r.modelo || null, serie: r.serie && !/^N\/?R$/i.test(r.serie) ? r.serie : null,
+              activo_fijo: r.af || null, clase_riesgo: riesgoDe(r.riesgo), registro_sanitario: r.rs || null, ubicacion: titulo(r.ubicacion || r.servicio) || null, orden: pos + 1, estado: 'Activo', periodicidad_mto: 'Semestral', periodicidad_metro: 'No aplica', hv: {} });
+            lista.push(e); if (lista !== eqsS) eqsS.push(e); usados.add(e.id); nNuevos++; continue;
+          }
+          if (!e) { if (r.nombre) sinMatch.add(`${r.codigo ? r.codigo + ' · ' : ''}${r.nombre}`); continue; }
           const cand = { ...(codigos && r.codigo ? { codigo_inv: r.codigo } : {}), activo_fijo: r.af, marca: r.marca, modelo: r.modelo, serie: r.serie && !/^N\/?R$/i.test(r.serie) ? r.serie : '', registro_sanitario: r.rs, clase_riesgo: riesgoDe(r.riesgo), ubicacion: r.ubicacion || '' };
           const cambios = {};
           Object.entries(cand).forEach(([k, v]) => { v = String(v || '').trim(); if (!v || /^(NO REGISTRA|NR|N\/A)$/i.test(v)) return; if (reemplazar || !e[k] || k === 'codigo_inv') { if (e[k] !== v) cambios[k] = v; } });
+          if (ordenarDoc && e.orden !== pos + 1) cambios.orden = pos + 1;
           if (Object.keys(cambios).length) { const u = await S.update('equipos', e.id, cambios); Object.assign(e, u || cambios); if (!actIds.has(e.id)) { actIds.add(e.id); nAct++; } }
         }
+      }
+      // servicios de la sede en el orden del inventario (los que el archivo no trae quedan al final)
+      if (datos && ordenar && doc.carpeta === 'inventarios' && !sedesOrdenadas.has(sedeDe(doc) || '*')) {
+        const sedeD = sedeDe(doc); sedesOrdenadas.add(sedeD || '*');
+        const ordenS = [...new Set(filas.map((r) => svc(r.servicio)).filter(Boolean))];
+        const deSede = A.ordenar(consAll.filter((c) => !sedeD || (c.sede || 'Sede principal') === sedeD));
+        const idx = (c) => { const i = ordenS.findIndex((sv) => mismoServ(consN[c.id], sv)); return i < 0 ? 1000 : i; };
+        const nuevo = [...deSede].sort((a, b) => idx(a) - idx(b) || deSede.indexOf(a) - deSede.indexOf(b));
+        for (const [i, c] of nuevo.entries()) if (c.orden !== i + 1) { await S.update('consultorios', c.id, { orden: i + 1 }); c.orden = i + 1; }
       }
       // 2) programación del cronograma
       if (plan && tipoD) {
@@ -428,7 +456,7 @@
         }
       }
     }
-    return { nAct, nPlan, sinMatch, errores };
+    return { nAct, nPlan, nNuevos, sinMatch, errores };
   }
 
   // Llenar TODAS las entidades y sedes con sus inventarios / cronogramas en Excel ya cargados
@@ -442,6 +470,8 @@
         <label class="checks full radio-line"><input type="checkbox" name="reemplazar" data-single> Reemplazar también los datos que ya tienen (si no, solo se llenan los vacíos)</label>
         <label class="checks full radio-line"><input type="checkbox" name="codigos" data-single> Cambiar el código de inventario por el del archivo cuando el equipo se encontró por servicio y nombre</label>
         <label class="checks full radio-line"><input type="checkbox" name="plan" data-single checked> Pasar también los meses y semanas marcados en los cronogramas en Excel (mantenimiento o metrología según el nombre del archivo; no borra lo ya programado)</label>
+        <label class="checks full radio-line"><input type="checkbox" name="crear" data-single checked> Cargar todos los equipos del inventario: crear los que aún no existen (en su servicio y sede)</label>
+        <label class="checks full radio-line"><input type="checkbox" name="ordenar" data-single checked> Ordenar los servicios y equipos en el mismo orden del inventario en Excel</label>
         <label class="checks full radio-line"><input type="checkbox" name="pdf" data-single> Leer también los inventarios en PDF</label>
         <div class="muted" data-prog style="margin-top:8px"></div></form>`,
       acciones: [{ t: 'Cancelar' }, { t: 'Llenar todas', cls: 'pri', fn: async (m) => {
@@ -457,12 +487,13 @@
           const sedes = A.sedesDe ? A.sedesDe(cons, ent) : [];
           const sedeCons = (sd) => new Set(cons.filter((c) => (c.sede || 'Sede principal') === sd).map((c) => c.id));
           const eqsDe = (doc) => { if (sedes.length < 2 || !A.esDeSede) return eqs; const sds = sedes.filter((sd) => A.esDeSede(doc, sd, sedes)); if (sds.length !== 1) return eqs; const ids = sedeCons(sds[0]); const l = eqs.filter((e) => ids.has(e.consultorio_id)); return l.length ? l : eqs; };
-          const r = await procesarDocs(ent, eqs, docs, { datos: true, reemplazar: d.reemplazar, codigos: d.codigos, tipo: d.plan ? 'auto' : null, eqsDe, prog: (t) => { pg.textContent = `${ent.razon_social}: ${t}`; } });
+          const sedeDeDoc = (doc) => { if (!A.esDeSede || !sedes.length) return null; const sds = sedes.filter((sd) => A.esDeSede(doc, sd, sedes)); return sds.length === 1 ? sds[0] : null; };
+          const r = await procesarDocs(ent, eqs, docs, { datos: true, reemplazar: d.reemplazar, codigos: d.codigos, crear: d.crear, ordenar: d.ordenar, sedeDe: sedeDeDoc, tipo: d.plan ? 'auto' : null, eqsDe, prog: (t) => { pg.textContent = `${ent.razon_social}: ${t}`; } });
           S.log('EDITAR', 'equipos', ent.id, `Llenado desde archivos (todas): ${r.nAct} equipos, ${r.nPlan} cronogramas`);
           res.push({ ent, n: docs.length, ...r });
         }
-        modal({ titulo: 'Resultado por entidad', size: 'wide', cuerpo: `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Entidad</th><th>Archivos</th><th>Equipos completados</th><th>Filas de cronograma</th><th>Sin coincidir</th></tr></thead><tbody>
-          ${res.map((x) => `<tr><td>${h(x.ent.razon_social)}</td>${x.sinArch ? '<td colspan="4" class="muted">Sin inventarios ni cronogramas en Excel cargados</td>' : `<td class="num">${x.n}</td><td class="num">${x.nAct}</td><td class="num">${x.nPlan}</td><td>${x.sinMatch.size ? `<details><summary>${x.sinMatch.size}</summary><small>${[...x.sinMatch].slice(0, 40).map(h).join('<br>')}</small></details>` : '0'}${x.errores.length ? `<br><small class="muted">${x.errores.map(h).join('<br>')}</small>` : ''}</td>`}</tr>`).join('')}
+        modal({ titulo: 'Resultado por entidad', size: 'wide', cuerpo: `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Entidad</th><th>Archivos</th><th>Equipos completados / ordenados</th><th>Equipos nuevos</th><th>Filas de cronograma</th><th>Sin coincidir</th></tr></thead><tbody>
+          ${res.map((x) => `<tr><td>${h(x.ent.razon_social)}</td>${x.sinArch ? '<td colspan="5" class="muted">Sin inventarios ni cronogramas en Excel cargados</td>' : `<td class="num">${x.n}</td><td class="num">${x.nAct}</td><td class="num">${x.nNuevos}</td><td class="num">${x.nPlan}</td><td>${x.sinMatch.size ? `<details><summary>${x.sinMatch.size}</summary><small>${[...x.sinMatch].slice(0, 40).map(h).join('<br>')}</small></details>` : '0'}${x.errores.length ? `<br><small class="muted">${x.errores.map(h).join('<br>')}</small>` : ''}</td>`}</tr>`).join('')}
           </tbody></table></div>`, acciones: [{ t: 'Cerrar', cls: 'pri' }] });
         A.recargar();
       } }],
@@ -487,6 +518,8 @@
         </tbody></table></div>
         <label class="checks full radio-line"><input type="checkbox" name="datos" data-single checked> Completar los datos vacíos de los equipos: A.F., marca, modelo, serie, riesgo, registro sanitario y ubicación</label>
         <label class="checks full radio-line"><input type="checkbox" name="reemplazar" data-single> Reemplazar también los datos que ya tienen (usar lo que dice el archivo)</label>
+        <label class="checks full radio-line"><input type="checkbox" name="crear" data-single checked> Cargar todos los equipos de los inventarios: crear los que aún no existen</label>
+        <label class="checks full radio-line"><input type="checkbox" name="ordenar" data-single checked> Ordenar los servicios y equipos como en el inventario</label>
         <label class="checks full radio-line"><input type="checkbox" name="codigos" data-single> Cambiar el código de inventario por el del archivo cuando el equipo se encontró por servicio y nombre</label>
         ${tipo ? `<label class="checks full radio-line"><input type="checkbox" name="plan" data-single checked> Pasar al cronograma de ${h(tipoTxt)} los meses y semanas marcados en los cronogramas en Excel (no borra lo ya programado)</label>
         <div class="fields">${f.sel('anioPlan', 'Año del cronograma si el archivo no lo dice', [anio - 1, anio, anio + 1].map((y) => [y, y]), anio)}</div>` : ''}
@@ -495,10 +528,10 @@
         const d = leer(m.body); const sel = Array.isArray(d.doc) ? d.doc : [];
         if (!sel.length) { toast('Marque al menos un archivo', true); return false; }
         const prog = m.body.querySelector('[data-prog]');
-        const { nAct, nPlan, sinMatch, errores } = await procesarDocs(ent, eqsS, sel.map((id) => docs.find((x) => x.id === id)), { datos: d.datos, reemplazar: d.reemplazar, codigos: d.codigos, tipo: d.plan ? tipo : null, anioPlan: +d.anioPlan || anio, prog: (t) => { prog.textContent = t; } });
+        const { nAct, nPlan, nNuevos, sinMatch, errores } = await procesarDocs(ent, eqsS, sel.map((id) => docs.find((x) => x.id === id)), { datos: d.datos, reemplazar: d.reemplazar, codigos: d.codigos, crear: d.crear, ordenar: d.ordenar, sedeDe: () => sede, tipo: d.plan ? tipo : null, anioPlan: +d.anioPlan || anio, prog: (t) => { prog.textContent = t; } });
         S.log('EDITAR', 'equipos', ent.id, `Llenado desde archivos: ${nAct} equipos, ${nPlan} cronogramas`);
         const faltan = [...sinMatch];
-        modal({ titulo: 'Resultado', size: 'sm', cuerpo: `<p><b>${nAct}</b> equipo${nAct === 1 ? '' : 's'} con datos completados${tipo ? ` · <b>${nPlan}</b> fila${nPlan === 1 ? '' : 's'} del cronograma programadas` : ''}.</p>
+        modal({ titulo: 'Resultado', size: 'sm', cuerpo: `<p><b>${nAct}</b> equipo${nAct === 1 ? '' : 's'} con datos completados u ordenados · <b>${nNuevos}</b> nuevo${nNuevos === 1 ? '' : 's'}${tipo ? ` · <b>${nPlan}</b> fila${nPlan === 1 ? '' : 's'} del cronograma programadas` : ''}.</p>
           ${faltan.length ? `<p class="muted" style="font-size:.85rem">${faltan.length} fila${faltan.length === 1 ? '' : 's'} de los archivos no coincidieron con ningún equipo${sede ? ' de la sede' : ''} (revise el código):</p><ul style="font-size:.82rem;max-height:160px;overflow:auto">${faltan.slice(0, 40).map((x) => `<li>${h(x)}</li>`).join('')}</ul>` : ''}
           ${errores.length ? `<p class="muted" style="font-size:.85rem">${errores.map(h).join('<br>')}</p>` : ''}`, acciones: [{ t: 'Cerrar', cls: 'pri' }] });
         alTerminar?.();
