@@ -57,7 +57,7 @@
       <div class="tbl-tools">${sedesL.length > 1 ? `<div class="field" style="min-width:170px"><select aria-label="Filtrar por sede" data-sedef><option value="">Todas las sedes</option>${sedesL.map((x) => `<option value="${h(x)}" ${sedeF === x ? 'selected' : ''}>${h(x)}</option>`).join('')}</select></div>` : ''}<div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}${sedesL.length > 1 ? ' · ' + h(sedeC(c)) : ''}</option>`).join('')}</select></div>
         <input type="search" data-q placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar en el inventario">
         <span class="muted" data-cuenta></span>
-        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
+        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
       ${esProp() ? '<p class="muted edit-hint" data-hint hidden>Modo edición: cambie cualquier dato y presione Enter o salga de la casilla para guardar. Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
       ${A.datalistNR}
       <div class="tbl-wrap"><table class="tbl tbl-eq"><thead><tr>${A.COLS_EQ.map((c) => `<th style="min-width:${c.w}px">${c.t}</th>`).join('')}<th>Estado</th></tr></thead><tbody></tbody></table></div></section>`;
@@ -71,6 +71,7 @@
     A.acts({
       editTabla: () => { editar = !editar; const hn = el.querySelector('[data-hint]'); if (hn) hn.hidden = !editar; pintar(); },
       llenarNR: () => A.completarNR(visibles(), pintar),
+      llenarArch: () => A.llenarDesdeArchivos(ent, { sede: sedeCtx || sedeF || null, alTerminar: () => A.recargar() }),
       googleInv: () => A.buscarGoogleInventario(ent, visibles()),
       abrirEq: (d) => A.go('equipo', { id: d.id }),
       nuevoEq: () => A.formEquipo({ entidad_id: ent.id, consultorio_id: filtro || cons[0]?.id }, cons),
@@ -182,7 +183,7 @@
           ${F.mes ? `<div class="field"><select data-estado aria-label="Estado en el mes"><option value="">Cualquier estado</option><option value="P" ${F.estado === 'P' ? 'selected' : ''}>Programado</option><option value="E" ${F.estado === 'E' ? 'selected' : ''}>Ejecutado</option><option value="N" ${F.estado === 'N' ? 'selected' : ''}>No ejecutado</option></select></div>` : ''}
           <input type="search" data-q value="${h(F.qRaw || '')}" placeholder="Buscar código, equipo, serie…" aria-label="Buscar en el cronograma">
           <span class="muted">${visibles.length} de ${filas.length}</span>
-          ${esProp() && !cap ? `<span class="sp"></span><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
+          ${esProp() && !cap ? `<span class="sp"></span><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
         ${resumen}
         <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span>${esProp() ? `<span>Toque una semana para cambiar su estado${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses'}.</span>` : ''}</div>
         ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
@@ -215,6 +216,7 @@
         editTabla: () => { F.editar = !F.editar; pintar(); },
         anio12: () => { F.anio12 = !F.anio12; pintar(); },
         llenarNR: () => A.completarNR([...new Set(visibles.map((r) => eqd(r.equipo_id)).filter((e) => e.id))], pintar),
+        llenarArch: () => A.llenarDesdeArchivos(ent, { sede: sedeCtx || null, tipo: cap ? null : tipo, anio, alTerminar: () => { st.cronoAnio = anio; A.recargar(); } }),
         celda: async (d, b) => {
           const r = filas[+d.r]; const y = +d.y; const orden = ['', 'P', 'E', 'N'];
           const actual = r.cr[y]?.plan?.[d.k] || '';

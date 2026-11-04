@@ -5,7 +5,7 @@
 // =====================================================================
 (() => {
   const A = window.APP, S = A.S, st = A.st;
-  const { h, I, toast, modal } = UI;
+  const { h, I, toast, modal, leer, f } = UI;
   const norm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
   const comp = (t) => norm(t).replace(/[^A-Z0-9]/g, '');
   const riesgoDe = (t) => { const x = norm(t).replace(/\s|CLASE/g, ''); return { I: 'I', IIA: 'IIa', IIB: 'IIb', III: 'III' }[x] || null; };
@@ -302,6 +302,137 @@
     const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.pdf,.xlsx,.xls,.csv';
     inp.onchange = () => { const fl = inp.files[0]; if (fl) procesar(fl, null); };
     inp.click();
+  };
+
+  // ---------------------------------------------------------------- programación marcada en un cronograma Excel (FMB-002)
+  // Devuelve { anio, filas: [{ codigo, nombre, serie, plan: { 'mes-semana': 'P'|'E'|'N' } }] }
+  const MESES_N = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+  const mesDeTxt = (t) => { const x = norm(t).replace(/[^A-Z]/g, ''); if (x.length < 3 || x.length > 10) return 0; const i = MESES_N.findIndex((m) => (x.length <= 4 ? m.startsWith(x) : m === x || (x === 'SETIEMBRE' && m === 'SEPTIEMBRE'))); return i + 1; };
+  const tipoColor = (c) => {
+    const rgb = String(c?.rgb || '').slice(-6); if (!/^[0-9A-F]{6}$/i.test(rgb)) return '';
+    const r = parseInt(rgb.slice(0, 2), 16), g = parseInt(rgb.slice(2, 4), 16), b = parseInt(rgb.slice(4, 6), 16);
+    if (r > 235 && g > 235 && b > 235) return ''; // blanco
+    if (Math.abs(r - g) < 12 && Math.abs(g - b) < 12) return ''; // grises de la cuadrícula
+    if (g > r + 30 && g > b) return 'E';
+    if (r > g + 60 && r > b + 40) return 'N';
+    return 'P';
+  };
+  async function leerPlanExcel(file) {
+    const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', cellStyles: true });
+    for (const nombre of wb.SheetNames) {
+      const ws = wb.Sheets[nombre]; if (!ws['!ref']) continue;
+      const rg = XLSX.utils.decode_range(ws['!ref']);
+      const val = (r, c) => { const x = ws[XLSX.utils.encode_cell({ r, c })]; return x ? String(x.w ?? x.v ?? '').trim() : ''; };
+      let anio = null, filaMes = -1, filaEq = -1, mapa = null;
+      for (let r = rg.s.r; r <= Math.min(rg.e.r, rg.s.r + 40); r++) {
+        let meses = 0;
+        for (let c = rg.s.c; c <= rg.e.c; c++) { const t = val(r, c); const a = norm(t).match(/A[NÑ]O\D{0,3}(20\d{2})/); if (a && !anio) anio = +a[1]; if (mesDeTxt(t)) meses++; }
+        if (meses >= 6 && filaMes < 0) filaMes = r;
+        if (filaEq < 0) { const cs = []; for (let c = rg.s.c; c <= rg.e.c; c++) cs.push(val(r, c)); if (cs.some((t) => /^EQUIPO$/.test(norm(t))) && cs.some((t) => /SERIE|MARCA/.test(norm(t)))) { filaEq = r; mapa = {}; cs.forEach((t, i) => { const k = colDe(t); if (k && !(k in mapa)) mapa[k] = rg.s.c + i; }); } }
+      }
+      if (filaMes < 0 || !mapa) continue;
+      // columnas de semanas: fila con 1-4 debajo de los meses
+      const filaSem = filaMes + 1; const colMS = {}; let mesAct = 0;
+      const mesEnCol = {}; for (let c = rg.s.c; c <= rg.e.c; c++) { const m = mesDeTxt(val(filaMes, c)); if (m) mesEnCol[c] = m; }
+      (ws['!merges'] || []).forEach((mg) => { if (mg.s.r === filaMes && mesEnCol[mg.s.c]) for (let c = mg.s.c; c <= mg.e.c; c++) mesEnCol[c] = mesEnCol[mg.s.c]; });
+      for (let c = rg.s.c; c <= rg.e.c; c++) { if (mesEnCol[c]) mesAct = mesEnCol[c]; const w = +val(filaSem, c); if (mesAct && w >= 1 && w <= 4) colMS[c] = `${mesAct}-${w}`; }
+      if (Object.keys(colMS).length < 12) continue;
+      const out = [];
+      for (let r = Math.max(filaSem, filaEq) + 1; r <= rg.e.r; r++) {
+        const o = {}; Object.entries(mapa).forEach(([k, c]) => { o[k] = val(r, c); });
+        if (!o.nombre || /ELABORADO|IBCOL|PRESTADOR|RESPONSABLE/i.test(o.nombre)) continue;
+        const plan = {};
+        Object.entries(colMS).forEach(([c, k]) => {
+          const x = ws[XLSX.utils.encode_cell({ r, c: +c })]; const t = norm(x ? (x.w ?? x.v ?? '') : '');
+          let v = /^E/.test(t) || t === 'EJECUTADO' ? 'E' : /^N/.test(t) ? 'N' : t ? 'P' : '';
+          if (!v && x?.s) v = tipoColor(x.s.fgColor) || tipoColor(x.s.bgColor);
+          if (v) plan[k] = v;
+        });
+        out.push({ ...o, plan });
+      }
+      if (out.length) return { anio, filas: out };
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------- llenar inventario y cronograma con los archivos cargados
+  // Toma los inventarios y cronogramas (Excel/PDF) de la entidad o sede, busca cada equipo por código (o nombre + serie)
+  // y completa sus datos vacíos; de los cronogramas en Excel también toma los meses y semanas marcados.
+  A._leerPlanExcel = leerPlanExcel;
+  A.llenarDesdeArchivos = async (ent, { sede = null, tipo = null, anio = new Date().getFullYear(), alTerminar } = {}) => {
+    const [docsAll, cons, eqs] = await Promise.all([S.list('documentos', { entidad_id: ent.id }), S.list('consultorios', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id })]);
+    const sedes = A.sedesDe ? A.sedesDe(cons, ent) : [];
+    const docs = docsAll.filter((d) => !d.equipo_id && ['inventarios', 'cronogramas'].includes(d.carpeta) && /\.(xlsx?|xlsm|csv|pdf)$/i.test(d.nombre) && (!sede || A.esDeSede(d, sede, sedes)))
+      .sort((a, b) => String(b.fecha_documento || b.created_at || '').localeCompare(String(a.fecha_documento || a.created_at || '')));
+    if (!docs.length) return toast('No hay inventarios ni cronogramas en Excel o PDF cargados en las carpetas', true);
+    const idsSede = new Set(cons.filter((c) => !sede || (c.sede || 'Sede principal') === sede).map((c) => c.id));
+    const eqsS = eqs.filter((e) => !sede || idsSede.has(e.consultorio_id));
+    const tipoTxt = { mantenimiento: 'mantenimiento preventivo', metrologia: 'metrología', capacitacion: 'capacitación' }[tipo] || '';
+    modal({
+      titulo: 'Llenar con los datos de los archivos cargados', size: 'wide',
+      cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Se leen los archivos marcados y se busca cada equipo por su <b>código de inventario</b> (o por nombre y serie). Solo se tocan los equipos que ya existen${sede ? ' en ' + h(sede) : ''}.</p>
+        <div class="tbl-wrap" style="max-height:260px;overflow:auto"><table class="tbl"><thead><tr><th></th><th>Archivo</th><th>Carpeta</th><th>Fecha</th></tr></thead><tbody>
+        ${docs.map((d, i) => `<tr><td><input type="checkbox" name="doc" value="${d.id}" ${i < 4 && /\.(xlsx?|xlsm|csv)$/i.test(d.nombre) ? 'checked' : ''} aria-label="Usar ${h(d.nombre)}"></td><td>${h(d.nombre)}${d.subcarpeta ? `<br><small class="muted">${h(d.subcarpeta)}</small>` : ''}</td><td>${d.carpeta === 'inventarios' ? 'Inventario' : 'Cronograma'}</td><td class="mono">${h(String(d.fecha_documento || d.created_at || '').slice(0, 10))}</td></tr>`).join('')}
+        </tbody></table></div>
+        <label class="checks full radio-line"><input type="checkbox" name="datos" data-single checked> Completar los datos vacíos de los equipos: A.F., marca, modelo, serie, riesgo, registro sanitario y ubicación</label>
+        <label class="checks full radio-line"><input type="checkbox" name="reemplazar" data-single> Reemplazar también los datos que ya tienen (usar lo que dice el archivo)</label>
+        ${tipo ? `<label class="checks full radio-line"><input type="checkbox" name="plan" data-single checked> Pasar al cronograma de ${h(tipoTxt)} los meses y semanas marcados en los cronogramas en Excel (no borra lo ya programado)</label>
+        <div class="fields">${f.sel('anioPlan', 'Año del cronograma si el archivo no lo dice', [anio - 1, anio, anio + 1].map((y) => [y, y]), anio)}</div>` : ''}
+        <div class="muted" data-prog style="margin-top:8px"></div></form>`,
+      acciones: [{ t: 'Cancelar' }, { t: 'Llenar', cls: 'pri', fn: async (m) => {
+        const d = leer(m.body); const sel = Array.isArray(d.doc) ? d.doc : [];
+        if (!sel.length) { toast('Marque al menos un archivo', true); return false; }
+        const prog = m.body.querySelector('[data-prog]');
+        let nAct = 0, nPlan = 0, sinMatch = new Set(), errores = [];
+        const cronCache = {};
+        const buscar = (r) => {
+          if (r.codigo) { const c = comp(r.codigo); const e = eqsS.find((x) => comp(x.codigo_inv) === c) || (c.length >= 5 && eqsS.find((x) => comp(x.codigo_inv).includes(c))); if (e) return e; }
+          const n = comp(r.nombre), sr = comp(r.serie);
+          return (sr.length >= 4 && eqsS.find((x) => comp(x.serie) === sr)) || eqsS.find((x) => comp(x.nombre) === n && (!sr || !x.serie || comp(x.serie) === sr) && eqsS.filter((y) => comp(y.nombre) === n).length === 1) || null;
+        };
+        for (const id of sel) {
+          const doc = docs.find((x) => x.id === id); prog.textContent = `Leyendo ${doc.nombre}…`;
+          let file;
+          try { const b = await S.fileBlob(doc.archivo); if (!b) throw new Error('no disponible'); file = new File([b], doc.nombre, { type: b.type || doc.mime || '' }); }
+          catch (e) { errores.push(`${doc.nombre}: no se pudo abrir`); continue; }
+          let filas = [], plan = null;
+          try { filas = await A.parsearInventario(file); } catch (e) { /* puede ser un cronograma sin tabla de inventario */ }
+          if (tipo && d.plan && /\.(xlsx?|xlsm)$/i.test(doc.nombre)) { try { plan = await leerPlanExcel(file); } catch (e) { console.warn(e); } }
+          if (!filas.length && plan) filas = plan.filas;
+          if (!filas.length) { errores.push(`${doc.nombre}: no se encontró la tabla de equipos`); continue; }
+          // 1) datos de los equipos
+          if (d.datos) {
+            for (const r of filas) {
+              const e = buscar(r); if (!e) { if (r.nombre) sinMatch.add(`${r.codigo ? r.codigo + ' · ' : ''}${r.nombre}`); continue; }
+              const cand = { activo_fijo: r.af, marca: r.marca, modelo: r.modelo, serie: r.serie && !/^N\/?R$/i.test(r.serie) ? r.serie : '', registro_sanitario: r.rs, clase_riesgo: riesgoDe(r.riesgo), ubicacion: r.ubicacion || '' };
+              const cambios = {};
+              Object.entries(cand).forEach(([k, v]) => { v = String(v || '').trim(); if (!v || /^(NO REGISTRA|NR|N\/A)$/i.test(v)) return; if (d.reemplazar || !e[k]) { if (e[k] !== v) cambios[k] = v; } });
+              if (Object.keys(cambios).length) { const u = await S.update('equipos', e.id, cambios); Object.assign(e, u || cambios); nAct++; }
+            }
+          }
+          // 2) programación del cronograma
+          if (plan && tipo) {
+            const y = plan.anio || +d.anioPlan;
+            cronCache[y] = cronCache[y] || await S.list('cronogramas', { entidad_id: ent.id, tipo, anio: y });
+            for (const r of plan.filas) {
+              const e = buscar(r); if (!e || !Object.keys(r.plan).length) continue;
+              const c = cronCache[y].find((x) => x.equipo_id === e.id);
+              const nuevo = { ...(c?.plan || {}) }; let cambio = false;
+              Object.entries(r.plan).forEach(([k, v]) => { if (!nuevo[k]) { nuevo[k] = v; cambio = true; } });
+              if (!cambio) continue;
+              if (c) { await S.update('cronogramas', c.id, { plan: nuevo }); c.plan = nuevo; } else cronCache[y].push(await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: e.id, tipo, anio: y, plan: nuevo }));
+              nPlan++;
+            }
+          }
+        }
+        S.log('EDITAR', 'equipos', ent.id, `Llenado desde archivos: ${nAct} equipos, ${nPlan} cronogramas`);
+        const faltan = [...sinMatch];
+        modal({ titulo: 'Resultado', size: 'sm', cuerpo: `<p><b>${nAct}</b> equipo${nAct === 1 ? '' : 's'} con datos completados${tipo ? ` · <b>${nPlan}</b> fila${nPlan === 1 ? '' : 's'} del cronograma programadas` : ''}.</p>
+          ${faltan.length ? `<p class="muted" style="font-size:.85rem">${faltan.length} fila${faltan.length === 1 ? '' : 's'} de los archivos no coincidieron con ningún equipo${sede ? ' de la sede' : ''} (revise el código):</p><ul style="font-size:.82rem;max-height:160px;overflow:auto">${faltan.slice(0, 40).map((x) => `<li>${h(x)}</li>`).join('')}</ul>` : ''}
+          ${errores.length ? `<p class="muted" style="font-size:.85rem">${errores.map(h).join('<br>')}</p>` : ''}`, acciones: [{ t: 'Cerrar', cls: 'pri' }] });
+        alTerminar?.();
+      } }],
+    });
   };
 
   // Usar un inventario ya cargado en la carpeta 1
