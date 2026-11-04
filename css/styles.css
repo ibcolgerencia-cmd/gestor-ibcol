@@ -516,3 +516,9 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .crono-grupos .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .crono-grupos .chip.on small { color: inherit; opacity: .8; }
 .cfg-cols legend .btn.sm { margin-left: 6px; padding: 2px 8px; font-size: .75rem; }
+.eq-wrap { grid-template-columns: minmax(0, 1fr) auto auto; }
+.eq-wrap .eq-edit { opacity: .55; }
+.eq-wrap .eq-del { margin-left: 2px; }
+.eq-wrap:hover .eq-edit, .eq-wrap .eq-edit:focus-visible { opacity: 1; }
+@media (hover: none) { .eq-wrap .eq-edit { opacity: .85; } }
+h1 .icon-btn { vertical-align: middle; }
