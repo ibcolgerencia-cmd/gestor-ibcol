@@ -380,8 +380,14 @@
         if (mejor) return mejor;
       }
       const iguales = lista.filter((x) => libre(x) && comp(x.nombre) === n);
-      return iguales.length === 1 ? iguales[0] : null;
+      if (iguales.length === 1) return iguales[0];
+      // el servicio del archivo no coincide (ej. el archivo no separa "TOMA DE MUESTRAS"): buscar en la sede,
+      // prefiriendo los servicios que el archivo no menciona
+      const fuera = (x) => { const cn = consN[x.consultorio_id] || ''; return ![...servArch].some((sv2) => cn === sv2 || cn.includes(sv2) || sv2.includes(cn)); };
+      let mejor = null, pt = 0; lista.forEach((x) => { if (!libre(x)) return; const p = parecido(comp(x.nombre), n); if (!p) return; const q = p + (fuera(x) ? 10 : 0); if (q > pt) { pt = q; mejor = x; } });
+      return mejor && (pt >= 10 || iguales.length === 0) ? mejor : null;
     };
+    let servArch = new Set();
     for (const doc of docsSel) {
       prog(`Leyendo ${doc.nombre}…`);
       const lista = eqsDe ? eqsDe(doc) : eqsS; const usados = new Set(); const usadosP = new Set();
@@ -394,7 +400,9 @@
       try { filas = await A.parsearInventario(file); } catch (e) { /* puede ser un cronograma sin tabla de inventario */ }
       if (tipoD && /\.(xlsx?|xlsm)$/i.test(doc.nombre)) { try { plan = await leerPlanExcel(file); } catch (e) { console.warn(e); } }
       if (!filas.length && plan) filas = plan.filas;
+      filas = filas.filter((r) => /[A-ZÁÉÍÓÚÑ]{3}/i.test(r.nombre || ''));
       if (!filas.length) { errores.push(`${doc.nombre}: no se encontró la tabla de equipos`); continue; }
+      servArch = new Set(filas.map((r) => comp(r.servicio)).filter(Boolean));
       // 1) datos de los equipos
       if (datos) {
         for (const r of filas) {
