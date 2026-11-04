@@ -31,7 +31,7 @@
         if (r.some((c) => /^EQUIPO$/.test(norm(c))) && r.some((c) => /SERIE|MARCA/.test(norm(c)))) { mapa = {}; r.forEach((c, i) => { const k = colDe(c); if (k && !(k in mapa)) mapa[k] = i; }); continue; }
         if (!mapa) continue;
         const o = {}; Object.entries(mapa).forEach(([k, i]) => { o[k] = String(r[i] ?? '').trim(); });
-        if (!o.nombre || /ELABORADO|IBCOL|PRESTADOR/i.test(o.nombre)) continue;
+        if (!o.nombre || /ELABORADO|IBCOL|PRESTADOR/i.test(o.nombre) || !/[A-ZÁÉÍÓÚÑ]{3}/i.test(o.nombre)) continue;
         if (servSec) { o.ubicacion = o.servicio || ''; o.servicio = servSec; }
         out.push(o);
       }
@@ -97,7 +97,8 @@
     let nS = 0, nE = 0, nA = 0, orden = cons.length;
     const servicio = async (nombre) => {
       const n = titulo(nombre || 'SIN SERVICIO');
-      let c = cons.find((x) => norm(x.nombre) === norm(n));
+      const sv = (t) => comp(norm(t).replace(/\b(DE|DEL|LA|LAS|LOS|EL|Y)\b/g, ' '));
+      let c = cons.find((x) => norm(x.nombre) === norm(n)) || cons.find((x) => sv(x.nombre) === sv(n));
       if (!c) { c = await S.insert('consultorios', { entidad_id: ent.id, nombre: n, orden: ++orden, sede: sede || 'Sede principal' }); cons.push(c); idsSede.add(c.id); nS++; }
       return c;
     };
