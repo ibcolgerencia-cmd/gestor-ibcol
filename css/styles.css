@@ -498,3 +498,11 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .subs.subs-in { margin-top: -4px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; background: var(--surface-2); }
 .subs.subs-in .sub.ruta { font-weight: 600; }
 .subs.subs-in .sub svg { width: 14px; height: 14px; vertical-align: -2px; }
+
+/* v48 · eliminar equipos desde la lista del servicio */
+.eq-wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--line); }
+.eq-wrap:last-child { border-bottom: 0; }
+.eq-wrap .eq-row { border-bottom: 0; }
+.eq-wrap .eq-del { margin-right: 10px; opacity: .55; }
+.eq-wrap:hover .eq-del, .eq-wrap .eq-del:focus-visible { opacity: 1; }
+@media (hover: none) { .eq-wrap .eq-del { opacity: .85; } }
