@@ -410,7 +410,7 @@ window.APP = (() => {
     const titulo = A.nomCarpeta(ent, 'ent', CARP_EQ);
     const sinCons = A.numerado(eqsR.filter((e) => !cons.some((c) => c.id === e.consultorio_id)));
     const fila = (e) => `<button class="eq-row" data-act="abrirEq" data-id="${e.id}"><span class="cod">${e._n}. ${h(e.codigo_inv)}</span><span class="nm"><b>${h(e.nombre)}</b><small>${h([e.marca, e.modelo].filter(Boolean).join(' · '))}</small></span><span class="mm muted mono" style="font-size:.8rem">S/N ${h(e.serie || '—')}</span><span class="badges">${A.riesgo(e.clase_riesgo)}${A.estadoPill(e.estado)}</span></button>`;
-    const filaEq = (e) => (esProp() ? `<div class="eq-wrap">${fila(e)}<button class="icon-btn bad eq-del" data-act="borrarEqLista" data-id="${e.id}" title="Eliminar este equipo" aria-label="Eliminar ${h(e.nombre)} (${h(e.codigo_inv)})">${I.del}</button></div>` : fila(e));
+    const filaEq = (e) => (esProp() ? `<div class="eq-wrap">${fila(e)}<button class="icon-btn eq-edit" data-act="editEqLista" data-id="${e.id}" title="Editar el nombre y los datos del equipo" aria-label="Editar ${h(e.nombre)}">${I.edit}</button><button class="icon-btn bad eq-del" data-act="borrarEqLista" data-id="${e.id}" title="Eliminar este equipo" aria-label="Eliminar ${h(e.nombre)} (${h(e.codigo_inv)})">${I.del}</button></div>` : fila(e));
     const sala = (c, lista) => `<section class="room"><header><h3>${c ? `${c._n}. ${h(c.nombre.toUpperCase())}` : 'SIN SERVICIO ASIGNADO'} ${c?.sede ? `<small class="muted" style="font-family:var(--f-body);font-weight:400;font-size:.85rem">${h(c.sede)}${c.servicio ? ' · ' + h(c.servicio) : ''}</small>` : ''}</h3>
         <div class="actions"><span class="pill">${lista.length} equipo${lista.length === 1 ? '' : 's'}</span>${esProp() && c ? `<button class="icon-btn" data-act="editCons" data-id="${c.id}" aria-label="Editar área">${I.edit}</button><button class="btn sm" data-act="nuevoEq" data-cons="${c.id}">${I.mas} Equipo</button>` : ''}</div></header>
         <div class="eq-list">${lista.map(filaEq).join('') || '<div class="empty">Sin equipos registrados.</div>'}</div></section>`;
@@ -422,6 +422,7 @@ window.APP = (() => {
       ${(sinCons.length || !cons.length) && !sedeSel ? sala(null, sinCons) : ''}`;
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
+      editEqLista: (d) => { const e = eqsR.find((x) => x.id === d.id); if (e) A.editarEquipoRapido(e, consR); },
       borrarEqLista: async (d) => {
         const e = eqsR.find((x) => x.id === d.id); if (!e) return;
         const docs = await S.list('documentos', { equipo_id: e.id });
@@ -471,7 +472,7 @@ window.APP = (() => {
     const dd = (iso) => { const n = UI.diasHasta(iso); return iso ? `${UI.fecha(iso)} ${n !== null && n <= 30 ? `<span class="pill ${n < 0 ? 'bad' : n <= 7 ? 'warn' : 'acc'}">${n < 0 ? 'vencido' : n + ' d'}</span>` : ''}` : '—'; };
     content().innerHTML = `
       ${migas([...A.rutaEnt(ent), [A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], `${c ? c._n + '. ' + c.nombre.toUpperCase() + ' / ' : ''}${eq.nombre.toUpperCase()}`])}
-      <div class="page-head"><div><span class="eyebrow">${h(c?.nombre || 'Sin área')} · ${h(eq.ubicacion || '')}</span><h1>${h(eq.nombre)} ${A.riesgo(eq.clase_riesgo)}</h1>
+      <div class="page-head"><div><span class="eyebrow">${h(c?.nombre || 'Sin área')} · ${h(eq.ubicacion || '')}</span><h1>${h(eq.nombre)} ${A.riesgo(eq.clase_riesgo)}${esProp() ? ` <button class="icon-btn" data-act="editEqRapido" title="Cambiar el nombre y los datos del equipo" aria-label="Editar el nombre del equipo">${I.edit}</button>` : ''}</h1>
         <span class="muted"><span class="mono">${h(eq.codigo_inv)}</span> · ${h([eq.marca, eq.modelo].filter(Boolean).join(' · '))} · S/N <span class="mono">${h(eq.serie || '—')}</span></span></div>
         <div class="actions">${A.estadoPill(eq.estado)}${esProp() ? `<button class="btn" data-act="fotoEq">${I.subir} Imagen del equipo</button>` : ''}<button class="btn" data-act="pdfHV">${I.pdf} Hoja de vida PDF</button>${esProp() ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button><button class="btn pri" data-act="editHV">${I.edit} Editar hoja de vida</button>` : ''}</div></div>
       <section class="panel"><div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
@@ -501,6 +502,7 @@ window.APP = (() => {
       renCarp: (d) => A.renombrarCarpeta(ent, 'eq', d.k),
       pdfHV: () => A.verHojaVida(eq, ent, c, mtos),
       fotoEq: () => A.cargarFotoEquipo(eq),
+      editEqRapido: () => A.editarEquipoRapido(eq, cons),
       editHV: () => A.formHojaVida(eq, cons),
       importar: () => A.importarCarpeta({ ent, eq }),
       ia: () => A.asistenteIA({ ent, eq }),
@@ -1074,6 +1076,31 @@ window.APP = (() => {
         try { await S.update('entidades', ent.id, { config: cfg }); ent.config = cfg; } catch {}
         S.log('ELIMINAR', 'entidades', ent.id, `Sede ${sede} eliminada${modo === 'mover' ? ' (pasada a ' + d.destino + ')' : modo === 'borrar' ? ` con ${eqsS.length} equipos` : ''}`);
         toast(`Sede “${sede}” eliminada`); go('entidad', { id: ent.id });
+      } }],
+    });
+  };
+
+  // ---------------------------------------------------------------- editar nombre y datos básicos de un equipo
+  A.editarEquipoRapido = (e, cons = []) => {
+    const lista = A.ordenar(cons);
+    const sedes = new Set(lista.map((c) => c.sede || 'Sede principal'));
+    modal({
+      titulo: `Editar equipo · ${e.codigo_inv || ''}`, size: 'sm',
+      cuerpo: `<form class="form" onsubmit="return false"><div class="fields">
+        ${f.input('nombre', 'Nombre del equipo *', e.nombre || '', { full: true })}
+        ${f.input('codigo_inv', 'Código de inventario *', e.codigo_inv || '')}${f.input('activo_fijo', 'N° activo fijo', e.activo_fijo || '')}
+        ${f.input('marca', 'Marca', e.marca || '')}${f.input('modelo', 'Modelo', e.modelo || '')}
+        ${f.input('serie', 'Serie', e.serie || '')}${f.input('ubicacion', 'Ubicación', e.ubicacion || '')}
+        ${f.sel('consultorio_id', 'Servicio o consultorio', [['', '— Sin servicio —'], ...lista.map((c) => [c.id, sedes.size > 1 ? `${c.sede || 'Sede principal'} · ${c.nombre}` : c.nombre])], e.consultorio_id || '', { full: true })}
+        </div><p class="muted" style="font-size:.85rem">El cambio se ve en el inventario, los cronogramas, la hoja de vida y los reportes.</p></form>`,
+      acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
+        const d = leer(m.body);
+        if (!d.nombre || !d.codigo_inv) { toast('El nombre y el código no pueden quedar vacíos', true); return false; }
+        const cambios = { nombre: d.nombre, codigo_inv: d.codigo_inv, activo_fijo: d.activo_fijo || null, marca: d.marca || null, modelo: d.modelo || null, serie: d.serie || null, ubicacion: d.ubicacion || null, consultorio_id: d.consultorio_id || null };
+        try { await S.update('equipos', e.id, cambios); }
+        catch (er) { toast(/duplicate|unique/i.test(er.message) ? 'Ya existe otro equipo con ese código de inventario' : er.message, true); return false; }
+        S.log('EDITAR', 'equipos', e.id, `${e.nombre} → ${d.nombre}`);
+        toast('Equipo actualizado'); A.recargar();
       } }],
     });
   };
