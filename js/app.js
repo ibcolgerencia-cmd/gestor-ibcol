@@ -289,13 +289,13 @@ window.APP = (() => {
     const [ents, eqs, perf] = await Promise.all([S.list('entidades', {}, 'razon_social'), S.list('equipos'), S.list('perfiles')]);
     content().innerHTML = `
       <div class="page-head"><div><span class="eyebrow">Clientes</span><h1>Entidades y equipos</h1></div>
-        <div class="actions"><button class="btn pri" data-act="nuevaEnt">${I.mas} Nueva entidad</button></div></div>
+        <div class="actions">${esProp() ? `<button class="btn" data-act="llenarTodas">${I.subir} Llenar inventarios y cronogramas (todas)</button>` : ''}<button class="btn pri" data-act="nuevaEnt">${I.mas} Nueva entidad</button></div></div>
       ${ents.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Entidad</th><th>NIT</th><th>REPS</th><th>Ciudad</th><th class="r">Equipos</th><th>Usuarios</th><th></th></tr></thead><tbody>
         ${ents.map((e) => `<tr class="clic" data-act="abrirEnt" data-id="${e.id}"><td><b>${h(e.razon_social)}</b>${e.activo === false ? ' <span class="pill">Inactiva</span>' : ''}</td><td class="mono">${h(e.nit || '')}</td><td class="mono">${h(e.reps || '')}</td><td>${h(e.ciudad || '')}</td>
           <td class="r num">${eqs.filter((x) => x.entidad_id === e.id && x.estado !== 'Dado de baja').length}</td><td>${perf.filter((p) => p.entidad_id === e.id).map((p) => `<span class="pill acc mono">${h(p.usuario)}</span>`).join(' ') || '<span class="pill warn">Sin usuario</span>'}</td>
           <td class="r"><button class="icon-btn" data-act="editEnt" data-id="${e.id}" aria-label="Editar">${I.edit}</button></td></tr>`).join('')}
       </tbody></table></div>` : `<div class="panel empty">Registre su primera entidad (IPS, consultorio o clínica) para crear su carpeta digital.<button class="btn pri" data-act="nuevaEnt">${I.mas} Nueva entidad</button></div>`}`;
-    A.acts({ abrirEnt: (d) => go('entidad', { id: d.id }), nuevaEnt: () => A.formEntidad(), editEnt: async (d) => A.formEntidad(await S.get('entidades', d.id)) });
+    A.acts({ llenarTodas: () => A.llenarTodas(), abrirEnt: (d) => go('entidad', { id: d.id }), nuevaEnt: () => A.formEntidad(), editEnt: async (d) => A.formEntidad(await S.get('entidades', d.id)) });
   };
 
   A.formEntidad = (e = null) => {

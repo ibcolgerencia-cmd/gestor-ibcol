@@ -358,6 +358,94 @@
   // ---------------------------------------------------------------- llenar inventario y cronograma con los archivos cargados
   // Toma los inventarios y cronogramas (Excel/PDF) de la entidad o sede, busca cada equipo por código (o nombre + serie)
   // y completa sus datos vacíos; de los cronogramas en Excel también toma los meses y semanas marcados.
+  // Núcleo: lee los documentos y completa los equipos (eqsS) y la programación del cronograma.
+  // tipo: 'mantenimiento' | 'metrologia' | 'auto' (lo deduce del nombre o subcarpeta del archivo) | null (no programa)
+  const tipoDeDoc = (doc) => { const t = norm(`${doc.subcarpeta || ''} ${doc.nombre}`); return /CAPACIT/.test(t) ? null : /METROLOG|CALIBRA/.test(t) ? 'metrologia' : 'mantenimiento'; };
+  async function procesarDocs(ent, eqsS, docsSel, { datos = true, reemplazar = false, tipo = null, anioPlan = new Date().getFullYear(), prog = () => {}, eqsDe = null } = {}) {
+    let nAct = 0, nPlan = 0; const sinMatch = new Set(), errores = [], actIds = new Set();
+    const cronCache = {};
+    const buscarEn = (lista, r) => {
+      if (r.codigo) { const c = comp(r.codigo); const e = lista.find((x) => comp(x.codigo_inv) === c) || (c.length >= 5 && lista.find((x) => comp(x.codigo_inv).includes(c))); if (e) return e; }
+      const n = comp(r.nombre), sr = comp(r.serie);
+      return (sr.length >= 4 && lista.find((x) => comp(x.serie) === sr)) || lista.find((x) => comp(x.nombre) === n && (!sr || !x.serie || comp(x.serie) === sr) && lista.filter((y) => comp(y.nombre) === n).length === 1) || null;
+    };
+    for (const doc of docsSel) {
+      prog(`Leyendo ${doc.nombre}…`);
+      const lista = eqsDe ? eqsDe(doc) : eqsS; const buscar = (r) => buscarEn(lista, r);
+      const tipoD = tipo === 'auto' ? tipoDeDoc(doc) : tipo;
+      let file;
+      try { const b = await S.fileBlob(doc.archivo); if (!b) throw new Error('no disponible'); file = new File([b], doc.nombre, { type: b.type || doc.mime || '' }); }
+      catch (e) { errores.push(`${doc.nombre}: no se pudo abrir`); continue; }
+      let filas = [], plan = null;
+      try { filas = await A.parsearInventario(file); } catch (e) { /* puede ser un cronograma sin tabla de inventario */ }
+      if (tipoD && /\.(xlsx?|xlsm)$/i.test(doc.nombre)) { try { plan = await leerPlanExcel(file); } catch (e) { console.warn(e); } }
+      if (!filas.length && plan) filas = plan.filas;
+      if (!filas.length) { errores.push(`${doc.nombre}: no se encontró la tabla de equipos`); continue; }
+      // 1) datos de los equipos
+      if (datos) {
+        for (const r of filas) {
+          const e = buscar(r); if (!e) { if (r.nombre) sinMatch.add(`${r.codigo ? r.codigo + ' · ' : ''}${r.nombre}`); continue; }
+          const cand = { activo_fijo: r.af, marca: r.marca, modelo: r.modelo, serie: r.serie && !/^N\/?R$/i.test(r.serie) ? r.serie : '', registro_sanitario: r.rs, clase_riesgo: riesgoDe(r.riesgo), ubicacion: r.ubicacion || '' };
+          const cambios = {};
+          Object.entries(cand).forEach(([k, v]) => { v = String(v || '').trim(); if (!v || /^(NO REGISTRA|NR|N\/A)$/i.test(v)) return; if (reemplazar || !e[k]) { if (e[k] !== v) cambios[k] = v; } });
+          if (Object.keys(cambios).length) { const u = await S.update('equipos', e.id, cambios); Object.assign(e, u || cambios); if (!actIds.has(e.id)) { actIds.add(e.id); nAct++; } }
+        }
+      }
+      // 2) programación del cronograma
+      if (plan && tipoD) {
+        const y = plan.anio || anioPlan; const ck = `${tipoD}-${y}`;
+        cronCache[ck] = cronCache[ck] || await S.list('cronogramas', { entidad_id: ent.id, tipo: tipoD, anio: y });
+        for (const r of plan.filas) {
+          const e = buscar(r); if (!e || !Object.keys(r.plan).length) continue;
+          const c = cronCache[ck].find((x) => x.equipo_id === e.id);
+          const nuevo = { ...(c?.plan || {}) }; let cambio = false;
+          Object.entries(r.plan).forEach(([k, v]) => { if (!nuevo[k]) { nuevo[k] = v; cambio = true; } });
+          if (!cambio) continue;
+          if (c) { await S.update('cronogramas', c.id, { plan: nuevo }); c.plan = nuevo; } else cronCache[ck].push(await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: e.id, tipo: tipoD, anio: y, plan: nuevo }));
+          nPlan++;
+        }
+      }
+    }
+    return { nAct, nPlan, sinMatch, errores };
+  }
+
+  // Llenar TODAS las entidades y sedes con sus inventarios / cronogramas en Excel ya cargados
+  A.llenarTodas = async () => {
+    const ents = await S.list('entidades', {}, 'razon_social');
+    if (!ents.length) return toast('No hay entidades', true);
+    modal({
+      titulo: 'Llenar todas las entidades con sus archivos cargados', size: 'wide',
+      cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Para cada entidad y cada sede se leen los inventarios y cronogramas en Excel subidos a las carpetas <b>1. Inventarios</b> y <b>2. Cronogramas</b> (del más reciente al más antiguo). Cada equipo se busca por su <b>código de inventario</b> (o por nombre y serie) dentro de su sede; con eso quedan llenos el inventario y las columnas del cronograma.</p>
+        <div class="tbl-wrap" style="max-height:240px;overflow:auto"><table class="tbl"><thead><tr><th></th><th>Entidad</th></tr></thead><tbody>${ents.map((e) => `<tr><td><input type="checkbox" name="ent" value="${e.id}" checked aria-label="Incluir ${h(e.razon_social)}"></td><td>${h(e.razon_social)}</td></tr>`).join('')}</tbody></table></div>
+        <label class="checks full radio-line"><input type="checkbox" name="reemplazar" data-single> Reemplazar también los datos que ya tienen (si no, solo se llenan los vacíos)</label>
+        <label class="checks full radio-line"><input type="checkbox" name="plan" data-single checked> Pasar también los meses y semanas marcados en los cronogramas en Excel (mantenimiento o metrología según el nombre del archivo; no borra lo ya programado)</label>
+        <label class="checks full radio-line"><input type="checkbox" name="pdf" data-single> Leer también los inventarios en PDF</label>
+        <div class="muted" data-prog style="margin-top:8px"></div></form>`,
+      acciones: [{ t: 'Cancelar' }, { t: 'Llenar todas', cls: 'pri', fn: async (m) => {
+        const d = leer(m.body); const sel = new Set(d.ent || []);
+        if (!sel.size) { toast('Marque al menos una entidad', true); return false; }
+        const pg = m.body.querySelector('[data-prog]'); const res = [];
+        const extRe = d.pdf ? /\.(xlsx?|xlsm|csv|pdf)$/i : /\.(xlsx?|xlsm|csv)$/i;
+        for (const ent of ents.filter((e) => sel.has(e.id))) {
+          const [docsAll, cons, eqs] = await Promise.all([S.list('documentos', { entidad_id: ent.id }), S.list('consultorios', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id })]);
+          const docs = docsAll.filter((x) => !x.equipo_id && ['inventarios', 'cronogramas'].includes(x.carpeta) && extRe.test(x.nombre))
+            .sort((a, b) => String(b.fecha_documento || b.created_at || '').localeCompare(String(a.fecha_documento || a.created_at || '')));
+          if (!docs.length) { res.push({ ent, sinArch: true }); continue; }
+          const sedes = A.sedesDe ? A.sedesDe(cons, ent) : [];
+          const sedeCons = (sd) => new Set(cons.filter((c) => (c.sede || 'Sede principal') === sd).map((c) => c.id));
+          const eqsDe = (doc) => { if (sedes.length < 2 || !A.esDeSede) return eqs; const sds = sedes.filter((sd) => A.esDeSede(doc, sd, sedes)); if (sds.length !== 1) return eqs; const ids = sedeCons(sds[0]); const l = eqs.filter((e) => ids.has(e.consultorio_id)); return l.length ? l : eqs; };
+          const r = await procesarDocs(ent, eqs, docs, { datos: true, reemplazar: d.reemplazar, tipo: d.plan ? 'auto' : null, eqsDe, prog: (t) => { pg.textContent = `${ent.razon_social}: ${t}`; } });
+          S.log('EDITAR', 'equipos', ent.id, `Llenado desde archivos (todas): ${r.nAct} equipos, ${r.nPlan} cronogramas`);
+          res.push({ ent, n: docs.length, ...r });
+        }
+        modal({ titulo: 'Resultado por entidad', size: 'wide', cuerpo: `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Entidad</th><th>Archivos</th><th>Equipos completados</th><th>Filas de cronograma</th><th>Sin coincidir</th></tr></thead><tbody>
+          ${res.map((x) => `<tr><td>${h(x.ent.razon_social)}</td>${x.sinArch ? '<td colspan="4" class="muted">Sin inventarios ni cronogramas en Excel cargados</td>' : `<td class="num">${x.n}</td><td class="num">${x.nAct}</td><td class="num">${x.nPlan}</td><td>${x.sinMatch.size ? `<details><summary>${x.sinMatch.size}</summary><small>${[...x.sinMatch].slice(0, 40).map(h).join('<br>')}</small></details>` : '0'}${x.errores.length ? `<br><small class="muted">${x.errores.map(h).join('<br>')}</small>` : ''}</td>`}</tr>`).join('')}
+          </tbody></table></div>`, acciones: [{ t: 'Cerrar', cls: 'pri' }] });
+        A.recargar();
+      } }],
+    });
+  };
+
   A._leerPlanExcel = leerPlanExcel;
   A.llenarDesdeArchivos = async (ent, { sede = null, tipo = null, anio = new Date().getFullYear(), alTerminar } = {}) => {
     const [docsAll, cons, eqs] = await Promise.all([S.list('documentos', { entidad_id: ent.id }), S.list('consultorios', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id })]);
@@ -383,48 +471,7 @@
         const d = leer(m.body); const sel = Array.isArray(d.doc) ? d.doc : [];
         if (!sel.length) { toast('Marque al menos un archivo', true); return false; }
         const prog = m.body.querySelector('[data-prog]');
-        let nAct = 0, nPlan = 0, sinMatch = new Set(), errores = [];
-        const cronCache = {};
-        const buscar = (r) => {
-          if (r.codigo) { const c = comp(r.codigo); const e = eqsS.find((x) => comp(x.codigo_inv) === c) || (c.length >= 5 && eqsS.find((x) => comp(x.codigo_inv).includes(c))); if (e) return e; }
-          const n = comp(r.nombre), sr = comp(r.serie);
-          return (sr.length >= 4 && eqsS.find((x) => comp(x.serie) === sr)) || eqsS.find((x) => comp(x.nombre) === n && (!sr || !x.serie || comp(x.serie) === sr) && eqsS.filter((y) => comp(y.nombre) === n).length === 1) || null;
-        };
-        for (const id of sel) {
-          const doc = docs.find((x) => x.id === id); prog.textContent = `Leyendo ${doc.nombre}…`;
-          let file;
-          try { const b = await S.fileBlob(doc.archivo); if (!b) throw new Error('no disponible'); file = new File([b], doc.nombre, { type: b.type || doc.mime || '' }); }
-          catch (e) { errores.push(`${doc.nombre}: no se pudo abrir`); continue; }
-          let filas = [], plan = null;
-          try { filas = await A.parsearInventario(file); } catch (e) { /* puede ser un cronograma sin tabla de inventario */ }
-          if (tipo && d.plan && /\.(xlsx?|xlsm)$/i.test(doc.nombre)) { try { plan = await leerPlanExcel(file); } catch (e) { console.warn(e); } }
-          if (!filas.length && plan) filas = plan.filas;
-          if (!filas.length) { errores.push(`${doc.nombre}: no se encontró la tabla de equipos`); continue; }
-          // 1) datos de los equipos
-          if (d.datos) {
-            for (const r of filas) {
-              const e = buscar(r); if (!e) { if (r.nombre) sinMatch.add(`${r.codigo ? r.codigo + ' · ' : ''}${r.nombre}`); continue; }
-              const cand = { activo_fijo: r.af, marca: r.marca, modelo: r.modelo, serie: r.serie && !/^N\/?R$/i.test(r.serie) ? r.serie : '', registro_sanitario: r.rs, clase_riesgo: riesgoDe(r.riesgo), ubicacion: r.ubicacion || '' };
-              const cambios = {};
-              Object.entries(cand).forEach(([k, v]) => { v = String(v || '').trim(); if (!v || /^(NO REGISTRA|NR|N\/A)$/i.test(v)) return; if (d.reemplazar || !e[k]) { if (e[k] !== v) cambios[k] = v; } });
-              if (Object.keys(cambios).length) { const u = await S.update('equipos', e.id, cambios); Object.assign(e, u || cambios); nAct++; }
-            }
-          }
-          // 2) programación del cronograma
-          if (plan && tipo) {
-            const y = plan.anio || +d.anioPlan;
-            cronCache[y] = cronCache[y] || await S.list('cronogramas', { entidad_id: ent.id, tipo, anio: y });
-            for (const r of plan.filas) {
-              const e = buscar(r); if (!e || !Object.keys(r.plan).length) continue;
-              const c = cronCache[y].find((x) => x.equipo_id === e.id);
-              const nuevo = { ...(c?.plan || {}) }; let cambio = false;
-              Object.entries(r.plan).forEach(([k, v]) => { if (!nuevo[k]) { nuevo[k] = v; cambio = true; } });
-              if (!cambio) continue;
-              if (c) { await S.update('cronogramas', c.id, { plan: nuevo }); c.plan = nuevo; } else cronCache[y].push(await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: e.id, tipo, anio: y, plan: nuevo }));
-              nPlan++;
-            }
-          }
-        }
+        const { nAct, nPlan, sinMatch, errores } = await procesarDocs(ent, eqsS, sel.map((id) => docs.find((x) => x.id === id)), { datos: d.datos, reemplazar: d.reemplazar, tipo: d.plan ? tipo : null, anioPlan: +d.anioPlan || anio, prog: (t) => { prog.textContent = t; } });
         S.log('EDITAR', 'equipos', ent.id, `Llenado desde archivos: ${nAct} equipos, ${nPlan} cronogramas`);
         const faltan = [...sinMatch];
         modal({ titulo: 'Resultado', size: 'sm', cuerpo: `<p><b>${nAct}</b> equipo${nAct === 1 ? '' : 's'} con datos completados${tipo ? ` · <b>${nPlan}</b> fila${nPlan === 1 ? '' : 's'} del cronograma programadas` : ''}.</p>
