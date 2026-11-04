@@ -493,3 +493,8 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 .crumbs .btn-volver:focus-visible { outline: 2px solid var(--accent-2); }
 .crumbs .btn-volver svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 @media (max-width: 640px) { .crumbs .btn-volver { padding: 7px 14px 7px 10px; } }
+
+/* v46 · subcarpetas dentro de subcarpetas */
+.subs.subs-in { margin-top: -4px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; background: var(--surface-2); }
+.subs.subs-in .sub.ruta { font-weight: 600; }
+.subs.subs-in .sub svg { width: 14px; height: 14px; vertical-align: -2px; }
