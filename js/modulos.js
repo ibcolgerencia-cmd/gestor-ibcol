@@ -857,7 +857,7 @@
   };
 
   // ------------------------------------------------------------ Mantenimiento / metrología
-  A.formMto = async ({ eq, ent, cons, tipo, m = null, nota = null, fecha: fechaIni = null }) => {
+  A.formMto = async ({ eq, ent, cons, tipo, m = null, nota = null, fecha: fechaIni = null, pre = null, alGuardar = null }) => {
     const todos = await S.list('mantenimientos', { entidad_id: ent.id });
     // anotaciones hechas en el cronograma (mantenimiento o metrología) para este equipo
     let notasCr = [];
@@ -872,7 +872,7 @@
     const serieN = { preventivo: 'mto_preventivo', correctivo: 'mto_correctivo' }[tipo];
     const sugerido = m ? null : serieN ? await A.CONS.siguiente(serieN, UI.hoy()) : null;
     const numero = m?.numero || sugerido || A.consecutivo(todos.filter((x) => x.tipo === tipo), 'numero', '').padStart(5, '0');
-    const d = m?.datos || {};
+    const d = m?.datos || pre || {};
     const fp = st.fmt.mto_preventivo;
     let fRecibe = m?.firma_recibe || null, fRealizo = m?.firma_realizo || st.firma || null, recibeNueva = false;
     // protocolo del equipo (Google + IA o manuales): pre-llena los reportes nuevos
@@ -972,6 +972,7 @@
           await S.upload(path, cert);
           await S.insert('documentos', { entidad_id: ent.id, equipo_id: eq.id, carpeta: 'metrologia', nombre: `Certificado ${v.certificado || ''} - ${cert.name}`, archivo: path, mime: cert.type, tamano: cert.size, fecha_documento: v.fecha, fecha_vencimiento: v.proxima || null, visible_cliente: true });
         }
+        if (alGuardar) { try { await alGuardar(guardado); } catch (e) { console.warn(e); } }
         toast('Reporte guardado. Hoja de vida y cronograma actualizados.');
         A.recargar();
         A.verMto(guardado, { ...eq, ...cambios }, ent, cons);
