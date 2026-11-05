@@ -276,7 +276,9 @@
       const grupos = (ent.config?.crono_grupos || []).filter((g) => !sedeCtx || !g.sede || g.sede === sedeCtx);
       if (F.grupo && !grupos.some((g) => g.id === F.grupo)) F.grupo = '';
       const grupo = grupos.find((g) => g.id === F.grupo) || null;
-      const enGrupo = (r) => !grupo || (grupo.cons || []).includes(eqd(r.equipo_id).consultorio_id) || (cap && !r.equipo_id && (grupo.cap || []).includes(r.tema));
+      // un equipo puede estar en un cronograma distinto al de su servicio (config.crono_eq = { equipoId: grupoId })
+      const enG = (e, g) => { const o = (ent.config?.crono_eq || {})[e?.id]; if (o === '__ninguno') return false; if (o && grupos.some((x) => x.id === o)) return o === g.id; return (g.cons || []).includes(e?.consultorio_id); };
+      const enGrupo = (r) => !grupo || (r.equipo_id && enG(eqd(r.equipo_id), grupo)) || (cap && !r.equipo_id && (grupo.cap || []).includes(r.tema));
       const delServ = filas.filter((r) => enServ(r) && enGrupo(r));
       const consSel = grupo ? { sede: grupo.sede || (consSel0?.sede || ''), nombre: grupo.nombre + (consSel0?.nombre ? ' · ' + consSel0.nombre : '') } : consSel0;
       const visibles = delServ.filter((r) => (!F.q || texto(r).includes(F.q)) && (!F.mes || mesF(r, F.mes).some((x) => !F.estado || x.v === F.estado)));
@@ -303,7 +305,7 @@
           <button role="tab" class="ctab ${dosAnios ? 'on' : ''}" data-act="periodo" data-v="${dosAnios ? F.mesIni : (new Date().getMonth() + 1 > 1 ? new Date().getMonth() + 1 : 7)}">Entre dos años${dosAnios ? `: ${periodoTxt}` : ''}</button>
           ${dosAnios ? `<label class="ctab-sel">Desde <select data-ini aria-label="Mes de inicio del periodo">${CAT.MESES.map((m, i) => (i ? `<option value="${i + 1}" ${F.mesIni === i + 1 ? 'selected' : ''}>${m} ${anio}</option>` : '')).join('')}</select></label>` : ''}
         </div>
-        ${grupos.length || esProp() ? `<div class="crono-grupos" role="tablist" aria-label="Cronogramas"><span class="muted">Cronograma:</span><button class="chip ${!grupo ? 'on' : ''}" data-act="grupoSel" data-g="">Todos los equipos</button>${grupos.map((g) => `<button class="chip ${grupo?.id === g.id ? 'on' : ''}" data-act="grupoSel" data-g="${g.id}">${I.carpeta} ${h(g.nombre)} <small>${filas.filter((r) => (g.cons || []).includes(eqd(r.equipo_id).consultorio_id)).length}</small></button>`).join('')}${esProp() ? `${grupo ? `<button class="btn sm" data-act="grupoEdit">${I.edit} Servicios de “${h(grupo.nombre)}”</button>` : ''}<button class="btn sm" data-act="grupoNuevo">${I.mas} Cronograma por servicios</button>` : ''}</div>` : ''}
+        ${grupos.length || esProp() ? `<div class="crono-grupos" role="tablist" aria-label="Cronogramas"><span class="muted">Cronograma:</span><button class="chip ${!grupo ? 'on' : ''}" data-act="grupoSel" data-g="">Todos los equipos</button>${grupos.map((g) => `<button class="chip ${grupo?.id === g.id ? 'on' : ''}" data-act="grupoSel" data-g="${g.id}">${I.carpeta} ${h(g.nombre)} <small>${filas.filter((r) => r.equipo_id && enG(eqd(r.equipo_id), g)).length}</small></button>`).join('')}${esProp() ? `${grupo ? `<button class="btn sm" data-act="grupoEdit">${I.edit} Servicios de “${h(grupo.nombre)}”</button>` : ''}<button class="btn sm" data-act="grupoNuevo">${I.mas} Cronograma por servicios</button>` : ''}</div>` : ''}
         <div class="tbl-tools">
           <div class="field" style="min-width:190px"><select data-serv aria-label="Consultar por servicio">${optServ}</select></div>
           <div class="field"><select data-mes aria-label="Buscar por mes"><option value="0">Buscar por mes: todos</option>${ventana.map((v) => `<option value="${v.m}" ${F.mes === v.m ? 'selected' : ''}>${CAT.MESES[v.m - 1]}${dosAnios ? ' ' + v.y : ''}</option>`).join('')}</select></div>
@@ -321,7 +323,7 @@
           <tr>${vis.map((v) => [1, 2, 3, 4].map((s) => `<th class="${F.mes === v.m ? 'mes-sel' : ''}" style="font-size:.66rem;padding:2px">${s}</th>`).join('')).join('')}</tr></thead><tbody>
           ${visibles.map((r) => { const e = eqd(r.equipo_id); const i = filas.indexOf(r); const nn = grupo ? visibles.indexOf(r) : i; return `<tr>${cap ? `<td class="num">${nn + 1}</td><td>${h(r.tema || '')}</td><td>${h(e.nombre || '—')}</td>` : colsInfo.map((col) => `<td class="${col.mono && !editar ? 'mono' : ''}">${e.id ? (editar ? A.celdaEdit(e, col.k, nn, cons) : A.celdaVer(e, col.k, nn, cons)) : ''}</td>`).join('')}
             ${vis.map((v) => { const pl = r.cr[v.y]?.plan || {}; const nt = pl.notas?.[v.m] || ''; const sNt = nt ? ([1, 2, 3, 4].find((s) => pl[`${v.m}-${s}`]) || 1) : 0; return [1, 2, 3, 4].map((s) => { const val = pl[`${v.m}-${s}`] || ''; return `<td class="w ${val} ${s === sNt ? 'nt' : ''} ${v.y === anioAct && v.m === mesAct ? 'now' : ''} ${F.mes === v.m ? 'mes-sel' : ''} ${dosAnios && v.p === 12 - F.mesIni + 1 && s === 1 ? 'y-ini' : ''}" ${esProp() ? `data-act="celda" data-r="${i}" data-y="${v.y}" data-k="${v.m}-${s}"` : ''} title="${CAT.MESES[v.m - 1]} ${v.y} · semana ${s}${nt ? ' · Nota: ' + h(nt) : ''}">${val}</td>`; }).join(''); }).join('')}
-            ${esProp() ? `<td style="white-space:nowrap">${cap ? '' : `<button class="icon-btn ${anios.some((y) => Object.values(r.cr[y]?.plan?.notas || {}).some(Boolean)) ? 'con-nota' : ''}" data-act="notas" data-r="${i}" aria-label="Anotaciones" title="Anotaciones de la fila (pasan al reporte)">${I.nota}</button>`}${cap ? '' : `<button class="icon-btn" data-act="meses" data-r="${i}" aria-label="Cambiar meses" title="Cambiar meses">${I.edit}</button>`}<button class="icon-btn bad" data-act="quitar" data-r="${i}" aria-label="Quitar fila">${I.del}</button></td>` : ''}</tr>`; }).join('')}
+            ${esProp() ? `<td style="white-space:nowrap">${cap ? '' : `<button class="icon-btn ${anios.some((y) => Object.values(r.cr[y]?.plan?.notas || {}).some(Boolean)) ? 'con-nota' : ''}" data-act="notas" data-r="${i}" aria-label="Anotaciones" title="Anotaciones de la fila (pasan al reporte)">${I.nota}</button>`}${cap || !grupos.length ? '' : `<button class="icon-btn" data-act="moverCrono" data-r="${i}" aria-label="Pasar a otro cronograma" title="Pasar a otro cronograma (${h(grupos.map((g) => g.nombre).join(', '))})">${I.carpeta}</button>`}${cap ? '' : `<button class="icon-btn" data-act="meses" data-r="${i}" aria-label="Cambiar meses" title="Cambiar meses">${I.edit}</button>`}<button class="icon-btn bad" data-act="quitar" data-r="${i}" aria-label="Quitar fila">${I.del}</button></td>` : ''}</tr>`; }).join('')}
           </tbody></table></div>` : `<div class="empty">${filas.length ? 'Ningún registro coincide con la búsqueda o el servicio elegido.' : `No hay cronograma para ${periodoTxt}.${esProp() && !cap ? ' Use “Generar desde periodicidad” para crearlo automáticamente con la frecuencia de cada equipo.' : ''}`}</div>`}</section>`;
       el.querySelector('[data-mes]').onchange = (ev) => { F.mes = +ev.target.value; if (!F.mes) F.estado = ''; pintar(); };
       el.querySelector('[data-serv]').onchange = (ev) => { F.serv = ev.target.value; pintar(); };
@@ -386,6 +388,19 @@
               await S.update('cronogramas', c.id, { plan }); c.plan = plan;
             }
           }
+        },
+        moverCrono: (d) => {
+          const r = filas[+d.r]; const e = eqd(r.equipo_id); if (!e.id) return;
+          const mapa = { ...(ent.config?.crono_eq || {}) }; const actual = grupos.find((g) => enG(e, g));
+          const porServ = grupos.filter((g) => (g.cons || []).includes(e.consultorio_id));
+          modal({ titulo: `Pasar a otro cronograma · ${e.codigo_inv || ''} ${e.nombre || ''}`, size: 'sm',
+            cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Hoy está en: <b>${actual ? h(actual.nombre) : 'ningún cronograma separado (solo en “Todos los equipos”)'}</b>. El equipo sale de ese cronograma y queda solo en el que elija, tanto en mantenimiento como en metrología; no cambia de servicio en el inventario.</p>
+              <div class="fields">${f.sel('destino', 'Cronograma de destino', [...grupos.map((g) => [g.id, g.nombre + (g.sede && !sedeCtx ? ' · ' + g.sede : '')]), ['__ninguno', 'Ninguno (sacarlo de los cronogramas separados)'], ['', `Según su servicio${porServ.length ? ' (' + porServ.map((g) => g.nombre).join(', ') + ')' : ''}`]], mapa[e.id] || (actual?.id || ''), { full: true })}</div></form>`,
+            acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
+              const v = leer(m.body); const nm = { ...(ent.config?.crono_eq || {}) };
+              if (!v.destino || (v.destino !== '__ninguno' && porServ.length === 1 && porServ[0].id === v.destino)) delete nm[e.id]; else nm[e.id] = v.destino;
+              if (await A.guardarConfig(ent, { ...(ent.config || {}), crono_eq: nm })) { const g = grupos.find((x) => x.id === v.destino); S.log('EDITAR', 'cronogramas', e.id, `${e.codigo_inv} → ${g ? g.nombre : v.destino === '__ninguno' ? 'sin cronograma separado' : 'según su servicio'}`); toast(g ? `${e.nombre} quedó en el cronograma ${g.nombre}` : 'Listo'); pintar(); }
+            } }] });
         },
         meses: async (d) => {
           const r = filas[+d.r]; const e = eqd(r.equipo_id);
@@ -457,7 +472,7 @@
             let nNuevo = 0, nAct = 0; const anios = new Set();
             const cache = {};
             const delAnio = async (y) => (cache[y] = cache[y] || await S.list('cronogramas', { entidad_id: ent.id, tipo, anio: y }));
-            for (const e of eqs.filter((x) => x.estado !== 'Dado de baja' && (!grupo || (grupo.cons || []).includes(x.consultorio_id)) && (!sedeCtx || sedeC(cons.find((c) => c.id === x.consultorio_id)) === sedeCtx))) {
+            for (const e of eqs.filter((x) => x.estado !== 'Dado de baja' && (!grupo || enG(x, grupo)) && (!sedeCtx || sedeC(cons.find((c) => c.id === x.consultorio_id)) === sedeCtx))) {
               const paso = CAT.PERIODICIDAD[tipo === 'metrologia' ? e.periodicidad_metro : e.periodicidad_mto]; if (!paso) continue;
               const porAnio = {};
               A.fechasCiclo(paso, +d.mes, anioIni, d.alcance).forEach((x) => { (porAnio[x.anio] = porAnio[x.anio] || []).push(x.mes); });
