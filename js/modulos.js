@@ -785,7 +785,9 @@
     const anexos = [['reg_sanitario', '8.1 Registro sanitario o permiso'], ['importacion', '8.2 Registro de importación'], ['factura', '8.3 Factura o contrato'], ['acta_recibido', '8.4 Ingreso almacén / acta de recibido'], ['crono_garantia', '8.5 Cronograma en garantía'], ['protocolo', '8.6 Protocolo del fabricante'], ['guia', '8.7 Guía rápida de operación']];
     const T = ['Identificación', 'Código ECRI', 'Adquisición', 'Proveedor y fabricante', 'Datos técnicos', 'Apoyo técnico', 'Accesorios', 'Anexos', '9.5 Mediciones y recomendaciones'];
     const MED_COLS = [{ k: 'p', ph: 'Parámetro / magnitud', w: '1.6fr' }, { k: 'c', ph: 'Cantidad (valor o rango)' }, { k: 'u', ph: 'Unidad (mmHg, °C, kg…)', w: '.8fr' }];
-    const sugMed = A.sugerirMediciones(eq.nombre);
+    // 9.5 solo para equipos con calibración: primero el formato “Recomendaciones para mediciones”
+    const calib = A.aplicaCalibracion(eq);
+    const sugMed = calib ? A.sugerirMediciones(eq.nombre) : [];
     const medFilas = (hv.mediciones_tabla || []).length ? hv.mediciones_tabla : sugMed;
     const medAplica = hv.mediciones_aplica || ((hv.mediciones_tabla || []).length || sugMed.length || hv.mediciones ? 'Aplica' : 'No aplica');
     modal({
@@ -1136,7 +1138,7 @@
 
   // =================================================================== FORMATOS
   A.V.formatos = async () => {
-    const nombres = { hoja_vida: 'Hoja de vida', inventario: 'Inventario', cronograma: 'Cronogramas', mto_preventivo: 'Mantenimiento preventivo', mto_correctivo: 'Mantenimiento correctivo', metrologia: 'Metrología', alertas: 'Bitácora alertas sanitarias', evento: 'Reporte tecnovigilancia', acta_baja: 'Acta de baja', acta_entrega: 'Acta de entrega', cotizacion: 'Cotización', cuenta_cobro: 'Cuenta de cobro' };
+    const nombres = { mediciones: 'Recomendaciones para mediciones (9.5)', hoja_vida: 'Hoja de vida', inventario: 'Inventario', cronograma: 'Cronogramas', mto_preventivo: 'Mantenimiento preventivo', mto_correctivo: 'Mantenimiento correctivo', metrologia: 'Metrología', alertas: 'Bitácora alertas sanitarias', evento: 'Reporte tecnovigilancia', acta_baja: 'Acta de baja', acta_entrega: 'Acta de entrega', cotizacion: 'Cotización', cuenta_cobro: 'Cuenta de cobro' };
     A.content().innerHTML = `<div class="page-head"><div><span class="eyebrow">Control documental</span><h1>Formatos</h1><span class="muted">Los cambios aplican a todos los PDF que se generen desde ahora. Solo el propietario puede modificarlos.</span></div></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Formato</th><th>Título impreso</th><th>Código</th><th>Versión</th><th>Fecha aprobación</th><th></th></tr></thead><tbody>
       ${Object.keys(CAT.FORMATOS).map((k) => { const x = st.fmt[k]; return `<tr><td><b>${nombres[k] || k}</b></td><td>${h(x.titulo)}</td><td class="mono">${h(x.codigo)}</td><td class="mono">${h(x.version)}</td><td class="num">${UI.fecha(x.fecha)}</td><td class="r"><button class="btn sm" data-act="editF" data-k="${k}">${I.edit} Modificar</button></td></tr>`; }).join('')}
@@ -1144,6 +1146,7 @@
       <section class="panel" id="biblio"></section>`;
     A.acts({
       editF: (d) => {
+        if (d.k === 'mediciones') return editMediciones();
         const x = st.fmt[d.k], lista = (a) => (a || []).join('\n');
         modal({
           titulo: `Formato · ${nombres[d.k]}`,
@@ -1158,6 +1161,63 @@
       },
     });
     await A.archivos(document.getElementById('biblio'), { entidad_id: null, equipo_id: null, carpeta: 'formatos_base', titulo: 'Biblioteca de formatos (plantillas Excel y Word)' });
+    // ---------------------------------------------- Recomendaciones para mediciones (cantidad / unidad)
+    function editMediciones() {
+      const x = st.fmt.mediciones || CAT.FORMATOS.mediciones;
+      const COLS = [{ k: 'e', ph: 'Equipo', w: '1.4fr' }, { k: 'm', ph: 'Magnitud' }, { k: 'u', ph: 'Unidad', w: '.6fr' }, { k: 'p', ph: 'Puntos (separados por coma)', w: '1.6fr' }, { k: 'o', ph: 'Observaciones' }];
+      const aFilas = (l) => (l || []).map((r) => ({ ...r, p: Array.isArray(r.p) ? r.p.join(', ') : r.p || '' }));
+      const leerFilas = (root) => repLeer(root, 'medf').filter((r) => r.e && r.m).map((r) => ({ e: r.e, m: r.m, u: r.u || '', p: String(r.p || '').split(/\s*[,;]\s*/).filter(Boolean), o: r.o || '' }));
+      modal({ titulo: 'Formato · Recomendaciones para mediciones (cantidad / unidad)', size: 'wide',
+        cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('titulo', 'Título', x.titulo, { full: true })}${f.input('codigo', 'Código', x.codigo)}${f.input('version', 'Versión', x.version)}${f.input('fecha', 'Fecha', x.fecha, { type: 'date' })}</div>
+          <p class="muted">Cada fila es una magnitud a calibrar de un tipo de equipo, con sus puntos de calibración. Se usa en la casilla <b>9.5 Recomendaciones para mediciones</b> de la hoja de vida, solo en los equipos que llevan calibración. El nombre del equipo se compara con el del inventario (ej. “Báscula” sirve para “BÁSCULA ADULTO”).</p>
+          <div class="actions"><label class="btn sm">${I.subir} Cargar desde Excel<input type="file" accept=".xlsx,.xls" data-medx hidden></label><button type="button" class="btn sm" data-medxls>${I.excel} Descargar Excel</button><span class="sp"></span><button type="button" class="btn sm pri" data-medapl>Aplicar a las hojas de vida…</button></div>
+          <div data-medbox style="max-height:420px;overflow:auto">${rep('medf', COLS, aFilas(x.filas))}</div></form>`,
+        alAbrir: (m) => {
+          repBind(m.body);
+          m.body.querySelector('[data-medx]').onchange = async (ev) => {
+            const fl = ev.target.files[0]; if (!fl) return;
+            const wb = XLSX.read(new Uint8Array(await fl.arrayBuffer()), { type: 'array' }); const ws = wb.Sheets[wb.SheetNames[0]];
+            const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }); const hi = aoa.findIndex((r) => r.some((c) => /^EQUIPO$/i.test(String(c).trim())));
+            if (hi < 0) return toast('No encontré la fila de encabezados (Equipo, Magnitud, Unidad, Punto 1…)', true);
+            const H = aoa[hi].map((c) => String(c).trim().toUpperCase()); const ix = (re) => H.findIndex((c) => re.test(c));
+            const iE = ix(/^EQUIPO/), iM = ix(/MAGNITUD/), iU = ix(/UNIDAD/), iO = ix(/OBSERV/), iP = H.map((c, i) => (/^PUNTO/.test(c) ? i : -1)).filter((i) => i >= 0);
+            const nf = aoa.slice(hi + 1).filter((r) => String(r[iE] || '').trim()).map((r) => ({ e: String(r[iE]).trim(), m: String(r[iM] || '').trim(), u: String(r[iU] || '').trim(), p: iP.map((i) => String(r[i] ?? '').trim()).filter(Boolean).join(', '), o: iO >= 0 ? String(r[iO] || '').trim() : '' }));
+            m.body.querySelector('[data-medbox]').innerHTML = rep('medf', COLS, nf); toast(`${nf.length} filas cargadas del Excel. Revise y guarde.`);
+          };
+          m.body.querySelector('[data-medxls]').onclick = () => {
+            const fl = leerFilas(m.body); const mx = Math.max(6, ...fl.map((r) => r.p.length));
+            const aoa = [[x.titulo], ['N°', 'Equipo', 'Magnitud', 'Unidad', ...Array.from({ length: mx }, (_, i) => `Punto ${i + 1}`), 'Observaciones'], ...fl.map((r, i) => [i + 1, r.e, r.m, r.u, ...Array.from({ length: mx }, (_, j) => r.p[j] || ''), r.o])];
+            const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Metrología-Calibración');
+            UI.descargar(new Blob([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'Recomendaciones para mediciones (cantidad unidad).xlsx');
+          };
+          m.body.querySelector('[data-medapl]').onclick = () => aplicarMediciones();
+        },
+        acciones: [{ t: 'Restablecer original', fn: async () => { await S.upsert('formatos', { clave: 'mediciones', datos: CAT.FORMATOS.mediciones }); await A.cargarConfig(); A.recargar(); } }, { t: 'Cancelar' }, { t: 'Guardar formato', cls: 'pri', fn: async (m) => {
+          const v = leer(m.body); const filas = leerFilas(m.body); if (!filas.length) { toast('El formato debe tener al menos una fila', true); return false; }
+          await S.upsert('formatos', { clave: 'mediciones', datos: { titulo: v.titulo, codigo: v.codigo, version: v.version, fecha: v.fecha, filas } }); await A.cargarConfig(); toast('Formato de mediciones guardado'); A.recargar();
+        } }] });
+    }
+    // llenar la 9.5 de las hojas de vida de los equipos con calibración
+    async function aplicarMediciones() {
+      const ents = await S.list('entidades', {}, 'razon_social');
+      modal({ titulo: 'Aplicar a las hojas de vida (9.5)', size: 'sm',
+        cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.sel('ent', 'Entidad', [['', 'Todas las entidades'], ...ents.map((e) => [e.id, e.razon_social])], '', { full: true })}</div>
+          <label class="checks full radio-line"><input type="checkbox" name="reemplazar" data-single> Reemplazar también las 9.5 que ya están diligenciadas</label>
+          <label class="checks full radio-line"><input type="checkbox" name="na" data-single checked> Marcar <b>NO APLICA</b> en los equipos sin calibración que no tengan nada en la 9.5</label>
+          <p class="muted" style="font-size:.85rem">Se llenan con el formato los equipos cuyo nombre coincide con una fila (ej. báscula, tensiómetro, pulsoxímetro, centrífuga, nevera, termohigrómetro…).</p></form>`,
+        acciones: [{ t: 'Cancelar' }, { t: 'Aplicar', cls: 'pri', fn: async (m) => {
+          const v = leer(m.body); const eqs = (await S.list('equipos', v.ent ? { entidad_id: v.ent } : {})).filter((e) => e.estado !== 'Dado de baja');
+          let nA = 0, nN = 0;
+          for (const e of eqs) {
+            const hv = e.hv || {}; const tiene = (hv.mediciones_tabla || []).length || hv.mediciones || hv.mediciones_aplica;
+            const fl = A.medicionesFormato(e.nombre);
+            if (fl.length && (!tiene || v.reemplazar)) { await S.update('equipos', e.id, { hv: { ...hv, mediciones_aplica: 'Aplica', mediciones_tabla: fl } }); nA++; }
+            else if (!fl.length && v.na && !tiene && !A.aplicaCalibracion(e)) { await S.update('equipos', e.id, { hv: { ...hv, mediciones_aplica: 'No aplica', mediciones_tabla: [] } }); nN++; }
+          }
+          S.log('EDITAR', 'equipos', v.ent || null, `9.5 mediciones aplicadas desde el formato: ${nA} equipos, ${nN} NO APLICA`);
+          toast(`9.5 llenada en ${nA} equipo${nA === 1 ? '' : 's'}${nN ? ` · ${nN} marcados NO APLICA` : ''}`);
+        } }] });
+    }
   };
 
   // =================================================================== AUDITORÍA

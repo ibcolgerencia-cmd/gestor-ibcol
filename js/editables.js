@@ -139,7 +139,25 @@
     [/cronometro|temporizador/, [['Tiempo', '0 - 60', 'min']]],
     [/compresor|unidad odontologica/, [['Presión de aire', '60 - 80', 'psi']]],
   ];
-  A.sugerirMediciones = (nombre) => { const n = nrm(nombre); const r = A.MEDICIONES.find(([re]) => re.test(n)); return r ? r[1].map(([p, c, u]) => ({ p, c, u })) : []; };
+  // Formato "Recomendaciones para mediciones (cantidad / unidad)": filas del formato que corresponden al equipo
+  const tokens = (t) => nrm(t).toUpperCase().replace(/\(.*?\)/g, ' ').replace(/[^A-Z0-9]+/g, ' ').split(' ').filter((w) => w && !['DE', 'DEL', 'LA', 'EL', 'Y', 'PARA', 'CON'].includes(w));
+  const lev = (a, b) => { if (Math.abs(a.length - b.length) > 2) return 9; const d = [...Array(b.length + 1).keys()]; for (let i = 1; i <= a.length; i++) { let pr = d[0]; d[0] = i; for (let j = 1; j <= b.length; j++) { const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, pr + (a[i - 1] === b[j - 1] ? 0 : 1)); pr = t; } } return d[b.length]; };
+  const igual = (a, b) => a === b || (a.length >= 6 && b.length >= 6 && lev(a, b) <= 2);
+  A.medicionesFormato = (nombre) => {
+    const filas = (st.fmt?.mediciones?.filas || CAT.FORMATOS.mediciones?.filas || []);
+    let te = tokens(nombre); if (te.some((w) => /^PEDIATR|^BEBE|^NEONAT/.test(w))) te = [...te, 'P']; te = te.map((w) => (w === 'BALANZA' || w === 'PESA' ? 'BASCULA' : w));
+    const cand = filas.map((r) => { const base = tokens(String(r.e).replace(/\s-\s.*$/, '')); const ok = base.filter((w) => te.some((x) => igual(x, w))).length; return { r, base, ok, completo: ok === base.length }; })
+      .filter((x) => x.base.length && te.some((y) => igual(y, x.base[0])) && x.ok / x.base.length >= 0.5);
+    if (!cand.length) return [];
+    const comp = cand.filter((x) => x.completo); const pool = comp.length ? comp : cand;
+    const mx = Math.max(...pool.map((x) => x.ok));
+    return pool.filter((x) => x.ok === mx).map(({ r }) => ({ p: `${r.m}${r.o ? ` (${r.o.charAt(0).toLowerCase() + r.o.slice(1)})` : ''}`, c: (r.p || []).filter(Boolean).join(', '), u: r.u === '—' ? '' : r.u }));
+  };
+  // ¿El equipo lleva calibración? (está en el formato de mediciones o tiene periodicidad de metrología)
+  A.aplicaCalibracion = (eq) => A.medicionesFormato(eq.nombre).length > 0 || !!(eq.periodicidad_metro && eq.periodicidad_metro !== 'No aplica');
+  A.sugerirMedicionesGen = (nombre) => { const n = nrm(nombre); const r = A.MEDICIONES.find(([re]) => re.test(n)); return r ? r[1].map(([p, c, u]) => ({ p, c, u })) : []; };
+  A.sugerirMediciones = (nombre) => { const f = A.medicionesFormato(nombre); return f.length ? f : A.sugerirMedicionesGen(nombre); };
+  A.sugerirMedicionesViejo = (nombre) => { const n = nrm(nombre); const r = A.MEDICIONES.find(([re]) => re.test(n)); return r ? r[1].map(([p, c, u]) => ({ p, c, u })) : []; };
 
   // ------------------------------------------------------------------ documentos de soporte desde la hoja de vida
   const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.-]+/g, '_').slice(0, 90);
