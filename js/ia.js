@@ -93,9 +93,10 @@
     } catch (e) { return `(${d.nombre}: no se pudo abrir)`; }
   }
   A.textoDocIA = textoDoc;
+  const esFicha = (d) => /FICHA|(^|[^A-Z])FT([^A-Z]|$)|DATASHEET/.test(nrm(d.nombre));
   const GRUPOS = [
-    ['manual', 'Manuales', (d) => d.carpeta === 'manual' && !/FICHA/.test(nrm(d.nombre))],
-    ['ficha', 'Fichas técnicas', (d) => d.carpeta === 'manual' && /FICHA/.test(nrm(d.nombre))],
+    ['manual', 'Manuales', (d) => d.carpeta === 'manual' && !esFicha(d)],
+    ['ficha', 'Fichas técnicas', (d) => d.carpeta === 'manual' && esFicha(d)],
     ['rs', 'Registro sanitario', (d) => d.carpeta === 'registro_sanitario'],
     ['factura', 'Facturas', (d) => d.carpeta === 'factura'],
     ['importacion', 'Certificado de importación', (d) => d.carpeta === 'importacion'],
@@ -200,7 +201,7 @@
     const textoFuentes = async (presupuesto) => {
       const sel = [...body.querySelectorAll('[data-doc]:checked')].map((x) => docsEq.find((d) => d.id === x.dataset.doc)).filter(Boolean);
       if (!sel.length) return '';
-      const peso = (d) => (d.carpeta === 'registro_sanitario' ? 0.7 : /FICHA/.test(nrm(d.nombre)) ? 1 : d.carpeta === 'hoja_vida' ? 0.8 : 1.3);
+      const peso = (d) => (d.carpeta === 'registro_sanitario' ? 0.7 : esFicha(d) ? 1 : d.carpeta === 'factura' ? 0.6 : d.carpeta === 'hoja_vida' ? 0.8 : 1.3);
       const tot = sel.reduce((a, d) => a + peso(d), 0); const out = [];
       for (const [i, d] of sel.entries()) {
         estado.textContent = `Leyendo ${d.nombre} (${i + 1} de ${sel.length})…`;
@@ -230,14 +231,20 @@
       estado.textContent = 'Redactando… puede tardar hasta un minuto.';
       body.querySelectorAll('[data-ia]').forEach((b) => (b.disabled = true));
       try {
-        let ctx = await contexto({ ent, eq, carpeta, inventario: $('[name=inv]').checked && !modoHV() });
-        if (eq) { const fi = await filaInventario(); if (fi) ctx += '\n\n' + fi; const fu = await textoFuentes(Math.max(6000, 56000 - ctx.length)); if (fu) ctx = (ctx + '\n\n' + fu).slice(0, 58000); }
+        let ctx0 = await contexto({ ent, eq, carpeta, inventario: $('[name=inv]').checked && !modoHV() }), ctx = ctx0, fi = '';
+        // la hoja de vida usa un texto más corto (los manuales largos hacen que la IA no responda a tiempo)
+        const armar = async (presu) => { let c = ctx0 + (fi ? '\n\n' + fi : ''); const fu = await textoFuentes(Math.max(5000, presu - c.length)); if (fu) c = (c + '\n\n' + fu).slice(0, presu + 2000); return c; };
+        if (eq) { fi = await filaInventario(); ctx = await armar(modoHV() ? 30000 : 56000); }
         estado.textContent = 'Redactando… puede tardar hasta un minuto.';
         const consulta = () => Promise.race([S.ia({ instruccion: modoHV() && !conHist ? instruccionHV(instruccion) : instruccion, contexto: ctx, historial: conHist ? historial : [] }),
           new Promise((_, r) => setTimeout(() => r(new Error('La IA no respondió a tiempo')), 120000))]);
         let texto = null, err = null;
         for (let i = 0; i < 3 && texto === null; i++) {
           try { texto = await consulta(); } catch (e) { err = e; if (!/demand|overload|unavailable|503|504|546|429|tiempo|non-2xx/i.test(e.message)) break; estado.textContent = `La IA está ocupada, reintentando (${i + 1})…`; await new Promise((r) => setTimeout(r, 6000)); }
+        }
+        if (texto === null && eq && modoHV()) {
+          estado.textContent = 'Reintentando con un resumen más corto de los documentos…'; ctx = await armar(12000);
+          try { texto = await consulta(); } catch (e) { err = e; }
         }
         if (texto === null) throw new Error(/demand|overload|unavailable|503|429/i.test(err?.message || '') ? 'Google Gemini está saturado en este momento. Intente de nuevo en unos minutos.' : err?.message || 'La IA no respondió');
         if (modoHV()) {
