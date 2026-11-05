@@ -544,15 +544,16 @@ window.APP = (() => {
         <div><span>Garantía hasta</span><b>${dd(eq.fecha_fin_garantia)}</b></div>
       </div></div></section>
       <section class="folder-group"><span class="eyebrow">Carpeta del equipo</span><div class="folders">
-        ${CAT.CARPETAS_EQUIPO.filter((k) => !A.ocultas(ent, 'eq').has(k.k)).map((k) => A.tarjetaCarpeta(k, `${cnt(k.k)} documento${cnt(k.k) === 1 ? '' : 's'}`, 'eq', ent)).join('')}
-      </div></section>
+        ${CAT.CARPETAS_EQUIPO.filter((k) => !A.ocultasEq(ent, eq).has(k.k)).map((k) => A.tarjetaCarpeta(k, `${cnt(k.k)} documento${cnt(k.k) === 1 ? '' : 's'}`, 'eq', ent)).join('')}
+      </div>${esProp() && (eq.hv?.ocultas || []).length ? `<p class="muted" style="font-size:.85rem;margin-top:6px">Carpetas quitadas solo en este equipo: ${(eq.hv.ocultas).map((k) => h(A.nomCarpeta(ent, 'eq', k))).join(', ')} · <button class="btn sm" data-act="mostrarCarpEq">Volver a mostrar</button></p>` : ''}</section>
       ${esProp() ? `<section class="panel"><header><h3>Acciones del equipo</h3></header><div class="actions">
         <button class="btn" data-act="nuevoMto" data-t="preventivo">${I.mas} Mantenimiento preventivo</button><button class="btn" data-act="nuevoMto" data-t="correctivo">${I.mas} Mantenimiento correctivo</button>
         <button class="btn" data-act="nuevoMto" data-t="metrologia">${I.mas} Metrología</button><button class="btn" data-act="iaHV">${I.ia} Actualizar hoja de vida con IA</button><button class="btn" data-act="ia">${I.ia} Redactar con IA</button><button class="btn" data-act="google">${I.ia} Buscar con Google: ficha, guía, registro, manuales</button><button class="btn" data-act="estado">${I.on} Cambiar estado</button><button class="btn" data-act="importar">${I.subir} Importar carpeta del equipo</button>
         <button class="btn danger" data-act="borrarEq">${I.del} Eliminar equipo</button></div></section>` : ''}`;
     A.acts({
       carpeta: (d) => go('carpeta', { ent: eq.entidad_id, eq: id, k: d.k }),
-      quitarCarp: (d) => A.quitarCarpeta(ent, 'eq', d.k, null),
+      quitarCarp: (d) => A.quitarCarpeta(ent, 'eq', d.k, cnt(d.k), eq),
+      mostrarCarpEq: async () => { const act = await S.get('equipos', eq.id); await S.update('equipos', eq.id, { hv: { ...(act.hv || {}), ocultas: [] } }); toast('Carpetas visibles de nuevo en este equipo'); A.recargar(); },
       renCarp: (d) => A.renombrarCarpeta(ent, 'eq', d.k),
       pdfHV: () => A.verHojaVida(eq, ent, c, mtos),
       fotoEq: () => A.cargarFotoEquipo(eq),
@@ -1050,6 +1051,8 @@ window.APP = (() => {
   // Quitar una carpeta NO borra sus archivos: quedan guardados y vuelven si se activa de nuevo.
   const OBLIG = new Set(['equipos', 'hoja_vida']); // sin estas no funciona la estructura
   A.ocultas = (ent, tipo) => new Set((ent?.config || {})[tipo === 'eq' ? 'ocultas_eq' : 'ocultas_ent'] || []);
+  // carpetas ocultas de un equipo: las quitadas para toda la entidad + las quitadas solo en ese equipo (equipos.hv.ocultas)
+  A.ocultasEq = (ent, eq) => new Set([...A.ocultas(ent, 'eq'), ...((eq?.hv || {}).ocultas || [])]);
   // Nombre de una carpeta para una entidad (puede haberse cambiado en entidades.config.nombres_ent / nombres_eq)
   A.nomCarpeta = (ent, tipo, k) => { const n = ((ent?.config || {})[tipo === 'eq' ? 'nombres_eq' : 'nombres_ent'] || {})[k]; return n || ((tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD).find((c) => c.k === k)?.n || k); };
   A.tarjetaCarpeta = (c, sub, tipo, ent) => { const nom = A.nomCarpeta(ent, tipo, c.k); return `<div class="folder-w"><button class="folder" data-act="carpeta" data-k="${c.k}"><span class="ic"></span><b>${h(nom)}</b><small>${sub}</small></button>${esProp() ? `<div class="folder-tools"><button class="folder-x" data-act="renCarp" data-tipo="${tipo}" data-k="${c.k}" title="Cambiar el nombre de esta carpeta" aria-label="Cambiar nombre de ${h(nom)}">${I.edit}</button>${!OBLIG.has(c.k) ? `<button class="folder-x del" data-act="quitarCarp" data-tipo="${tipo}" data-k="${c.k}" title="Quitar esta carpeta para esta entidad" aria-label="Quitar carpeta ${h(nom)}">${I.x}</button>` : ''}</div>` : ''}</div>`; };
@@ -1085,15 +1088,42 @@ window.APP = (() => {
     }
   };
   A.guardarConfig = (ent, config) => guardarConfig(ent, config);
-  A.quitarCarpeta = async (ent, tipo, k, nArch) => {
+  A.quitarCarpeta = async (ent, tipo, k, nArch, eq = null) => {
     const cat = tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD, c0 = cat.find((x) => x.k === k); if (!c0) return;
     const c = { ...c0, n: A.nomCarpeta(ent, tipo, k) };
+    if (tipo === 'eq' && eq) return quitarCarpetaEquipo(ent, eq, k, c.n, nArch);
     const extra = nArch ? ` Tiene ${nArch} archivo${nArch === 1 ? '' : 's'}: no se borran, quedan guardados y vuelven a aparecer si activa la carpeta otra vez.` : '';
     const donde = tipo === 'eq' ? 'de TODOS los equipos de' : 'de la carpeta de';
     if (!(await confirmar(`¿Quitar “${c.n}” ${donde} ${ent.razon_social}? El cliente tampoco la verá.${extra} Puede volver a mostrarla con el botón “Carpetas” de la entidad.`, 'Quitar carpeta'))) return;
     const cfg = { ...(ent.config || {}) }, key = tipo === 'eq' ? 'ocultas_eq' : 'ocultas_ent';
     cfg[key] = [...new Set([...(cfg[key] || []), k])];
     if (await guardarConfig(ent, cfg)) { S.log('EDITAR', 'entidades', ent.id, `Quitó la carpeta ${c.n}`); toast(`Carpeta “${c.n}” quitada`); A.recargar(); }
+  };
+  // quitar una carpeta desde un equipo: solo ese equipo, los equipos que no la requieren, o todos
+  const quitarCarpetaEquipo = (ent, eq, k, nom, nArch) => {
+    const metro = k === 'metrologia';
+    modal({ titulo: `Quitar la carpeta “${nom}”`, size: 'sm',
+      cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Quitar una carpeta no borra sus archivos${nArch ? ` (este equipo tiene ${nArch})` : ''}: quedan guardados y vuelven a aparecer si la muestra otra vez. El cliente tampoco la verá.</p>
+        <label class="checks full radio-line"><input type="radio" name="alcance" value="uno" checked> Solo en este equipo (${h(eq.codigo_inv || '')} ${h(eq.nombre || '')})</label>
+        <label class="checks full radio-line"><input type="radio" name="alcance" value="noreq"> En los equipos de ${h(ent.razon_social)} que no la requieren ${metro ? '(los que no llevan calibración)' : '(los que no tienen archivos en esa carpeta)'}</label>
+        <label class="checks full radio-line"><input type="radio" name="alcance" value="todos"> En TODOS los equipos de ${h(ent.razon_social)}</label></form>`,
+      acciones: [{ t: 'Cancelar' }, { t: 'Quitar carpeta', cls: 'pri danger', fn: async (m) => {
+        const al = leer(m.body).alcance;
+        if (al === 'todos') {
+          const cfg = { ...(ent.config || {}) }; cfg.ocultas_eq = [...new Set([...(cfg.ocultas_eq || []), k])];
+          if (!(await guardarConfig(ent, cfg))) return false;
+          S.log('EDITAR', 'entidades', ent.id, `Quitó la carpeta ${nom} de todos los equipos`); toast(`Carpeta “${nom}” quitada de todos los equipos`); return A.recargar();
+        }
+        let lista = [eq];
+        if (al === 'noreq') {
+          const eqs = await S.list('equipos', { entidad_id: ent.id });
+          const docs = metro ? [] : (await S.list('documentos', { entidad_id: ent.id })).filter((d) => d.equipo_id && d.carpeta === k);
+          lista = eqs.filter((e) => (metro ? !(A.aplicaCalibracion ? A.aplicaCalibracion(e) : (e.periodicidad_metro && e.periodicidad_metro !== 'No aplica')) : !docs.some((d) => d.equipo_id === e.id)));
+        }
+        for (const e of lista) { const hv = { ...(e.hv || {}) }; hv.ocultas = [...new Set([...(hv.ocultas || []), k])]; await S.update('equipos', e.id, { hv }); }
+        S.log('EDITAR', 'equipos', eq.id, `Quitó la carpeta ${nom} en ${lista.length} equipo(s)`);
+        toast(`Carpeta “${nom}” quitada en ${lista.length} equipo${lista.length === 1 ? '' : 's'}`); A.recargar();
+      } }] });
   };
   A.configCarpetas = (ent) => {
     const ocE = A.ocultas(ent, 'ent'), ocQ = A.ocultas(ent, 'eq');
