@@ -187,7 +187,7 @@
 
   // Panel: Registro sanitario, factura, metrología, manuales e importación del equipo
   A.panelDocsHV = async (el, { ent, eq, cons, compacto = false }) => {
-    const [docs0, mtos] = await Promise.all([S.list('documentos', { equipo_id: eq.id }, '-created_at'), S.list('mantenimientos', { equipo_id: eq.id, tipo: 'metrologia' }, '-fecha')]);
+    const [docs0r, mtos] = await Promise.all([S.list('documentos', { equipo_id: eq.id }, '-created_at'), S.list('mantenimientos', { equipo_id: eq.id, tipo: 'metrologia' }, '-fecha')]); const docs0 = [...docs0r].sort(A.ordenDocs);
     const docs = esProp() ? docs0 : docs0.filter((d) => !window.IBCOL_ES_EXCEL(d.nombre));
     const de = (carpeta) => docs.filter((d) => d.carpeta === carpeta);
     const metroAplica = eq.periodicidad_metro && eq.periodicidad_metro !== 'No aplica';

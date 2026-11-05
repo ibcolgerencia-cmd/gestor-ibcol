@@ -621,6 +621,26 @@ window.APP = (() => {
     });
   };
 
+  // ---------------------------------------------------------------- fecha real de un documento
+  // 1) la fecha escrita en el nombre (ej. "MTTO CENT 038 24_04_2026.pdf", "INVENTARIO MAYO-2024.pdf", "2024-2025")
+  // 2) la fecha del documento  3) la fecha en que se subió. Devuelve AAAA-MM-DD para ordenar del más reciente al más antiguo.
+  const MES_N = { ENE: 1, FEB: 2, MAR: 3, ABR: 4, MAY: 5, JUN: 6, JUL: 7, AGO: 8, SEP: 9, SET: 9, OCT: 10, NOV: 11, DIC: 12 };
+  const p2 = (n) => String(n).padStart(2, '0');
+  const okF = (y, m, d) => y >= 1990 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
+  A.fechaDeNombre = (nombre) => {
+    const t = String(nombre || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\.[A-Z0-9]{2,5}$/, '');
+    let m = t.match(/(?:^|\D)(\d{1,2})[\s._\-/](\d{1,2})[\s._\-/](\d{4})(?!\d)/); if (m && okF(+m[3], +m[2], +m[1])) return `${m[3]}-${p2(m[2])}-${p2(m[1])}`;
+    m = t.match(/(?:^|\D)(\d{4})[\s._\-/](\d{1,2})[\s._\-/](\d{1,2})(?!\d)/); if (m && okF(+m[1], +m[2], +m[3])) return `${m[1]}-${p2(m[2])}-${p2(m[3])}`;
+    m = t.match(/(?:^|\D)(\d{1,2})[\s._\-/](\d{1,2})[\s._\-/](\d{2})(?!\d)/); if (m && okF(2000 + +m[3], +m[2], +m[1])) return `20${m[3]}-${p2(m[2])}-${p2(m[1])}`;
+    m = t.match(/\b(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|SET|OCT|NOV|DIC)[A-Z]*[\s._\-/]*(?:DE[\s._\-]*)?(\d{4})(?!\d)/); if (m) return `${m[2]}-${p2(MES_N[m[1]])}-01`;
+    const ys = [...t.matchAll(/(?:^|\D)(20\d{2}|19\d{2})(?!\d)/g)].map((x) => +x[1]).filter((y) => y >= 1990 && y <= 2100);
+    if (ys.length) return `${Math.max(...ys)}-01-01`;
+    return '';
+  };
+  A.fechaDocumento = (d) => A.fechaDeNombre(d.nombre) || String(d.fecha_documento || d.created_at || '').slice(0, 10);
+  // orden: más reciente primero; con la misma fecha, el número inicial más alto primero ("2. MTTO…" antes que "1. MTTO…")
+  A.ordenDocs = (a, b) => A.fechaDocumento(b).localeCompare(A.fechaDocumento(a)) || ((parseFloat(b.nombre) || 0) - (parseFloat(a.nombre) || 0)) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true });
+
   // ---------------------------------------------------------------- Archivos de una carpeta (con subcarpetas)
   st.subSel = st.subSel || {};
   A.archivos = async (cont, opts) => {
@@ -652,8 +672,8 @@ window.APP = (() => {
     const hijos = sel ? [...new Set([...docs.filter((d) => (d.subcarpeta || '').startsWith(sel + '/')).map((d) => d.subcarpeta.slice(sel.length + 1).split('/')[0]), ...(st.subExtra[llave] || []).filter((x) => x.startsWith(sel + '/')).map((x) => x.slice(sel.length + 1).split('/')[0])])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'es', { numeric: true })) : [];
     const cuentaRuta = (r) => docs.filter((d) => dentro(d, r)).length;
     // Del más reciente al más antiguo: fecha del documento (o de carga), luego hora de carga
-    const fechaDoc = (d) => String(d.fecha_documento || d.created_at || '').slice(0, 10);
-    const visibles = docs.filter((d) => !sel || dentro(d, sel)).sort((a, b) => fechaDoc(b).localeCompare(fechaDoc(a)) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
+    const fechaDoc = (d) => A.fechaDocumento(d);
+    const visibles = docs.filter((d) => !sel || dentro(d, sel)).sort(A.ordenDocs);
     const cuenta = (s) => docs.filter((d) => raiz(d) === s).length;
     const tipoExt = (n) => { const e = UI.ext(n); return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(e) ? 'img' : e; };
     cont.innerHTML = `<header><h2>${h(titulo)}</h2>${esProp() ? `<div class="actions">${sel && cuentaRuta(sel) ? `<button class="btn" data-act="renSub" title="Cambiar el nombre de la subcarpeta “${h(sel)}”">${I.edit} Renombrar subcarpeta</button>` : ''}${sel && (cuentaRuta(sel) || !subs.includes(sel)) ? `<button class="btn danger" data-act="delSub" title="Eliminar la subcarpeta “${h(sel)}”">${I.del} Eliminar subcarpeta</button>` : ''}<button class="btn" data-act="nuevaSub">${I.mas} ${sel ? 'Subcarpeta aquí' : 'Subcarpeta'}</button><label class="btn">${I.subir} Importar carpeta<input type="file" webkitdirectory multiple hidden data-dir></label><label class="btn pri">${I.subir} Subir archivos<input type="file" multiple hidden data-up></label></div>` : ''}</header>
