@@ -604,9 +604,8 @@ window.APP = (() => {
     const ruta = [...A.rutaEnt(ent), ...(sede ? [[sede.toUpperCase(), 'entidad', { id: ent.id, sede }]] : []), ...(eq ? [[A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], [eq.nombre.toUpperCase(), 'equipo', { id: eq.id }]] : []), nomDef];
     content().innerHTML = `${migas(ruta)}
       <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : sede ? `Sede ${h(sede)}` : 'Carpeta de la entidad'}</span><h1>${h(nomDef)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
-      ${k === 'inventarios' ? '<section class="panel" id="archivos"></section>' : ''}
       ${def.gen ? '<div id="gen" style="display:grid;gap:18px"></div>' : ''}
-      ${k === 'inventarios' ? '' : '<section class="panel" id="archivos"></section>'}`;
+      <section class="panel" id="archivos"></section>`;
     const ctx = { ent, eq, k, def, sede };
     A.acts({ ia: () => A.asistenteIA({ ent, eq, carpeta: k }), google: () => A.buscarGoogleEquipo(eq, ent) });
     if (def.gen) {
