@@ -71,7 +71,7 @@
       if (bb) { bb.hidden = !borrar; bb.querySelector('[data-nsel]').textContent = selB.size; }
       el.querySelector('[data-act=porServ]')?.classList.toggle('pri', porServ);
       const cl = carpetasL(); const vv = el.querySelector('[data-vistas]');
-      vv.innerHTML = `${cl.length ? `<span class="muted">Ver:</span><button class="chip ${!vista ? 'on' : ''}" data-act="vistaInv" data-v="">Todo el inventario</button><button class="chip ${vista === '__serv' ? 'on' : ''}" data-act="vistaInv" data-v="__serv">Servicios</button>${cl.map((x) => `<button class="chip ${vista === x ? 'on' : ''}" data-act="vistaInv" data-v="${h(x)}">${I.carpeta} ${h(x)}</button>`).join('')}` : ''}${esProp() ? `<span class="sp"></span><button class="btn sm" data-act="nuevoServInv">${I.mas} Servicio${vista && vista !== '__serv' ? ' en ' + h(vista) : ''}</button>` : ''}`;
+      vv.innerHTML = `${cl.length ? `<span class="muted">Ver:</span><button class="chip ${!vista ? 'on' : ''}" data-act="vistaInv" data-v="">Todo el inventario</button><button class="chip ${vista === '__serv' ? 'on' : ''}" data-act="vistaInv" data-v="__serv">Servicios</button>${cl.map((x) => `<button class="chip ${vista === x ? 'on' : ''}" data-act="vistaInv" data-v="${h(x)}">${I.carpeta} ${h(x)}</button>`).join('')}` : ''}${esProp() ? `<span class="sp"></span>${vista && vista !== '__serv' ? `<button class="btn sm" data-act="carpInv" data-n="${h(vista)}">${I.edit} Carpeta ${h(vista)}</button>` : ''}<button class="btn sm" data-act="carpInv" data-n="">${I.carpeta} Nueva subcarpeta de servicios</button><button class="btn sm" data-act="nuevoServInv">${I.mas} Servicio${vista && vista !== '__serv' ? ' en ' + h(vista) : ''}</button>` : ''}`;
       el.querySelector('[data-act=modoBorrar]')?.classList.toggle('danger', borrar);
       if (borrar) {
         el.querySelectorAll('[data-selb]').forEach((x) => { x.onchange = () => { x.checked ? selB.add(x.dataset.selb) : selB.delete(x.dataset.selb); pintar(); }; });
@@ -105,6 +105,30 @@
       porServ: () => { porServ = !porServ; pintar(); },
       vistaInv: (d) => { vista = d.v; pintar(); },
       nuevoEqServ: (d) => A.formEquipo({ entidad_id: ent.id, consultorio_id: d.c, orden: eqs.filter((e) => e.consultorio_id === d.c).reduce((m, e) => Math.max(m, e.orden || 0), 0) + 1 }, cons),
+      // crear o editar una subcarpeta de servicios (ej. EXTRAMURAL, CENTRÍFUGA ALMACÉN) y elegir qué servicios quedan dentro
+      carpInv: (d) => {
+        const actual = d.n || ''; const sedesOp = sedesL.length ? sedesL : ['Sede principal'];
+        const sedeIni = sedeF || (actual ? sedeC(cons.find((c) => carpDe(c) === actual)) : sedesOp[0]) || sedesOp[0];
+        const lista = (sd) => cons.filter((c) => sedeC(c) === sd);
+        const filas = (sd) => lista(sd).map((c) => { const otra = carpDe(c) && carpDe(c) !== actual; return `<label class="checks cfg-carp"><input type="checkbox" name="cons" value="${c.id}" ${actual && carpDe(c) === actual ? 'checked' : ''}> ${h(c.nombre)} <small class="muted">(${eqs.filter((e) => e.consultorio_id === c.id).length} equipos${otra ? ' · hoy en ' + h(carpDe(c)) : ''})</small></label>`; }).join('') || '<span class="muted">Sin servicios en esta sede</span>';
+        modal({ titulo: actual ? `Carpeta ${actual}` : 'Nueva subcarpeta de servicios', size: 'wide',
+          cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre de la carpeta (ej. EXTRAMURAL, CENTRÍFUGA ALMACÉN, HOME CARE)', actual, { full: true })}${sedesOp.length > 1 ? f.sel('sede', 'Sede', sedesOp, sedeIni) : ''}</div>
+            <p class="muted">Marque los servicios que van dentro de la carpeta. En el inventario y en la información de equipos se muestran aparte, después de los servicios. Para crear un servicio nuevo dentro de la carpeta use “+ Servicio”.</p>
+            <div class="cfg-cols"><fieldset data-lista>${filas(sedeIni)}</fieldset></div></form>`,
+          alAbrir: (m) => { const ss = m.body.querySelector('[name=sede]'); if (ss) ss.onchange = () => { m.body.querySelector('[data-lista]').innerHTML = filas(ss.value); }; },
+          acciones: [{ t: 'Cancelar' }, ...(actual ? [{ t: 'Quitar carpeta', cls: 'danger', fn: async () => {
+            if (!(await confirmar(`¿Quitar la carpeta ${actual}? Sus servicios y equipos no se borran: vuelven a la lista de servicios.`, 'Quitar'))) return false;
+            const nm = { ...(ent.config?.carpetas_serv || {}) }; Object.keys(nm).forEach((k) => { if (nm[k] === actual && (!sedesL.length || sedeC(cons.find((c) => c.id === k)) === (sedeF || sedeIni))) delete nm[k]; });
+            await A.guardarConfig(ent, { ...(ent.config || {}), carpetas_serv: nm }); vista = ''; toast('Carpeta quitada'); pintar();
+          } }] : []), { t: 'Guardar', cls: 'pri', fn: async (m) => {
+            const v = leer(m.body); const nombre = (v.nombre || '').toUpperCase().trim(); if (!nombre) { toast('Escriba el nombre de la carpeta', true); return false; }
+            const sd = v.sede || sedeIni; const sel = new Set(v.cons || []);
+            const nm = { ...(ent.config?.carpetas_serv || {}) };
+            lista(sd).forEach((c) => { if (sel.has(c.id)) nm[c.id] = nombre; else if (nm[c.id] === actual && actual) delete nm[c.id]; });
+            if (!sel.size) { toast('Marque al menos un servicio (o cree uno nuevo con “+ Servicio” eligiendo “Otra carpeta nueva”)', true); return false; }
+            if (await A.guardarConfig(ent, { ...(ent.config || {}), carpetas_serv: nm })) { vista = nombre; toast(`Carpeta ${nombre} guardada con ${sel.size} servicio${sel.size === 1 ? '' : 's'}`); pintar(); }
+          } }] });
+      },
       nuevoServInv: () => {
         const sedesOp = sedesL.length ? sedesL : ['Sede principal'];
         const cl = carpetasL();
