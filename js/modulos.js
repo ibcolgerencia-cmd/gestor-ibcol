@@ -672,7 +672,7 @@
   A.G.acta = async (el, { ent, eq }, tipo) => {
     el.innerHTML = `<section class="panel"><header><h2>${tipo === 'baja' ? 'Acta de baja' : 'Acta de entrega'} <span class="muted mono" style="font-size:.85rem">${h(st.fmt['acta_' + tipo].codigo)}</span></h2>${esProp() ? `<button class="btn pri" data-act="acta">${I.mas} Generar acta</button>` : ''}</header>
       <p class="muted">${tipo === 'baja' ? 'Genera el acta en el formato IBCOL. Los equipos incluidos quedan en estado “Dado de baja” y el acta se guarda en la carpeta “9. Acta baja” de cada uno.' : 'Genera el acta de entrega en el formato IBCOL y la guarda en la carpeta “10. Acta entrega” de cada equipo incluido.'}</p></section>`;
-    A.acts({ acta: () => A.formActa({ ent, eq, tipo }) });
+    A.acts({ acta: () => A.formActaEq({ ent, eq, tipo }) });
   };
 
   // ------------------------------------------------------------ Tecnovigilancia
@@ -981,7 +981,8 @@
   };
 
   // ------------------------------------------------------------ Actas
-  A.formActa = async ({ ent, eq, tipo }) => {
+  // (A.formActa es el acta de comité FAR-013 en comites.js)
+  A.formActaEq = async ({ ent, eq, tipo }) => {
     const [eqs, docs] = await Promise.all([S.list('equipos', { entidad_id: ent.id }, 'codigo_inv'), S.list('documentos', { entidad_id: ent.id, carpeta: 'acta_' + tipo })]);
     const numero = (await A.CONS.siguiente('actas')) || String(new Set(docs.map((d) => d.nombre)).size + 1).padStart(4, '0');
     let fRecibe = null;
@@ -990,7 +991,7 @@
       cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('numero', 'Acta No.', numero)}${f.input('fecha', 'Fecha', UI.hoy(), { type: 'date' })}
         ${tipo === 'entrega' ? f.input('servicio', 'Servicio que recibe', '') : ''}${f.input('recibe_nombre', 'Recibe: nombre', ent.representante || '')}${f.input('recibe_cargo', 'Recibe: cargo', '')}</div>
         ${f.checks('equipos', 'Equipos incluidos en el acta', eqs.filter((e) => e.estado !== 'Dado de baja' || e.id === eq?.id).map((e) => `${e.codigo_inv} · ${e.nombre}`), eq ? [`${eq.codigo_inv} · ${eq.nombre}`] : [])}
-        ${tipo === 'baja' ? f.area('motivo', 'Motivo de la baja', 'Este equipo biomédico no pasó calibración y por tanto se debe sacar del servicio y reemplazarlo por otro de mejores o iguales condiciones.', { rows: 3 }) : ''}
+        ${tipo === 'baja' ? f.area('motivo', 'Motivo de la baja', 'Este equipo biomédico no está apto para seguir funcionando, por tanto, se debe sacar del servicio y reemplazarlo por otro de mejores o iguales condiciones.', { rows: 3 }) : ''}
         <div class="grid2">${firmaBtn('Firma de quien recibe (opcional)', null)}</div></form>`,
       alAbrir: (mm) => firmaBind(mm.body, null, (i, dd) => { fRecibe = dd; }, { titulos: ['Firma de quien recibe'] }),
       acciones: [{ t: 'Cancelar' }, { t: 'Generar y guardar', cls: 'pri', fn: async (mm) => {
@@ -999,8 +1000,8 @@
         const numReg = await A.CONS.registrar({ serie: 'actas', numero: v.numero, sugerido: numero, entidad_id: ent.id, equipo_id: sel.length === 1 ? sel[0].id : null, fecha: v.fecha,
           observacion: `Acta de ${tipo} · ${sel.map((e) => `${e.nombre} ${e.codigo_inv}`).join(', ').slice(0, 200)}` });
         v.numero = numReg.numero;
-        const doc = PDF.acta({ tipo, a: { ...v, equipos: sel, firma_recibe: fRecibe }, ent, emp: st.emp, fmt: st.fmt['acta_' + tipo], firma: st.firma });
-        const blob = doc.output('blob'); const nombre = `Acta de ${tipo} No. ${v.numero} - ${UI.fecha(v.fecha)}.pdf`;
+        const blob = await FMT.acta({ tipo, a: { ...v, equipos: sel, firma_recibe: fRecibe }, ent, firma: typeof st.firma === 'string' && st.firma.startsWith('data:') ? st.firma : undefined });
+        const nombre = `Acta de ${tipo} No. ${v.numero} - ${UI.fecha(v.fecha)}.pdf`;
         for (const e of sel) {
           await A.guardarPDF({ blob, nombre, entidad_id: ent.id, equipo_id: e.id, carpeta: 'acta_' + tipo });
           if (tipo === 'baja') await S.update('equipos', e.id, { estado: 'Dado de baja' });

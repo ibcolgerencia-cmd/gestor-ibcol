@@ -7,7 +7,7 @@
 //  Para regenerar fondos y mapas: tools/build_formatos.py
 // =====================================================================
 window.FMT = (() => {
-  const VER = 'f7';
+  const VER = 'f8';
   const cache = {};
   const cargar = (k) => (cache[k] = cache[k] || Promise.all([
     fetch(`formatos/${k}.pdf?${VER}`).then((r) => { if (!r.ok) throw new Error('No se encontró el formato ' + k); return r.arrayBuffer(); }),
@@ -78,7 +78,7 @@ window.FMT = (() => {
       const img = /^data:image\/png/i.test(src) || /\.png($|\?)/i.test(src) ? await out.embedPng(bytes) : await out.embedJpg(bytes);
       const pad = 2, esc = Math.min((c.w - 2 * pad) / img.width, (c.h - 2 * pad) / img.height);
       const w = img.width * esc, h = img.height * esc;
-      pg.drawImage(img, { x: c.x + (c.w - w) / 2, y: c.y + (c.h - h) / 2, width: w, height: h });
+      pg.drawImage(img, { x: c.align === 'left' ? c.x + pad : c.x + (c.w - w) / 2, y: c.y + (c.h - h) / 2, width: w, height: h });
     } catch (e) { console.warn('imagen no válida en el formato', e); }
   }
 
@@ -296,7 +296,7 @@ window.FMT = (() => {
       anio1: cruza ? rango(y1) : `AÑO ${anio}`, anio2: cruza ? rango(y2) : `AÑO ${anio}`,
       fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined, __extra: extra };
     const hojas = partes(filas, cap).map((grupo, h) => {
-      const v = { ...base, __nFilas: grupo.length };
+      const v = { ...base };
       grupo.forEach((r, i) => {
         const e = eqs(r.equipo_id);
         const it = e.hv?.nr?.item ? 'NR' : val(e, 'item');
@@ -320,7 +320,7 @@ window.FMT = (() => {
     const base = { ...cabEntidad(ent, cons), reps: ent?.reps || '', servicio: `SERVICIO: ${cons ? U(cons.nombre) : 'TODOS LOS SERVICIOS'}`, fecha_act: `FECHA ACTUALIZACIÓN: ${fD(UI.hoy())}`,
       fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined };
     const hojas = partes(equipos, cap).map((grupo, h) => {
-      const v = { ...base, __nFilas: grupo.length };
+      const v = { ...base };
       grupo.forEach((e, i) => Object.assign(v, { [`r${i}_item`]: String((e.hv?.nr?.item ? 'NR' : val(e, 'item')) || h * cap + i + 1), [`r${i}_cod`]: val(e, 'codigo_inv'), [`r${i}_af`]: val(e, 'activo_fijo'), [`r${i}_equipo`]: val(e, 'nombre'),
         [`r${i}_marca`]: val(e, 'marca'), [`r${i}_modelo`]: val(e, 'modelo'), [`r${i}_serie`]: val(e, 'serie') || 'NR', [`r${i}_ubicacion`]: U(val(e, 'ubicacion') || cn(e.consultorio_id)),
         [`r${i}_riesgo`]: riesgoTxt(e), [`r${i}_rs`]: val(e, 'registro_sanitario') || 'NR' }));
@@ -335,7 +335,7 @@ window.FMT = (() => {
     const base = { ent_nombre: U(ent?.razon_social || ''), logo: ent?.logo || undefined,
       fmt_codigo: fmt.codigo ? `CÓDIGO: ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN: ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? `FECHA DE CREACIÓN: ${fD(fmt.fecha).replace(/^0/, '')}` : undefined };
     const hojas = partes(alertas, cap).map((grupo, h) => {
-      const v = { ...base, __nFilas: grupo.length };
+      const v = { ...base };
       for (let i = 0; i < cap; i++) {
         const a = grupo[i]; if (!a) continue;
         v[`r${i}_n`] = String(h * cap + i + 1);
@@ -360,5 +360,31 @@ window.FMT = (() => {
     return render('cuenta_cobro', [v]);
   }
 
-  return { val, marca, NOAPL, NOREG, textoMediciones, render, cuentaCobro, hojaVida, mtoPreventivo, mtoCorrectivo, metrologia, cronograma, inventario, alertas, cargar };
+  // ------------------------------------------------------------------ ACTA DE BAJA (FT-AB-033) / ACTA DE ENTREGA (FT-AE-032) · formatos Excel de IBCOL
+  const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const fLarga = (s) => { const d = new Date(String(s || UI.hoy()).slice(0, 10) + 'T12:00:00'); return `${String(d.getDate()).padStart(2, '0')} de ${MESES[d.getMonth()]} del ${d.getFullYear()}`; };
+  async function acta({ tipo, a, ent, firma }) {
+    const eqs = a.equipos || []; const n = eqs.length;
+    const nombres = [...new Set(eqs.map((e) => String(e.nombre || '').toLowerCase()))].join(', ');
+    const cuantos = `${String(n).padStart(2, '0')} ${n === 1 ? 'equipo' : 'equipos'} (${nombres})`;
+    const texto = a.texto || (tipo === 'baja'
+      ? `Con la presente se da de baja ${cuantos}. ${a.motivo || 'Este equipo biomédico no está apto para seguir funcionando, por tanto, se debe sacar del servicio y reemplazarlo por otro de mejores o iguales condiciones.'}`
+      : `Con la presente acta se hace entrega de ${cuantos}, al servicio de ${a.servicio || '________'}, con el fin de prestar un servicio de calidad, a continuación, se relacionan los equipos que se entregan, los cuales son:`);
+    const base = {
+      fecha: `Popayán, ${fLarga(a.fecha)}.`, numero: String(a.numero || ''),
+      razon: ent?.razon_social ? U(ent.razon_social) : 'RAZÓN SOCIAL', representante: ent?.representante || 'REPRESENTANTE LEGAL', nit: `NIT ${ent?.nit || ''}`.trim(),
+      direccion: [ent?.direccion, ent?.ciudad].filter(Boolean).join(', ') || 'DIRECCIÓN', email: ent?.email ? `E-Mail: ${ent.email}` : 'E-Mail',
+      texto, recibe_nombre: `Nombre: ${a.recibe_nombre || ''}`, recibe_cargo: `Cargo: ${a.recibe_cargo || ''}`, recibe_fecha: `Fecha: ${fD(a.recibe_fecha || a.fecha)}`,
+      firma: a.sin_firma ? '' : (firma || undefined), firma_recibe: a.firma_recibe || undefined,
+    };
+    const k = n > 3 ? `acta_${tipo}_7` : `acta_${tipo}`; const cap = n > 3 ? 7 : 3;
+    const hojas = partes(eqs, cap).map((grupo) => {
+      const v = { ...base };
+      grupo.forEach((e, i) => { Object.assign(v, { [`r${i}_codigo`]: val(e, 'codigo_inv') || 'NR', [`r${i}_equipo`]: U(val(e, 'nombre')), [`r${i}_marca`]: U(val(e, 'marca')) || 'NR', [`r${i}_modelo`]: U(val(e, 'modelo')) || 'NR', [`r${i}_serie`]: U(val(e, 'serie')) || 'NR' }); });
+      return v;
+    });
+    return render(k, hojas);
+  }
+
+  return { acta, val, marca, NOAPL, NOREG, textoMediciones, render, cuentaCobro, hojaVida, mtoPreventivo, mtoCorrectivo, metrologia, cronograma, inventario, alertas, cargar };
 })();
