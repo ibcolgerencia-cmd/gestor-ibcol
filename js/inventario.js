@@ -392,6 +392,8 @@
         const mismos = lista.filter((x) => libre(x) && mismoServ(consN[x.consultorio_id], sv));
         let mejor = null, pt = 0; mismos.forEach((x) => { const p = parecido(comp(x.nombre), n); if (p > pt) { pt = p; mejor = x; } });
         if (mejor) return mejor;
+        // el servicio existe pero ya no tiene un equipo parecido libre: no tomar uno de otro servicio (se crea en el suyo)
+        if (lista.some((x) => mismoServ(consN[x.consultorio_id], sv))) return null;
       }
       const iguales = lista.filter((x) => libre(x) && comp(x.nombre) === n);
       if (iguales.length === 1) return iguales[0];
