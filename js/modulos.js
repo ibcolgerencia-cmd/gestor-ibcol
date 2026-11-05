@@ -992,6 +992,7 @@
         ${tipo === 'entrega' ? f.input('servicio', 'Servicio que recibe', '') : ''}${f.input('recibe_nombre', 'Recibe: nombre', ent.representante || '')}${f.input('recibe_cargo', 'Recibe: cargo', '')}</div>
         ${f.checks('equipos', 'Equipos incluidos en el acta', eqs.filter((e) => e.estado !== 'Dado de baja' || e.id === eq?.id).map((e) => `${e.codigo_inv} · ${e.nombre}`), eq ? [`${eq.codigo_inv} · ${eq.nombre}`] : [])}
         ${tipo === 'baja' ? f.area('motivo', 'Motivo de la baja', 'Este equipo biomédico no está apto para seguir funcionando, por tanto, se debe sacar del servicio y reemplazarlo por otro de mejores o iguales condiciones.', { rows: 3 }) : ''}
+        ${f.area('observaciones', 'Observaciones (opcional · se imprimen en el acta)', '', { rows: 3, ph: 'Ej.: el equipo se entrega con su cargador y manual; se retira para disposición final…' })}
         <div class="grid2">${firmaBtn('Firma de quien recibe (opcional)', null)}</div></form>`,
       alAbrir: (mm) => firmaBind(mm.body, null, (i, dd) => { fRecibe = dd; }, { titulos: ['Firma de quien recibe'] }),
       acciones: [{ t: 'Cancelar' }, { t: 'Generar y guardar', cls: 'pri', fn: async (mm) => {

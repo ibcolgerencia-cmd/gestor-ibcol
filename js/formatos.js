@@ -7,7 +7,7 @@
 //  Para regenerar fondos y mapas: tools/build_formatos.py
 // =====================================================================
 window.FMT = (() => {
-  const VER = 'f8';
+  const VER = 'f9';
   const cache = {};
   const cargar = (k) => (cache[k] = cache[k] || Promise.all([
     fetch(`formatos/${k}.pdf?${VER}`).then((r) => { if (!r.ok) throw new Error('No se encontró el formato ' + k); return r.arrayBuffer(); }),
@@ -374,7 +374,9 @@ window.FMT = (() => {
       fecha: `Popayán, ${fLarga(a.fecha)}.`, numero: String(a.numero || ''),
       razon: ent?.razon_social ? U(ent.razon_social) : 'RAZÓN SOCIAL', representante: ent?.representante || 'REPRESENTANTE LEGAL', nit: `NIT ${ent?.nit || ''}`.trim(),
       direccion: [ent?.direccion, ent?.ciudad].filter(Boolean).join(', ') || 'DIRECCIÓN', email: ent?.email ? `E-Mail: ${ent.email}` : 'E-Mail',
-      texto, recibe_nombre: `Nombre: ${a.recibe_nombre || ''}`, recibe_cargo: `Cargo: ${a.recibe_cargo || ''}`, recibe_fecha: `Fecha: ${fD(a.recibe_fecha || a.fecha)}`,
+      texto, cierre: [a.cierre || (tipo === 'baja' ? 'Se solicitó autorización de gerencia para realizar dicho cambio y realizar la compra de nuevos equipos.' : 'De antemano agradezco su atención prestada, quedo atenta ante cualquier inquietud o solicitud requerida.'),
+        a.observaciones ? `Observaciones: ${String(a.observaciones).trim()}` : ''].filter(Boolean).join('\n'),
+      recibe_nombre: `Nombre: ${a.recibe_nombre || ''}`, recibe_cargo: `Cargo: ${a.recibe_cargo || ''}`, recibe_fecha: `Fecha: ${fD(a.recibe_fecha || a.fecha)}`,
       firma: a.sin_firma ? '' : (firma || undefined), firma_recibe: a.firma_recibe || undefined,
     };
     const k = n > 3 ? `acta_${tipo}_7` : `acta_${tipo}`; const cap = n > 3 ? 7 : 3;
