@@ -566,3 +566,4 @@ h1 .icon-btn { vertical-align: middle; }
 .inv-vistas:empty { display: none; }
 .inv-vistas .sp { flex: 1; }
 .borrar-bar[hidden] { display: none; }
+.borrar-bar.mover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
