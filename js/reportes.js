@@ -3,7 +3,7 @@
 //  Tabla: reportes_dano (ver supabase/reportes_dano.sql)
 //  - Cualquier usuario de la entidad reporta: nombre, celular, entidad, sede, servicio, equipo y la falla.
 //  - Aviso a IBCOL por WhatsApp / mensaje de texto / correo desde el celular de quien reporta.
-//  - El propietario lleva el reporte al equipo: PDF en "Mantenimientos preventivos" y, si quiere,
+//  - El propietario lleva el reporte al equipo: PDF en "Mantenimientos correctivos" y, si quiere,
 //    abre el reporte de mantenimiento con la falla ya escrita.
 // =====================================================================
 (() => {
@@ -116,18 +116,18 @@
   };
 
   A.pdfReporteDano = pdfReporte;
-  // llevar el reporte al equipo: PDF en la carpeta de mantenimientos preventivos
+  // llevar el reporte al equipo: PDF en la carpeta de mantenimientos correctivos
   const llevarAlEquipo = async (r, ent, cons, eq) => {
     if (!eq) return toast('Este reporte no tiene un equipo de la lista. Cree el equipo y edite el reporte.', true);
     const blob = await pdfReporte(r, ent, cons, eq);
     const nombre = `REPORTE DAÑO ${r.numero || ''} ${new Date(r.created_at || Date.now()).toLocaleDateString('es-CO').replace(/\//g, '_')}.pdf`;
-    const path = `${ent.id}/${eq.id}/mto_preventivo/${Date.now()}-${nombre.replace(/[^\w.-]+/g, '_')}`;
+    const path = `${ent.id}/${eq.id}/mto_correctivo/${Date.now()}-${nombre.replace(/[^\w.-]+/g, '_')}`;
     await S.upload(path, blob);
-    const doc = await S.insert('documentos', { entidad_id: ent.id, equipo_id: eq.id, carpeta: 'mto_preventivo', nombre, archivo: path, mime: 'application/pdf', tamano: blob.size, visible_cliente: true, fecha_documento: String(r.created_at || new Date().toISOString()).slice(0, 10) });
-    const seg = [...(r.datos?.seguimiento || []), { f: new Date().toISOString(), estado: r.estado === 'Nuevo' ? 'En revisión' : r.estado, nota: 'Reporte llevado a la carpeta del equipo (Mantenimientos preventivos)' }];
-    await S.update('reportes_dano', r.id, { documento_id: doc?.id || null, estado: r.estado === 'Nuevo' ? 'En revisión' : r.estado, datos: { ...(r.datos || {}), seguimiento: seg } });
+    const doc = await S.insert('documentos', { entidad_id: ent.id, equipo_id: eq.id, carpeta: 'mto_correctivo', nombre, archivo: path, mime: 'application/pdf', tamano: blob.size, visible_cliente: true, fecha_documento: String(r.created_at || new Date().toISOString()).slice(0, 10) });
+    const seg = [...(r.datos?.seguimiento || []), { f: new Date().toISOString(), estado: r.estado === 'Nuevo' ? 'En revisión' : r.estado, nota: 'Reporte llevado a la carpeta del equipo (Mantenimientos correctivos)' }];
+    await S.update('reportes_dano', r.id, { documento_id: doc?.id || null, estado: r.estado === 'Nuevo' ? 'En revisión' : r.estado, datos: { ...(r.datos || {}), carpeta_ok: true, seguimiento: seg } });
     S.log('EDITAR', 'reportes_dano', r.id, `Reporte ${r.numero} llevado al equipo ${eq.codigo_inv}`);
-    toast(`Reporte guardado en ${eq.codigo_inv} › Mantenimientos preventivos`);
+    toast(`Reporte guardado en ${eq.codigo_inv} › Mantenimientos correctivos`);
   };
 
   // ---------------------------------------------------------------- lista (panel del propietario y de la entidad)
@@ -137,6 +137,10 @@
     try { reps = await S.list('reportes_dano', entidadId ? { entidad_id: entidadId } : {}, '-created_at'); }
     catch (e) { if (!faltaTabla(e)) console.warn(e); cont.innerHTML = `<header><h3>${I.alerta.replace('<svg', '<svg width="18" height="18" style="vertical-align:-3px"')} Reportes de daño de equipos</h3><div class="actions"><button class="btn pri" data-rep-nuevo>${I.mas} Reportar daño de un equipo</button></div></header><p class="muted">${esProp() ? 'Falta activar la tabla de reportes en la base de datos.' : 'Pronto podrá reportar aquí los daños de los equipos.'}</p>`; cont.querySelector('[data-rep-nuevo]').onclick = () => A.formReporteDano({ entId: entidadId }); return; }
     const [ents, cons, eqs] = await Promise.all([entidadId ? Promise.resolve([await S.get('entidades', entidadId)]) : S.list('entidades'), S.list('consultorios', entidadId ? { entidad_id: entidadId } : {}), S.list('equipos', entidadId ? { entidad_id: entidadId } : {})]);
+    // reportes llevados antes a "Mantenimientos preventivos": pasarlos a "Mantenimientos correctivos"
+    if (esProp()) for (const r of reps.filter((x) => x.documento_id && !x.datos?.carpeta_ok)) {
+      try { const dc = await S.get('documentos', r.documento_id); if (dc && dc.carpeta === 'mto_preventivo') await S.update('documentos', dc.id, { carpeta: 'mto_correctivo' }); await S.update('reportes_dano', r.id, { datos: { ...(r.datos || {}), carpeta_ok: true } }); r.datos = { ...(r.datos || {}), carpeta_ok: true }; } catch (e) { console.warn(e); }
+    }
     const E = (id) => ents.find((x) => x?.id === id), C = (id) => cons.find((x) => x.id === id), Q = (id) => eqs.find((x) => x.id === id);
     let filtro = 'abiertos';
     const pintar = () => {
@@ -152,8 +156,8 @@
             <td>${eq ? `<b>${h(eq.nombre)}</b><br><small class="mono">${h(eq.codigo_inv || '')}</small>` : h(r.datos?.equipo_texto || '—')}${r.fuera_servicio ? '<br><span class="pill bad">Fuera de servicio</span>' : ''}</td>
             <td>${h(r.nombre)}<br><small><a href="tel:${h(r.celular)}">${h(r.celular)}</a></small></td><td style="max-width:280px">${h(r.descripcion)}</td>
             <td><span class="pill ${r.estado === 'Nuevo' ? 'bad' : r.estado === 'En revisión' ? 'warn' : 'ok'}">${h(r.estado)}</span>${r.documento_id ? '<br><small class="muted">En la carpeta del equipo</small>' : ''}</td>
-            ${esProp() ? `<td><div style="display:flex;flex-wrap:wrap;gap:4px;min-width:150px"><button class="btn sm" data-rep-llevar="${r.id}" ${eq ? '' : 'disabled'} title="Guardar el PDF del reporte en Mantenimientos preventivos del equipo">Llevar al equipo</button>
-              <button class="btn sm" data-rep-mto="${r.id}" ${eq ? '' : 'disabled'} title="Abrir el reporte de mantenimiento con la falla escrita">Mantenimiento</button>
+            ${esProp() ? `<td><div style="display:flex;flex-wrap:wrap;gap:4px;min-width:150px"><button class="btn sm" data-rep-llevar="${r.id}" ${eq ? '' : 'disabled'} title="Guardar el PDF del reporte en Mantenimientos correctivos del equipo">Llevar al equipo</button>
+              <button class="btn sm" data-rep-mto="${r.id}" ${eq ? '' : 'disabled'} title="Crear el reporte de mantenimiento correctivo (FMB-005) con la falla ya escrita">Correctivo</button>
               <button class="btn sm" data-rep-est="${r.id}">Estado</button><button class="btn sm" data-rep-pdf="${r.id}" title="Ver PDF">${I.pdf}</button></div></td>` : ''}
           </tr>`; }).join('')}</tbody></table></div>` : `<p class="muted">${reps.length ? 'No hay reportes con ese filtro.' : 'No hay reportes de daño. Si un equipo falla, use “Reportar daño de un equipo”.'}</p>`}`;
       cont.querySelector('[data-rep-nuevo]').onclick = () => A.formReporteDano({ entId: entidadId });
@@ -163,7 +167,14 @@
       cont.querySelectorAll('[data-rep-pdf]').forEach((b) => (b.onclick = async () => { const r = R(b.dataset.repPdf); const blob = await pdfReporte(r, E(r.entidad_id), C(r.consultorio_id), Q(r.equipo_id)); window.open(URL.createObjectURL(blob), '_blank'); }));
       cont.querySelectorAll('[data-rep-mto]').forEach((b) => (b.onclick = async () => {
         const r = R(b.dataset.repMto); const eq = Q(r.equipo_id); const consEnt = cons.filter((c) => c.entidad_id === r.entidad_id);
-        A.formMto({ eq, ent: E(r.entidad_id), cons: consEnt, tipo: 'preventivo', nota: { texto: `Reporte de daño ${r.numero} (${new Date(r.created_at).toLocaleDateString('es-CO')}) – ${r.nombre}, cel. ${r.celular}: ${r.descripcion}` } });
+        const txt = `Reporte de daño ${r.numero} (${new Date(r.created_at).toLocaleDateString('es-CO')}) – ${r.nombre}, cel. ${r.celular}: ${r.descripcion}`;
+        A.formMto({ eq, ent: E(r.entidad_id), cons: consEnt, tipo: 'correctivo', pre: { falla: r.descripcion, fecha_reporte: String(r.created_at).slice(0, 10), observaciones: txt, reporte_dano: r.numero },
+          alGuardar: async (mt) => {
+            const seg = [...(r.datos?.seguimiento || []), { f: new Date().toISOString(), estado: 'Atendido', nota: `Reporte de mantenimiento correctivo ${mt?.numero || ''} realizado` }];
+            await S.update('reportes_dano', r.id, { estado: 'Atendido', datos: { ...(r.datos || {}), mantenimiento_id: mt?.id || null, seguimiento: seg } });
+            S.log('EDITAR', 'reportes_dano', r.id, `Reporte ${r.numero}: correctivo ${mt?.numero || ''}`);
+            reps = await S.list('reportes_dano', entidadId ? { entidad_id: entidadId } : {}, '-created_at'); pintar();
+          } });
       }));
       cont.querySelectorAll('[data-rep-est]').forEach((b) => (b.onclick = () => {
         const r = R(b.dataset.repEst);
