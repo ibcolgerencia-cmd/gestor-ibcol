@@ -89,6 +89,7 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 ## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
 
+- **Subcarpetas de servicios desde el inventario (v64):** *Nueva subcarpeta de servicios* crea una carpeta (ej. CENTRÍFUGA ALMACÉN, HOME CARE) y permite marcar qué servicios van dentro; con una carpeta abierta, *Carpeta …* cambia su nombre, sus servicios o la quita (los servicios y equipos no se borran).
 - **Inventario: servicios y extramural aparte (v62):** el inventario muestra primero los servicios (consultorios, toma de muestras, terapia física, área de residuos) y después, aparte, cada carpeta de servicios (ej. EXTRAMURAL con sus KIT). Botones *Ver: Todo / Servicios / EXTRAMURAL* (el PDF sale con lo que se ve), *+ Equipo* en cada servicio y *+ Servicio* para crear un servicio nuevo en los servicios o dentro de una carpeta.
 - **Inventarios con varias hojas y kits (v61):** al cargar o llenar desde un inventario en Excel se leen todas sus hojas (ej. INV, Extramural, Centrífuga) sin repetir códigos; la columna combinada “KIT 1”, “KIT 2”… del extramural lleva cada equipo a su kit.
 - **Inventario por servicios y borrar equipos (v59):** la tabla del inventario se agrupa por servicio (con el número de equipos de cada uno y el ítem que reinicia por servicio; botón *Por servicios* para quitar o poner la agrupación). *Borrar equipos* muestra casillas para marcar equipos sueltos o un servicio completo y eliminarlos con sus documentos (pide confirmación).
