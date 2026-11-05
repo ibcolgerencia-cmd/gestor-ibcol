@@ -257,6 +257,7 @@ window.APP = (() => {
       <div class="page-head"><div><span class="eyebrow">${UI.fecha(UI.hoy())}</span><h1>Panel de control</h1></div>
         <div class="actions"><button class="btn pri" data-act="nuevaEnt">${I.mas} Nueva entidad</button></div></div>
       ${graves.length ? `<div class="panel" style="border-color:var(--bad)"><b style="color:var(--bad)">${I.alerta.replace('<svg', '<svg width="18" height="18" style="vertical-align:-3px"')} ${graves.length} evento(s) adverso(s) grave(s) abierto(s)</b><span class="muted">Deben notificarse al Programa Nacional de Tecnovigilancia del INVIMA dentro de las 72 horas siguientes al conocimiento del evento.</span></div>` : ''}
+      <section class="panel" data-reportes></section>
       <div class="kpis">
         <div class="kpi"><span class="l">Entidades activas</span><span class="v">${ents.filter((e) => e.activo !== false).length}</span><span class="meta">Clientes con carpeta digital</span></div>
         <div class="kpi"><span class="l">Equipos biomédicos</span><span class="v">${eqs.filter((e) => e.estado !== 'Dado de baja').length}</span><span class="meta">${eqs.filter((e) => e.estado === 'Fuera de servicio').length} fuera de servicio</span></div>
@@ -272,6 +273,7 @@ window.APP = (() => {
       <section class="panel"><header><h2>Indicadores consolidados</h2><span class="muted">Todas las entidades · ${anio}</span></header>${A.kpiTiles(k, ['mp', 'mm', 'mv', 'disp'])}</section>
       <section class="panel"><header><h2>Actividad reciente</h2><button class="btn sm" data-act="verAud">Ver auditoría completa</button></header>
         <div class="tbl-wrap"><table class="tbl"><tbody>${aud.slice(0, 8).map((a) => `<tr><td class="muted num" style="white-space:nowrap">${UI.fechaHora(a.fecha)}</td><td><b>${h(a.usuario || '')}</b></td><td>${A.accionTxt(a)}</td></tr>`).join('') || '<tr><td class="empty">Sin actividad.</td></tr>'}</tbody></table></div></section>`;
+    A.panelReportes?.(content().querySelector('[data-reportes]'));
     A.acts({ abrirEq: (d) => go('equipo', { id: d.id }), abrirEnt: (d) => go('entidad', { id: d.id }), nuevaEnt: () => A.formEntidad(), verAud: () => go('auditoria', {}, true) });
   };
 
@@ -370,9 +372,11 @@ window.APP = (() => {
         <span class="muted">NIT <span class="mono">${h(ent.nit || '—')}</span> · REPS <span class="mono">${h(ent.reps || '—')}</span> · ${h(ent.ciudad || '')}</span></div>
         ${esProp() ? `<div class="actions"><button class="btn" data-act="editEnt">${I.edit} Editar</button><button class="btn" data-act="usuariosEnt">${I.users} Accesos</button>${sede ? `<button class="btn danger" data-act="borrarSede" data-s="${h(sede)}">${I.del} Eliminar sede</button>` : ''}${!sede ? `<button class="btn" data-act="nuevaSede" title="Agregar una sede o servicio (ej. HOME CARE)">${I.mas} Sede</button>` : ''}<button class="btn" data-act="configCarp" title="Quitar o volver a mostrar carpetas para esta entidad">${I.carpeta} Carpetas${ocE.size + A.ocultas(ent, 'eq').size ? ` <span class="pill">${ocE.size + A.ocultas(ent, 'eq').size} quitadas</span>` : ''}</button><button class="btn pri" data-act="importarDrive">${I.subir} Importar carpeta de la entidad</button></div>` : ''}</div>
       ${tarjetasSedes}
+      <section class="panel" data-reportes></section>
       ${A.kpiTiles(k, ['mp', 'mm', 'mv', 'disp'])}
       <section class="panel"><header><h2>Alertas de vencimiento</h2><span class="muted">Mantenimientos, calibraciones, garantías y documentos</span></header>${A.listaVenc(venc)}</section>
       ${porSedes && !sede ? '<h2 class="sede-tit" style="margin-top:8px">TODA LA ENTIDAD (TODAS LAS SEDES)</h2>' : ''}${grupos.map((g) => `<section class="folder-group"><span class="eyebrow">${h(g)}</span><div class="folders">${visiblesE.filter((c) => c.g === g).map((c) => A.tarjetaCarpeta(c, etiqueta(c), 'ent', ent)).join('')}</div></section>`).join('')}`;
+    A.panelReportes?.(content().querySelector('[data-reportes]'), { entidadId: id });
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
       carpeta: (d) => (d.k === CARP_EQ ? go('areas', { id, ...(sede ? { sede } : {}) }) : go('carpeta', { ent: id, k: d.k, ...(sede ? { sede } : {}) })),

@@ -660,5 +660,5 @@ window.PDF = (() => {
     return s;
   }
 
-  return { documento, hojaVida, inventario, cronograma, mantenimiento, alertas, evento, acta, cotizacion, cuentaCobro, indicadores, firmarPDF, enLetras, fF, pesos };
+  return { nuevo, encabezado, documento, hojaVida, inventario, cronograma, mantenimiento, alertas, evento, acta, cotizacion, cuentaCobro, indicadores, firmarPDF, enLetras, fF, pesos };
 })();
