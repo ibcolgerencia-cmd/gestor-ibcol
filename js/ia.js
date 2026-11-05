@@ -33,7 +33,7 @@
     ],
     equipo: [
       ['Reporte de mantenimiento preventivo (FMB-004)', 'Completa el REPORTE DE MANTENIMIENTO PREVENTIVO (FMB-004) de este equipo con la información de sus manuales, fichas técnicas y guías (y Google): pruebas cualitativas, actividades de mantenimiento, herramientas y observaciones generales. Al terminar se abre el reporte FMB-004 ya diligenciado para revisarlo, firmarlo y guardarlo.', 'mto'],
-      ['Hoja de vida del equipo (FHVEB-001)', 'Completa la HOJA DE VIDA de este equipo con la información de los documentos anexos (manual, ficha técnica, registro sanitario y hoja de vida anterior). Extrae solo datos que aparezcan en los documentos o en los datos del equipo; lo que no aparezca déjalo vacío para que IBCOL lo complete.', 'hv'],
+      ['Hoja de vida del equipo (FHVEB-001)', 'Completa la HOJA DE VIDA de este equipo con la información de los documentos anexos (manual, ficha técnica, registro sanitario, factura, certificado de importación, fila del inventario y hoja de vida anterior). De la factura toma número de factura, fecha de compra, valor, proveedor, garantía y serie; del inventario código, activo fijo, marca, modelo, serie, ubicación, riesgo y registro sanitario. Extrae solo datos que aparezcan en los documentos o en los datos del equipo; lo que no aparezca déjalo vacío para que IBCOL lo complete.', 'hv'],
       ['Recomendaciones del fabricante para la hoja de vida', 'Redacta las RECOMENDACIONES DEL FABRICANTE Y DE USO SEGURO para la sección 10 de la hoja de vida de este equipo (máximo 12 viñetas, sin títulos): verificación antes del uso, limpieza, almacenamiento, alimentación eléctrica y precauciones. Si no conoces el modelo exacto, usa recomendaciones generales del tipo de equipo.'],
       ['Guía rápida de operación', 'Redacta una GUÍA RÁPIDA DE OPERACIÓN de este equipo: encendido, verificación inicial, uso paso a paso, apagado, limpieza y qué hacer ante una falla.'],
       ['Protocolo de mantenimiento preventivo del equipo', 'Redacta el PROTOCOLO DE MANTENIMIENTO PREVENTIVO de este equipo: frecuencia, herramientas e insumos, pruebas cualitativas (tabla Pasa/No pasa), actividades de mantenimiento, verificación de variables y criterios para retirarlo del servicio.'],
@@ -97,13 +97,18 @@
     ['manual', 'Manuales', (d) => d.carpeta === 'manual' && !/FICHA/.test(nrm(d.nombre))],
     ['ficha', 'Fichas técnicas', (d) => d.carpeta === 'manual' && /FICHA/.test(nrm(d.nombre))],
     ['rs', 'Registro sanitario', (d) => d.carpeta === 'registro_sanitario'],
+    ['factura', 'Facturas', (d) => d.carpeta === 'factura'],
+    ['importacion', 'Certificado de importación', (d) => d.carpeta === 'importacion'],
     ['hv', 'Hoja de vida anterior', (d) => d.carpeta === 'hoja_vida'],
   ];
 
   // ------------------------------------------------------------ hoja de vida: campos que la IA puede llenar
   const LISTAS = { fuente: ['Electricidad', 'Batería', 'Aceite', 'Agua', 'Aire', 'Gas', 'Vapor', 'Oxígeno', 'Otro'], tecnologia: ['Eléctrico', 'Electrónico', 'Electromecánico', 'Mecánico', 'Hidráulico', 'Neumático', 'Acústico', 'Vapor', 'Solar'],
-    clasif_biomedica: ['Diagnóstico', 'Prevención', 'Rehabilitación', 'Tratamiento y mantenimiento de la vida', 'Análisis de laboratorio y apoyo'], manuales: ['Operación', 'Mantenimiento', 'Guía rápida', 'Ficha técnica'], planos: ['Electrónico', 'Eléctrico', 'Mecánico', 'Neumático'] };
+    clasif_biomedica: ['Diagnóstico', 'Prevención', 'Rehabilitación', 'Tratamiento y mantenimiento de la vida', 'Análisis de laboratorio y apoyo'], manuales: ['Operación', 'Mantenimiento', 'Guía rápida', 'Ficha técnica'], planos: ['Electrónico', 'Eléctrico', 'Mecánico', 'Neumático'], adquisicion: ['Compra', 'Donación', 'Asignación', 'Comodato', 'Alquiler'] };
   const CAMPOS_HV = [
+    ['marca', '1.4 Marca', 'eq'], ['modelo', '1.6 Modelo', 'eq'], ['serie', '1.8 Serie', 'eq'], ['activo_fijo', '1.5 N° activo fijo', 'eq'], ['ubicacion', '1.9 Ubicación', 'eq'],
+    ['adquisicion', '4.1 Forma de adquisición', 'hv'], ['factura', '4.3 Factura N°', 'hv'], ['costo', '4.2 Costo / valor de compra (solo número, sin puntos ni $)', 'hv'], ['garantia', '4.4 Garantía (ej. 2 años)', 'hv'], ['fecha_fin_garantia', 'Fin de la garantía (AAAA-MM-DD)', 'eq'],
+    ['f_fabricacion', 'Fecha de fabricación (AAAA-MM-DD)', 'hv'], ['f_compra', 'Fecha de compra / factura (AAAA-MM-DD)', 'hv'], ['f_recibido', 'Fecha de recibido (AAAA-MM-DD)', 'hv'], ['f_instalacion', 'Fecha de instalación (AAAA-MM-DD)', 'hv'], ['f_uso', 'Inicio de uso (AAAA-MM-DD)', 'hv'],
     ['fabricante', '3.3 Fabricante', 'eq'], ['registro_sanitario', '1.1 Registro sanitario', 'eq'], ['fecha_venc_rs', 'Vencimiento del registro (AAAA-MM-DD)', 'eq'], ['clase_riesgo', '6.4 Clasificación de riesgo (I, IIa, IIb, III)', 'eq'],
     ['ecri', '1.2 Código ECRI (del listado oficial)', 'hv', 'local'], ['tipo_registro', 'Tipo de registro (RS, PC, NA, NR)', 'hv'], ['funcion', '2.1 Función del equipo', 'hv'], ['movil', '2.9/2.10 Móvil o Fijo', 'hv'],
     ['voltaje', 'Voltaje (V)', 'hv'], ['corriente', 'Corriente (A)', 'hv'], ['potencia', 'Potencia (W)', 'hv'], ['frecuencia', 'Frecuencia (Hz)', 'hv'], ['presion', 'Presión (psi, mmHg)', 'hv'],
@@ -122,7 +127,7 @@
   const normRiesgo = (x) => ({ I: 'I', IIA: 'IIa', IIB: 'IIb', III: 'III' }[nrm(x).replace(/CLASE|\s/g, '')] || null);
 
   // ------------------------------------------------------------ ventana del asistente
-  A.asistenteIA = ({ ent = null, eq = null, carpeta = null } = {}) => {
+  A.asistenteIA = ({ ent = null, eq = null, carpeta = null, auto = null } = {}) => {
     const grupo = eq ? 'equipo' : (PLANTILLAS[carpeta] ? carpeta : null);
     const opciones = [...(grupo ? PLANTILLAS[grupo] : Object.entries(PLANTILLAS).filter(([k]) => k !== 'equipo' && k !== 'libre').flatMap(([, v]) => v)), ...PLANTILLAS.libre];
     let historial = [], ultimo = '';
@@ -155,10 +160,11 @@
     if (eq) (async () => {
       docsEq = (await S.list('documentos', { equipo_id: eq.id })).filter((d) => GRUPOS.some(([, , fn]) => fn(d)));
       const fs = $('[data-fuentes]'); if (!fs) return;
-      fs.innerHTML = '<legend>Fuentes del equipo: la IA lee estos documentos</legend>' + (GRUPOS.map(([k, l, fn]) => {
+      fs.innerHTML = '<legend>Fuentes del equipo: la IA lee estos documentos</legend><label class="checks" style="display:flex;gap:6px;align-items:center;font-size:.85rem;margin:4px 0"><input type="checkbox" data-invfila checked> <b>Inventario</b>&nbsp;cargado en la carpeta 1 (fila de este equipo)</label>' + (GRUPOS.map(([k, l, fn]) => {
         const l2 = docsEq.filter(fn); if (!l2.length) return '';
         return `<div style="margin:4px 0"><b style="font-size:.85rem">${h(l)}</b>${l2.map((d) => `<label class="checks" style="display:flex;gap:6px;align-items:center;font-size:.85rem"><input type="checkbox" data-doc="${d.id}" checked> ${h(d.nombre)}</label>`).join('')}</div>`;
-      }).join('') || '<span class="muted">Este equipo aún no tiene manuales, fichas técnicas ni registro sanitario cargados. Súbalos en sus carpetas para que la IA los use.</span>');
+      }).join('') || '<span class="muted">Este equipo aún no tiene manuales, fichas técnicas, registro sanitario ni facturas cargados. Súbalos en sus carpetas para que la IA los use.</span>');
+      if (auto === 'hv') { const i = opciones.findIndex((o) => o[2] === 'hv'); if (i >= 0) { $('[name=plantilla]').value = i; $('[name=instruccion]').value = opciones[i][1]; body.querySelector('[data-ia=redactar]').click(); } }
     })();
     const modoHV = () => opciones[+$('[name=plantilla]').value][2] === 'hv';
     const modoMto = () => opciones[+$('[name=plantilla]').value][2] === 'mto';
@@ -202,13 +208,30 @@
       }
       return 'DOCUMENTOS ANEXOS DEL EQUIPO:\n' + out.join('\n\n');
     };
+    // fila del equipo en los inventarios (Excel/PDF) cargados en la carpeta 1. Inventarios
+    const filaInventario = async () => {
+      if (!eq || !$('[data-invfila]')?.checked) return '';
+      try {
+        const cmp = (t) => nrm(t).replace(/[^A-Z0-9]/g, '');
+        const docs = (await S.list('documentos', { entidad_id: eq.entidad_id })).filter((d) => !d.equipo_id && d.carpeta === 'inventarios' && /\.(xlsx?|xlsm|csv|pdf)$/i.test(d.nombre))
+          .sort((a, b) => String(b.fecha_documento || b.created_at || '').localeCompare(String(a.fecha_documento || a.created_at || ''))).slice(0, 4);
+        for (const d of docs) {
+          estado.textContent = `Buscando el equipo en ${d.nombre}…`;
+          const b = await S.fileBlob(d.archivo); if (!b) continue;
+          const filas = await A.parsearInventario(new File([b], d.nombre));
+          const r = filas.find((x) => x.codigo && cmp(x.codigo) === cmp(eq.codigo_inv)) || filas.find((x) => x.serie && eq.serie && cmp(x.serie) === cmp(eq.serie));
+          if (r) return `### INVENTARIO (${d.nombre}) – fila de este equipo:\n` + Object.entries(r).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(' · ');
+        }
+      } catch (e) { console.warn(e); }
+      return '';
+    };
     $('[name=plantilla]').onchange = (e) => { $('[name=instruccion]').value = opciones[+e.target.value][1]; };
     const pedir = async (instruccion, conHist) => {
       estado.textContent = 'Redactando… puede tardar hasta un minuto.';
       body.querySelectorAll('[data-ia]').forEach((b) => (b.disabled = true));
       try {
         let ctx = await contexto({ ent, eq, carpeta, inventario: $('[name=inv]').checked && !modoHV() });
-        if (eq) { const fu = await textoFuentes(Math.max(6000, 56000 - ctx.length)); if (fu) ctx = (ctx + '\n\n' + fu).slice(0, 58000); }
+        if (eq) { const fi = await filaInventario(); if (fi) ctx += '\n\n' + fi; const fu = await textoFuentes(Math.max(6000, 56000 - ctx.length)); if (fu) ctx = (ctx + '\n\n' + fu).slice(0, 58000); }
         estado.textContent = 'Redactando… puede tardar hasta un minuto.';
         const consulta = () => Promise.race([S.ia({ instruccion: modoHV() && !conHist ? instruccionHV(instruccion) : instruccion, contexto: ctx, historial: conHist ? historial : [] }),
           new Promise((_, r) => setTimeout(() => r(new Error('La IA no respondió a tiempo')), 120000))]);
@@ -249,7 +272,8 @@
         body.querySelectorAll('[data-hvk]:checked').forEach((c) => {
           const k = c.dataset.hvk, def = CAMPOS_HV.find((x) => x[0] === k); let v = propuesta[k];
           if (k === 'clase_riesgo') { v = normRiesgo(v); if (!v) return; }
-          if (k === 'fecha_venc_rs' && !/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return;
+          if ((k === 'fecha_venc_rs' || k === 'fecha_fin_garantia' || /^f_/.test(k)) && !/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return;
+          if (k === 'costo') { v = String(v).replace(/[^\d.,]/g, '').replace(/[.,](?=\d{3}(\D|$))/g, '').replace(',', '.'); if (!v) return; }
           if (LISTAS[k]) v = (Array.isArray(v) ? v : [v]).map((x) => LISTAS[k].find((o) => nrm(o) === nrm(x))).filter(Boolean);
           if (k === 'accesorios') v = (Array.isArray(v) ? v : []).filter((x) => x && x.nombre).slice(0, 8);
           if (k === 'movil') v = /FIJO/.test(nrm(v)) ? 'Fijo' : 'Móvil';

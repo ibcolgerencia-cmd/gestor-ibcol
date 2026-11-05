@@ -548,7 +548,7 @@ window.APP = (() => {
       </div></section>
       ${esProp() ? `<section class="panel"><header><h3>Acciones del equipo</h3></header><div class="actions">
         <button class="btn" data-act="nuevoMto" data-t="preventivo">${I.mas} Mantenimiento preventivo</button><button class="btn" data-act="nuevoMto" data-t="correctivo">${I.mas} Mantenimiento correctivo</button>
-        <button class="btn" data-act="nuevoMto" data-t="metrologia">${I.mas} Metrología</button><button class="btn" data-act="ia">${I.ia} Redactar con IA</button><button class="btn" data-act="google">${I.ia} Buscar con Google: ficha, guía, registro, manuales</button><button class="btn" data-act="estado">${I.on} Cambiar estado</button><button class="btn" data-act="importar">${I.subir} Importar carpeta del equipo</button>
+        <button class="btn" data-act="nuevoMto" data-t="metrologia">${I.mas} Metrología</button><button class="btn" data-act="iaHV">${I.ia} Actualizar hoja de vida con IA</button><button class="btn" data-act="ia">${I.ia} Redactar con IA</button><button class="btn" data-act="google">${I.ia} Buscar con Google: ficha, guía, registro, manuales</button><button class="btn" data-act="estado">${I.on} Cambiar estado</button><button class="btn" data-act="importar">${I.subir} Importar carpeta del equipo</button>
         <button class="btn danger" data-act="borrarEq">${I.del} Eliminar equipo</button></div></section>` : ''}`;
     A.acts({
       carpeta: (d) => go('carpeta', { ent: eq.entidad_id, eq: id, k: d.k }),
@@ -560,6 +560,7 @@ window.APP = (() => {
       editHV: () => A.formHojaVida(eq, cons),
       importar: () => A.importarCarpeta({ ent, eq }),
       ia: () => A.asistenteIA({ ent, eq }),
+      iaHV: () => A.asistenteIA({ ent, eq, auto: 'hv' }),
       google: () => A.buscarGoogleEquipo(eq, ent),
       nuevoMto: (d) => A.formMto({ eq, ent, cons: c, tipo: d.t }),
       estado: () => modal({ titulo: 'Cambiar estado del equipo', size: 'sm', cuerpo: `<div class="form">${f.sel('estado', 'Estado operativo', CAT.ESTADOS, eq.estado)}</div>`, acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { await S.update('equipos', id, leer(m.body)); toast('Estado actualizado'); A.recargar(); } }] }),
@@ -603,11 +604,11 @@ window.APP = (() => {
     const nomDef = A.nomCarpeta(ent, eq ? 'eq' : 'ent', k);
     const ruta = [...A.rutaEnt(ent), ...(sede ? [[sede.toUpperCase(), 'entidad', { id: ent.id, sede }]] : []), ...(eq ? [[A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], [eq.nombre.toUpperCase(), 'equipo', { id: eq.id }]] : []), nomDef];
     content().innerHTML = `${migas(ruta)}
-      <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : sede ? `Sede ${h(sede)}` : 'Carpeta de la entidad'}</span><h1>${h(nomDef)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
+      <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : sede ? `Sede ${h(sede)}` : 'Carpeta de la entidad'}</span><h1>${h(nomDef)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq && k === 'hoja_vida' ? `<button class="btn pri" data-act="iaHV" title="La IA lee manual, ficha técnica, inventario, registro sanitario y factura del equipo y propone los datos">${I.ia} Actualizar hoja de vida con IA</button>` : ''}${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
       ${def.gen ? '<div id="gen" style="display:grid;gap:18px"></div>' : ''}
       <section class="panel" id="archivos"></section>`;
     const ctx = { ent, eq, k, def, sede };
-    A.acts({ ia: () => A.asistenteIA({ ent, eq, carpeta: k }), google: () => A.buscarGoogleEquipo(eq, ent) });
+    A.acts({ ia: () => A.asistenteIA({ ent, eq, carpeta: k }), iaHV: () => A.asistenteIA({ ent, eq, auto: 'hv' }), google: () => A.buscarGoogleEquipo(eq, ent) });
     if (def.gen) {
       const [tipo, sub] = def.gen.split(':');
       await A.G[tipo](document.getElementById('gen'), ctx, sub);
