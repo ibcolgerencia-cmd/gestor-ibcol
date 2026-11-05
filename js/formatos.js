@@ -7,7 +7,7 @@
 //  Para regenerar fondos y mapas: tools/build_formatos.py
 // =====================================================================
 window.FMT = (() => {
-  const VER = 'f5';
+  const VER = 'f6';
   const cache = {};
   const cargar = (k) => (cache[k] = cache[k] || Promise.all([
     fetch(`formatos/${k}.pdf?${VER}`).then((r) => { if (!r.ok) throw new Error('No se encontró el formato ' + k); return r.arrayBuffer(); }),
