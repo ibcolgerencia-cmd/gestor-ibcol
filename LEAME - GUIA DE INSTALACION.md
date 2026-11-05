@@ -89,6 +89,7 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 ## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
 
+- **FMB-004 actualizado (v68):** en el reporte de mantenimiento preventivo, la fila 1.1 Entidad / 1.2 Sede quedó como el formato nuevo: casilla de Entidad más ancha y “1.2 Sede” junto a su casilla.
 - **Pasar un equipo a otro cronograma (v67):** en los cronogramas de mantenimiento y metrología, el botón de carpeta de cada fila pasa el equipo a otro cronograma separado (ej. de GENERAL a EXTRAMURAL o CENTRÍFUGA ALMACÉN); sale del anterior y queda solo en el nuevo, en ambos tipos de cronograma, sin cambiar su servicio en el inventario. “Según su servicio” deshace el cambio.
 - **Mover equipos (v66):** en el inventario, *Mover equipos* → marque equipos sueltos o un servicio completo → *Mover a otro servicio…* → elija sede y servicio de destino (o cree uno nuevo). El equipo sale de su inventario y queda solo en el nuevo, con su hoja de vida, documentos, mantenimientos y cronograma.
 - **Subcarpetas de servicios desde el inventario (v64):** *Nueva subcarpeta de servicios* crea una carpeta (ej. CENTRÍFUGA ALMACÉN, HOME CARE) y permite marcar qué servicios van dentro; con una carpeta abierta, *Carpeta …* cambia su nombre, sus servicios o la quita (los servicios y equipos no se borran).
