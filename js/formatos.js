@@ -248,7 +248,7 @@ window.FMT = (() => {
       cod_inv: nr(val(eq, 'codigo_inv')), cod_af: nr(val(eq, 'activo_fijo')), obs: d.observaciones || '',
       firma_recibe: m.firma_recibe || null, firma_realizo: m.firma_realizo || null, firma_digital: lineaFirma(m), recibe_nombre: `NOMBRE: ${d.recibe_nombre || ''}${d.recibe_cargo ? `\nCARGO: ${d.recibe_cargo}` : ''}`,
       fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined };
-    (d.pruebas || []).slice(0, 12).forEach((p, i) => { v[`p${i}`] = p.item || ''; v[`pa${i}`] = X(p.r === 'Pasa'); v[`np${i}`] = X(p.r === 'No pasa'); });
+    (d.pruebas || []).slice(0, 12).forEach((p, i) => { v[`p${i}`] = p.item || ''; v[`pa${i}`] = p.r === 'Pasa' ? '✓' : ''; v[`np${i}`] = p.r === 'No pasa' ? '✓' : ''; });
     (d.actividades || []).slice(0, 12).forEach((a, i) => { v[`ac${i}`] = a; v[`ok${i}`] = '✓'; });
     const valo = d.valoracion || [];
     CAT.VALORACION.forEach((x, i) => { v[`v${i}`] = valo.includes(x) ? '✓' : 'x'; });
