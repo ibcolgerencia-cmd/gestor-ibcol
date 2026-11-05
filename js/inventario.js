@@ -22,21 +22,31 @@
   // ---------------------------------------------------------------- lectura de Excel / CSV
   async function leerExcel(file) {
     const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array' });
+    // se leen TODAS las hojas (ej. "INV", "Extramural", "Centrífuga") y se unen sin repetir códigos
+    const todo = []; const vistos = new Set();
     for (const nombre of wb.SheetNames) {
       const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, defval: '' });
-      const out = []; let mapa = null, servSec = '';
+      let mapa = null, servSec = '', kit = '';
       for (const r of filas) {
         const ban = r.map((c) => String(c)).find((c) => /^SERVICIO\s*\/\s*\S/.test(norm(c)));
-        if (ban) { servSec = norm(ban).replace(/^SERVICIO\s*\/\s*(AREA\s*:?)?\s*/, '').replace(/^:\s*/, '').trim(); continue; }
-        if (r.some((c) => /^EQUIPO$/.test(norm(c))) && r.some((c) => /SERIE|MARCA/.test(norm(c)))) { mapa = {}; r.forEach((c, i) => { const k = colDe(c); if (k && !(k in mapa)) mapa[k] = i; }); continue; }
+        if (ban) { servSec = norm(ban).replace(/^SERVICIO\s*\/\s*(AREA\s*:?)?\s*/, '').replace(/^:\s*/, '').trim(); kit = ''; continue; }
+        if (r.some((c) => /^EQUIPO$/.test(norm(c))) && r.some((c) => /SERIE|MARCA/.test(norm(c)))) { mapa = {}; kit = ''; r.forEach((c, i) => { const k = colDe(c); if (k && !(k in mapa)) mapa[k] = i; }); continue; }
         if (!mapa) continue;
+        // subgrupos sin encabezado (columna combinada "KIT 1", "KIT 2"…): el equipo va al servicio del kit
+        const usadas = new Set(Object.values(mapa));
+        const kc = r.find((c, i) => !usadas.has(i) && /^KIT\s*\d+$/.test(norm(c)));
+        if (kc) kit = norm(kc).replace(/\s+/g, ' ');
         const o = {}; Object.entries(mapa).forEach(([k, i]) => { o[k] = String(r[i] ?? '').trim(); });
         if (!o.nombre || /ELABORADO|IBCOL|PRESTADOR/i.test(o.nombre) || !/[A-ZÁÉÍÓÚÑ]{3}/i.test(o.nombre)) continue;
-        if (servSec) { o.ubicacion = o.servicio || ''; o.servicio = servSec; }
-        out.push(o);
+        if (servSec || kit) { o.ubicacion = o.servicio || ''; o.servicio = kit || servSec; }
+        if (kit && servSec) o.grupo = servSec;
+        const cod = comp(o.codigo);
+        if (cod && vistos.has(cod)) continue;
+        if (cod) vistos.add(cod);
+        todo.push(o);
       }
-      if (out.length) return out;
     }
+    if (todo.length) return todo;
     throw new Error('No encontré la tabla del inventario (columnas EQUIPO, MARCA, SERIE…) en el Excel');
   }
 
