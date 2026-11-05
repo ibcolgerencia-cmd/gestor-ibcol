@@ -510,10 +510,10 @@ table.crono { border-collapse: collapse; font-size: .8rem; }
 /* v49 · cronogramas por servicios (GENERAL, EXTRAMURAL…) */
 .crono-grupos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; }
 .crono-grupos > .muted { font-size: .85rem; margin-right: 2px; }
-.crono-grupos .chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .86rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
-.crono-grupos .chip svg { width: 14px; height: 14px; }
+.crono-grupos .chip, .inv-vistas .chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: .86rem; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.crono-grupos .chip svg, .inv-vistas .chip svg { width: 14px; height: 14px; }
 .crono-grupos .chip small { color: var(--muted); }
-.crono-grupos .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.crono-grupos .chip.on, .inv-vistas .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .crono-grupos .chip.on small { color: inherit; opacity: .8; }
 .cfg-cols legend .btn.sm { margin-left: 6px; padding: 2px 8px; font-size: .75rem; }
 .eq-wrap { grid-template-columns: minmax(0, 1fr) auto auto; }
@@ -556,3 +556,13 @@ h1 .icon-btn { vertical-align: middle; }
 .borrar-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; margin: 6px 0; border: 1px solid #e5705f; border-radius: 8px; background: color-mix(in srgb, #e5705f 10%, transparent); }
 .borrar-bar .sp { flex: 1; }
 .btn.danger:not(.pri) { border-color: #c2412f; color: #c2412f; }
+/* v62: inventario con carpetas (EXTRAMURAL) aparte */
+.tbl-eq tr.inv-carp th { text-align: left; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--ink); font-weight: 800; padding: 10px; border-top: 3px solid var(--accent); text-transform: uppercase; }
+.tbl-eq tr.inv-carp th svg { width: 16px; height: 16px; vertical-align: -3px; }
+.tbl-eq tr.inv-carp small { font-weight: 500; text-transform: none; margin-left: 6px; color: var(--muted); }
+.tbl-eq tr.inv-grp.en-carp th { padding-left: 26px; }
+.tbl-eq tr.inv-grp .inv-add { margin: -3px 10px -3px 0; padding: 2px 8px; font-size: .75rem; text-transform: none; } .tbl-eq tr.inv-grp .inv-add svg { width: 12px; height: 12px; }
+.inv-vistas { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.inv-vistas:empty { display: none; }
+.inv-vistas .sp { flex: 1; }
+.borrar-bar[hidden] { display: none; }
