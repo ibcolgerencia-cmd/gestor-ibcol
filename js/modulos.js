@@ -38,7 +38,7 @@
   // ------------------------------------------------------------ Inventario
   A.G.inventario = async (el, { ent, sede: sedeCtx = null }) => {
     const [eqs, cons] = await Promise.all([S.list('equipos', { entidad_id: ent.id }, 'codigo_inv'), S.list('consultorios', { entidad_id: ent.id })]).then(([e, c]) => { const co = A.ordenar(c); const idx = (x) => co.findIndex((k) => k.id === x.consultorio_id); return [[...e].sort((a, b) => (idx(a) - idx(b)) || ((a.orden ?? 9999) - (b.orden ?? 9999)) || String(a.codigo_inv).localeCompare(String(b.codigo_inv))), co]; });
-    let filtro = '', q = '', editar = false, sedeF = sedeCtx || '', porServ = true, borrar = false, vista = ''; const selB = new Set();
+    let filtro = '', q = '', editar = false, sedeF = sedeCtx || '', porServ = true, borrar = false, modoSel = 'borrar', vista = ''; const selB = new Set();
     // carpetas de servicios (ej. EXTRAMURAL con KIT 1…5): van aparte, después de los servicios
     const carpDe = (c) => (ent.config?.carpetas_serv || {})[c?.id] || '';
     const carpetasL = () => [...new Set(cons.map(carpDe).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
@@ -68,11 +68,17 @@
         return `${cab}<tr ${editar || borrar ? '' : `class="clic" data-act="abrirEq" data-id="${e.id}"`}>${borrar ? `<td><input type="checkbox" data-selb="${e.id}" ${selB.has(e.id) ? 'checked' : ''} aria-label="Seleccionar ${h(e.nombre)}"></td>` : ''}${A.COLS_EQ.map((c) => `<td class="${c.mono && !editar ? 'mono' : ''} ${c.k === 'item' ? 'num' : ''}">${editar ? A.celdaEdit(e, c.k, k, cons) : A.celdaVer(e, c.k, k, cons)}</td>`).join('')}<td>${A.estadoPill(e.estado)}</td></tr>`;
       }).join('') || `<tr><td colspan="${nCol}" class="empty">Sin equipos.</td></tr>`;
       const bb = el.querySelector('[data-borrarbar]');
-      if (bb) { bb.hidden = !borrar; bb.querySelector('[data-nsel]').textContent = selB.size; }
+      if (bb) {
+        bb.hidden = !borrar; bb.querySelector('[data-nsel]').textContent = selB.size;
+        bb.classList.toggle('mover', modoSel === 'mover');
+        bb.querySelector('[data-seltxt]').textContent = modoSel === 'mover' ? 'Marque los equipos (o un servicio completo) que desea pasar a otro servicio, carpeta o sede' : 'Marque los equipos (o un servicio completo) que desea eliminar';
+        bb.querySelectorAll('[data-solo]').forEach((x) => { x.hidden = x.dataset.solo !== modoSel; });
+      }
       el.querySelector('[data-act=porServ]')?.classList.toggle('pri', porServ);
       const cl = carpetasL(); const vv = el.querySelector('[data-vistas]');
       vv.innerHTML = `${cl.length ? `<span class="muted">Ver:</span><button class="chip ${!vista ? 'on' : ''}" data-act="vistaInv" data-v="">Todo el inventario</button><button class="chip ${vista === '__serv' ? 'on' : ''}" data-act="vistaInv" data-v="__serv">Servicios</button>${cl.map((x) => `<button class="chip ${vista === x ? 'on' : ''}" data-act="vistaInv" data-v="${h(x)}">${I.carpeta} ${h(x)}</button>`).join('')}` : ''}${esProp() ? `<span class="sp"></span>${vista && vista !== '__serv' ? `<button class="btn sm" data-act="carpInv" data-n="${h(vista)}">${I.edit} Carpeta ${h(vista)}</button>` : ''}<button class="btn sm" data-act="carpInv" data-n="">${I.carpeta} Nueva subcarpeta de servicios</button><button class="btn sm" data-act="nuevoServInv">${I.mas} Servicio${vista && vista !== '__serv' ? ' en ' + h(vista) : ''}</button>` : ''}`;
-      el.querySelector('[data-act=modoBorrar]')?.classList.toggle('danger', borrar);
+      el.querySelector('[data-act=modoBorrar]')?.classList.toggle('danger', borrar && modoSel === 'borrar');
+      el.querySelector('[data-act=modoMover]')?.classList.toggle('pri', borrar && modoSel === 'mover');
       if (borrar) {
         el.querySelectorAll('[data-selb]').forEach((x) => { x.onchange = () => { x.checked ? selB.add(x.dataset.selb) : selB.delete(x.dataset.selb); pintar(); }; });
         el.querySelectorAll('[data-selserv]').forEach((x) => { x.onchange = () => { lista.filter((e) => e.consultorio_id === x.dataset.selserv).forEach((e) => (x.checked ? selB.add(e.id) : selB.delete(e.id))); pintar(); }; });
@@ -86,8 +92,8 @@
       <div class="tbl-tools">${sedesL.length > 1 ? `<div class="field" style="min-width:170px"><select aria-label="Filtrar por sede" data-sedef><option value="">Todas las sedes</option>${sedesL.map((x) => `<option value="${h(x)}" ${sedeF === x ? 'selected' : ''}>${h(x)}</option>`).join('')}</select></div>` : ''}<div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}${sedesL.length > 1 ? ' · ' + h(sedeC(c)) : ''}</option>`).join('')}</select></div>
         <input type="search" data-q placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar en el inventario">
         <span class="muted" data-cuenta></span>
-        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}<button class="btn pri" data-act="porServ" title="Agrupar el inventario por servicio">${I.carpeta} Por servicios</button>${esProp() ? `<button class="btn" data-act="modoBorrar">${I.del} Borrar equipos</button>` : ''}</div>
-      ${esProp() ? `<div class="borrar-bar" data-borrarbar hidden><span>Marque los equipos (o un servicio completo) que desea eliminar · <b data-nsel>0</b> seleccionados</span><span class="sp"></span><button class="btn sm" data-act="selTodosB">Seleccionar los visibles</button><button class="btn sm" data-act="selNingunoB">Quitar selección</button><button class="btn sm pri danger" data-act="borrarSel">${I.del} Eliminar seleccionados</button></div>` : ''}
+        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}<button class="btn pri" data-act="porServ" title="Agrupar el inventario por servicio">${I.carpeta} Por servicios</button>${esProp() ? `<button class="btn" data-act="modoMover">${I.carpeta} Mover equipos</button><button class="btn" data-act="modoBorrar">${I.del} Borrar equipos</button>` : ''}</div>
+      ${esProp() ? `<div class="borrar-bar" data-borrarbar hidden><span data-seltxt></span> · <b data-nsel>0</b> seleccionados<span class="sp"></span><button class="btn sm" data-act="selTodosB">Seleccionar los visibles</button><button class="btn sm" data-act="selNingunoB">Quitar selección</button><button class="btn sm pri" data-act="moverSel" data-solo="mover">${I.carpeta} Mover a otro servicio…</button><button class="btn sm pri danger" data-act="borrarSel" data-solo="borrar">${I.del} Eliminar seleccionados</button></div>` : ''}
       <div class="inv-vistas" data-vistas></div>
       ${esProp() ? '<p class="muted edit-hint" data-hint hidden>Modo edición: cambie cualquier dato y presione Enter o salga de la casilla para guardar. Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
       ${A.datalistNR}
@@ -146,7 +152,42 @@
             toast(`Servicio ${nombre} creado${carpeta ? ' en ' + carpeta : ''}`); A.recargar();
           } }] });
       },
-      modoBorrar: () => { borrar = !borrar; if (!borrar) selB.clear(); if (borrar) editar = false; pintar(); },
+      modoBorrar: () => { if (borrar && modoSel !== 'borrar') { modoSel = 'borrar'; return pintar(); } borrar = !borrar; modoSel = 'borrar'; if (!borrar) selB.clear(); if (borrar) editar = false; pintar(); },
+      modoMover: () => { if (borrar && modoSel !== 'mover') { modoSel = 'mover'; return pintar(); } borrar = !borrar; modoSel = 'mover'; if (!borrar) selB.clear(); if (borrar) editar = false; pintar(); },
+      // mover los equipos marcados a otro servicio (o carpeta / sede): salen de su inventario y quedan solo en el nuevo
+      moverSel: () => {
+        const lista = eqs.filter((e) => selB.has(e.id)); if (!lista.length) return toast('Marque al menos un equipo', true);
+        const sedesOp = sedesL.length ? sedesL : ['Sede principal'];
+        const sedeIni = sedeF || sedeDeEq(lista[0]) || sedesOp[0];
+        const opciones = (sd) => { const cs = cons.filter((c) => sedeC(c) === sd); const sueltos = cs.filter((c) => !carpDe(c)); const porC = {}; cs.filter((c) => carpDe(c)).forEach((c) => { (porC[carpDe(c)] = porC[carpDe(c)] || []).push(c); });
+          return `${sueltos.length ? `<optgroup label="Servicios">${sueltos.map((c) => `<option value="${c.id}">${h(c.nombre)}</option>`).join('')}</optgroup>` : ''}${Object.entries(porC).map(([n, l]) => `<optgroup label="Carpeta ${h(n)}">${l.map((c) => `<option value="${c.id}">${h(c.nombre)}</option>`).join('')}</optgroup>`).join('')}<option value="__nuevo">+ Servicio nuevo…</option>`; };
+        modal({ titulo: `Mover ${lista.length} equipo${lista.length === 1 ? '' : 's'}`, size: 'sm',
+          cuerpo: `<form class="form" onsubmit="return false"><p class="muted" style="font-size:.86rem">${lista.slice(0, 8).map((e) => `${h(e.codigo_inv)} ${h(e.nombre)}`).join('<br>')}${lista.length > 8 ? `<br>… y ${lista.length - 8} más` : ''}</p><div class="fields">
+            ${sedesOp.length > 1 ? f.sel('sede', 'Sede de destino', sedesOp, sedeIni, { full: true }) : ''}
+            <div class="field full"><label for="f_destino">Servicio de destino</label><select id="f_destino" name="destino">${opciones(sedeIni)}</select></div>
+            <div class="field full" data-nuevo hidden><label for="f_nuevoServ">Nombre del servicio nuevo</label><input id="f_nuevoServ" name="nuevoServ" placeholder="ej. CENTRÍFUGA ALMACÉN"></div>
+            <label class="checks full radio-line"><input type="checkbox" name="ubic" data-single checked> Cambiar también la “Ubicación / área” al nombre del nuevo servicio</label></div>
+            <p class="muted" style="font-size:.84rem">Los equipos salen de su servicio actual y quedan solo en el nuevo, con su hoja de vida, documentos, mantenimientos y cronograma.</p></form>`,
+          alAbrir: (m) => { const ss = m.body.querySelector('[name=sede]'), ds = m.body.querySelector('[name=destino]'), nv = m.body.querySelector('[data-nuevo]');
+            const ver = () => { nv.hidden = ds.value !== '__nuevo'; }; ds.onchange = ver; if (ss) ss.onchange = () => { ds.innerHTML = opciones(ss.value); ver(); }; ver(); },
+          acciones: [{ t: 'Cancelar' }, { t: 'Mover', cls: 'pri', fn: async (m) => {
+            const v = leer(m.body); const sd = v.sede || sedeIni; let destino = cons.find((c) => c.id === v.destino);
+            if (v.destino === '__nuevo') {
+              const n = (v.nuevoServ || '').toUpperCase().trim(); if (!n) { toast('Escriba el nombre del servicio nuevo', true); return false; }
+              const deSede = cons.filter((c) => sedeC(c) === sd);
+              destino = await S.insert('consultorios', { entidad_id: ent.id, nombre: n, sede: sd, orden: deSede.reduce((mx, x) => Math.max(mx, x.orden || 0), 0) + 1 });
+            }
+            if (!destino) { toast('Elija el servicio de destino', true); return false; }
+            let ord = eqs.filter((e) => e.consultorio_id === destino.id).reduce((mx, e) => Math.max(mx, e.orden || 0), 0);
+            for (const e of lista) {
+              if (e.consultorio_id === destino.id) continue;
+              const desde = cons.find((c) => c.id === e.consultorio_id)?.nombre || '';
+              await S.update('equipos', e.id, { consultorio_id: destino.id, orden: ++ord, ...(v.ubic ? { ubicacion: destino.nombre } : {}) });
+              S.log('EDITAR', 'equipos', e.id, `${e.codigo_inv} movido de ${desde} a ${destino.nombre}`);
+            }
+            toast(`${lista.length} equipo${lista.length === 1 ? '' : 's'} movido${lista.length === 1 ? '' : 's'} a ${destino.nombre}`); selB.clear(); borrar = false; A.recargar();
+          } }] });
+      },
       selTodosB: () => { visibles().forEach((e) => selB.add(e.id)); pintar(); },
       selNingunoB: () => { selB.clear(); pintar(); },
       borrarSel: async () => {
