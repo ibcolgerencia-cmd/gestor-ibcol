@@ -38,23 +38,31 @@
   // ------------------------------------------------------------ Inventario
   A.G.inventario = async (el, { ent, sede: sedeCtx = null }) => {
     const [eqs, cons] = await Promise.all([S.list('equipos', { entidad_id: ent.id }, 'codigo_inv'), S.list('consultorios', { entidad_id: ent.id })]).then(([e, c]) => { const co = A.ordenar(c); const idx = (x) => co.findIndex((k) => k.id === x.consultorio_id); return [[...e].sort((a, b) => (idx(a) - idx(b)) || ((a.orden ?? 9999) - (b.orden ?? 9999)) || String(a.codigo_inv).localeCompare(String(b.codigo_inv))), co]; });
-    let filtro = '', q = '', editar = false, sedeF = sedeCtx || '', porServ = true, borrar = false; const selB = new Set();
+    let filtro = '', q = '', editar = false, sedeF = sedeCtx || '', porServ = true, borrar = false, vista = ''; const selB = new Set();
+    // carpetas de servicios (ej. EXTRAMURAL con KIT 1…5): van aparte, después de los servicios
+    const carpDe = (c) => (ent.config?.carpetas_serv || {})[c?.id] || '';
+    const carpetasL = () => [...new Set(cons.map(carpDe).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+    const consIdx = (id) => cons.findIndex((k) => k.id === id);
+    const claveEq = (e) => { const c = cons.find((k) => k.id === e.consultorio_id); return [sedeC(c), carpDe(c) ? 1 : 0, carpDe(c), consIdx(e.consultorio_id), e.orden ?? 9999, String(e.codigo_inv || '')]; };
+    const cmpEq = (a, b) => { const x = claveEq(a), y = claveEq(b); for (let i = 0; i < x.length; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; } return 0; };
     const cn = (id) => cons.find((c) => c.id === id)?.nombre || '—';
     const sedeC = (c) => c?.sede || 'Sede principal';
     const sedesL = [...new Set(cons.map(sedeC))];
     const sedeDeEq = (e) => sedeC(cons.find((c) => c.id === e.consultorio_id));
-    const visibles = () => eqs.filter((e) => (!sedeF || sedeDeEq(e) === sedeF) && (!filtro || e.consultorio_id === filtro) && (!q || nrmQ([e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, cn(e.consultorio_id)].join(' ')).includes(q)));
+    const visibles = () => eqs.filter((e) => (!sedeF || sedeDeEq(e) === sedeF) && (!vista || (vista === '__serv' ? !carpDe(cons.find((c) => c.id === e.consultorio_id)) : carpDe(cons.find((c) => c.id === e.consultorio_id)) === vista)) && (!filtro || e.consultorio_id === filtro) && (!q || nrmQ([e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, cn(e.consultorio_id)].join(' ')).includes(q))).sort(cmpEq);
     const pintar = () => {
       const lista = visibles();
       el.querySelector('[data-edit]')?.classList.toggle('pri', editar);
       const nCol = A.COLS_EQ.length + 1 + (borrar ? 1 : 0);
       el.querySelector('[data-thsel]').hidden = !borrar;
-      let antes = null, n = 0;
+      let antes = null, antesCarp = null, n = 0;
       el.querySelector('tbody').innerHTML = lista.map((e, i) => {
         let cab = '';
         if (porServ && e.consultorio_id !== antes) {
           antes = e.consultorio_id; n = 0; const c = cons.find((k) => k.id === e.consultorio_id); const enS = lista.filter((x) => x.consultorio_id === e.consultorio_id);
-          cab = `<tr class="inv-grp"><th colspan="${nCol}">${borrar ? `<input type="checkbox" data-selserv="${e.consultorio_id}" ${enS.every((x) => selB.has(x.id)) ? 'checked' : ''} aria-label="Seleccionar todo el servicio"> ` : ''}${sedesL.length > 1 && !sedeF ? `<span class="muted">${h(sedeC(c))} ›</span> ` : ''}${h(c?.nombre || 'SIN SERVICIO')} <small class="muted">${enS.length} equipo${enS.length === 1 ? '' : 's'}</small></th></tr>`;
+          const cp = carpDe(c) || ''; const clvC = sedeC(c) + '|' + cp;
+          if (clvC !== antesCarp) { antesCarp = clvC; if (cp) { const enC = lista.filter((x) => carpDe(cons.find((k) => k.id === x.consultorio_id)) === cp && sedeDeEq(x) === sedeC(c)); cab += `<tr class="inv-carp"><th colspan="${nCol}">${I.carpeta} ${h(cp)} <small>${enC.length} equipo${enC.length === 1 ? '' : 's'}</small></th></tr>`; } }
+          cab += `<tr class="inv-grp ${cp ? 'en-carp' : ''}"><th colspan="${nCol}">${esProp() && !borrar ? `<button class="btn sm inv-add" data-act="nuevoEqServ" data-c="${e.consultorio_id}" title="Agregar un equipo a este servicio">${I.mas} Equipo</button>` : ''}${borrar ? `<input type="checkbox" data-selserv="${e.consultorio_id}" ${enS.every((x) => selB.has(x.id)) ? 'checked' : ''} aria-label="Seleccionar todo el servicio"> ` : ''}${sedesL.length > 1 && !sedeF ? `<span class="muted">${h(sedeC(c))} ›</span> ` : ''}${h(c?.nombre || 'SIN SERVICIO')} <small class="muted">${enS.length} equipo${enS.length === 1 ? '' : 's'}</small></th></tr>`;
         }
         const k = porServ ? n++ : i;
         return `${cab}<tr ${editar || borrar ? '' : `class="clic" data-act="abrirEq" data-id="${e.id}"`}>${borrar ? `<td><input type="checkbox" data-selb="${e.id}" ${selB.has(e.id) ? 'checked' : ''} aria-label="Seleccionar ${h(e.nombre)}"></td>` : ''}${A.COLS_EQ.map((c) => `<td class="${c.mono && !editar ? 'mono' : ''} ${c.k === 'item' ? 'num' : ''}">${editar ? A.celdaEdit(e, c.k, k, cons) : A.celdaVer(e, c.k, k, cons)}</td>`).join('')}<td>${A.estadoPill(e.estado)}</td></tr>`;
@@ -62,6 +70,8 @@
       const bb = el.querySelector('[data-borrarbar]');
       if (bb) { bb.hidden = !borrar; bb.querySelector('[data-nsel]').textContent = selB.size; }
       el.querySelector('[data-act=porServ]')?.classList.toggle('pri', porServ);
+      const cl = carpetasL(); const vv = el.querySelector('[data-vistas]');
+      vv.innerHTML = `${cl.length ? `<span class="muted">Ver:</span><button class="chip ${!vista ? 'on' : ''}" data-act="vistaInv" data-v="">Todo el inventario</button><button class="chip ${vista === '__serv' ? 'on' : ''}" data-act="vistaInv" data-v="__serv">Servicios</button>${cl.map((x) => `<button class="chip ${vista === x ? 'on' : ''}" data-act="vistaInv" data-v="${h(x)}">${I.carpeta} ${h(x)}</button>`).join('')}` : ''}${esProp() ? `<span class="sp"></span><button class="btn sm" data-act="nuevoServInv">${I.mas} Servicio${vista && vista !== '__serv' ? ' en ' + h(vista) : ''}</button>` : ''}`;
       el.querySelector('[data-act=modoBorrar]')?.classList.toggle('danger', borrar);
       if (borrar) {
         el.querySelectorAll('[data-selb]').forEach((x) => { x.onchange = () => { x.checked ? selB.add(x.dataset.selb) : selB.delete(x.dataset.selb); pintar(); }; });
@@ -78,6 +88,7 @@
         <span class="muted" data-cuenta></span>
         ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}<button class="btn pri" data-act="porServ" title="Agrupar el inventario por servicio">${I.carpeta} Por servicios</button>${esProp() ? `<button class="btn" data-act="modoBorrar">${I.del} Borrar equipos</button>` : ''}</div>
       ${esProp() ? `<div class="borrar-bar" data-borrarbar hidden><span>Marque los equipos (o un servicio completo) que desea eliminar · <b data-nsel>0</b> seleccionados</span><span class="sp"></span><button class="btn sm" data-act="selTodosB">Seleccionar los visibles</button><button class="btn sm" data-act="selNingunoB">Quitar selección</button><button class="btn sm pri danger" data-act="borrarSel">${I.del} Eliminar seleccionados</button></div>` : ''}
+      <div class="inv-vistas" data-vistas></div>
       ${esProp() ? '<p class="muted edit-hint" data-hint hidden>Modo edición: cambie cualquier dato y presione Enter o salga de la casilla para guardar. Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
       ${A.datalistNR}
       <div class="tbl-wrap"><table class="tbl tbl-eq"><thead><tr><th data-thsel hidden></th>${A.COLS_EQ.map((c) => `<th style="min-width:${c.w}px">${c.t}</th>`).join('')}<th>Estado</th></tr></thead><tbody></tbody></table></div></section>`;
@@ -92,6 +103,25 @@
       editTabla: () => { editar = !editar; const hn = el.querySelector('[data-hint]'); if (hn) hn.hidden = !editar; pintar(); },
       llenarNR: () => A.completarNR(visibles(), pintar),
       porServ: () => { porServ = !porServ; pintar(); },
+      vistaInv: (d) => { vista = d.v; pintar(); },
+      nuevoEqServ: (d) => A.formEquipo({ entidad_id: ent.id, consultorio_id: d.c, orden: eqs.filter((e) => e.consultorio_id === d.c).reduce((m, e) => Math.max(m, e.orden || 0), 0) + 1 }, cons),
+      nuevoServInv: () => {
+        const sedesOp = sedesL.length ? sedesL : ['Sede principal'];
+        const cl = carpetasL();
+        modal({ titulo: 'Nuevo servicio', size: 'sm', cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre del servicio (ej. CONSULTORIO 5, KIT 6)', '', { full: true })}
+            ${sedesOp.length > 1 ? f.sel('sede', 'Sede', sedesOp, sedeF || sedesOp[0]) : ''}
+            ${f.sel('carpeta', 'Ubicarlo en', [['', 'Servicios (consultorios, toma de muestras, terapia, residuos…)'], ...cl.map((x) => [x, 'Carpeta ' + x]), ['__nueva', 'Otra carpeta nueva…']], vista && vista !== '__serv' ? vista : '', { full: true })}
+            ${f.input('carpetaNueva', 'Nombre de la carpeta nueva (si eligió “Otra carpeta nueva”)', '', { full: true })}</div></form>`,
+          acciones: [{ t: 'Cancelar' }, { t: 'Crear', cls: 'pri', fn: async (m) => {
+            const v = leer(m.body); const nombre = (v.nombre || '').toUpperCase().trim(); if (!nombre) { toast('Escriba el nombre del servicio', true); return false; }
+            const sede = v.sede || sedesOp[0];
+            const carpeta = v.carpeta === '__nueva' ? (v.carpetaNueva || '').toUpperCase().trim() : v.carpeta;
+            const deSede = cons.filter((c) => sedeC(c) === sede);
+            const c = await S.insert('consultorios', { entidad_id: ent.id, nombre, sede, orden: deSede.reduce((mx, x) => Math.max(mx, x.orden || 0), 0) + 1 });
+            if (carpeta) { const cfg = { ...(ent.config || {}), carpetas_serv: { ...(ent.config?.carpetas_serv || {}), [c.id]: carpeta } }; await A.guardarConfig(ent, cfg); }
+            toast(`Servicio ${nombre} creado${carpeta ? ' en ' + carpeta : ''}`); A.recargar();
+          } }] });
+      },
       modoBorrar: () => { borrar = !borrar; if (!borrar) selB.clear(); if (borrar) editar = false; pintar(); },
       selTodosB: () => { visibles().forEach((e) => selB.add(e.id)); pintar(); },
       selNingunoB: () => { selB.clear(); pintar(); },

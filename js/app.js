@@ -1064,6 +1064,7 @@ window.APP = (() => {
       throw e;
     }
   };
+  A.guardarConfig = (ent, config) => guardarConfig(ent, config);
   A.quitarCarpeta = async (ent, tipo, k, nArch) => {
     const cat = tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD, c0 = cat.find((x) => x.k === k); if (!c0) return;
     const c = { ...c0, n: A.nomCarpeta(ent, tipo, k) };
