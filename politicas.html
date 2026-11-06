@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Políticas de privacidad y seguridad · IBCOL</title>
+<meta name="description" content="Política de tratamiento de datos personales, aviso de privacidad y política de seguridad de la información y seguridad electrónica de IBCOL Ingeniería Biomédica de Colombia.">
+<link rel="icon" href="img/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
+<style>
+  :root{--bg:#f4f7f8;--card:#fff;--ink:#1c2b31;--muted:#5d6f76;--line:#d6e0e3;--pri:#0a7c99;--soft:#eef5f7}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1a1e;--card:#16252b;--ink:#e4eef1;--muted:#9fb3ba;--line:#2a3d44;--pri:#43b8d6;--soft:#1c2f36}}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Barlow,Arial,sans-serif}
+  header.top{display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:2;flex-wrap:wrap}
+  header.top img{height:42px;border-radius:6px;background:#fff}header.top b{font-family:'Barlow Condensed',sans-serif;font-size:1.25rem}
+  nav{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+  nav button,.btn{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:7px 12px;border-radius:8px;cursor:pointer}
+  nav button[aria-selected=true],.btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+  main{max-width:960px;margin:0 auto;padding:20px 16px 60px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px}
+  .bar{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  a{color:var(--pri)}
+</style>
+</head>
+<body>
+<header class="top"><img id="logo" alt="IBCOL"><b>Privacidad de datos y seguridad electrónica</b><nav id="tabs" role="tablist"></nav></header>
+<main>
+  <div class="bar"><span id="ver" style="color:var(--muted);font-size:.9rem"></span><span><button class="btn" id="pdf1">Descargar este documento (PDF)</button> <button class="btn pri" id="pdfT">Descargar todas (PDF)</button></span></div>
+  <article class="card pol" id="doc"></article>
+  <p style="margin-top:16px"><a href="./">← Volver al Gestor Biomédico IBCOL</a></p>
+</main>
+<script src="js/logo.js"></script>
+<script src="js/catalogos.js"></script>
+<script src="js/politicas.js?v=85"></script>
+<script>
+  const P = window.POLITICAS; const st = document.createElement('style'); st.textContent = P.CSS; document.head.appendChild(st);
+  document.getElementById('logo').src = window.IBCOL_LOGO;
+  document.getElementById('ver').textContent = `Versión ${P.VERSION} · vigente desde ${P.FECHA}`;
+  let tab = (location.hash || '#tratamiento').slice(1); if (!P.DOCS.some((d) => d.k === tab)) tab = 'tratamiento';
+  const pintar = () => {
+    document.getElementById('tabs').innerHTML = P.DOCS.map((d) => `<button role="tab" aria-selected="${d.k === tab}" data-k="${d.k}">${d.titulo}</button>`).join('');
+    document.querySelectorAll('#tabs button').forEach((b) => (b.onclick = () => { tab = b.dataset.k; history.replaceState(null, '', '#' + tab); pintar(); }));
+    document.getElementById('doc').innerHTML = P.DOCS.find((d) => d.k === tab).html(P.datosResp());
+  };
+  document.getElementById('pdf1').onclick = () => P.imprimir(null, tab);
+  document.getElementById('pdfT').onclick = () => P.imprimir(null);
+  pintar();
+</script>
+</body>
+</html>
