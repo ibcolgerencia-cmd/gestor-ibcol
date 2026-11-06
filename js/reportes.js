@@ -46,14 +46,14 @@
   };
 
   // ---------------------------------------------------------------- formulario
-  A.formReporteDano = async ({ entId = null, eqId = null } = {}) => {
+  A.formReporteDano = async ({ entId = null, eqId = null, sede: sedeFija = null } = {}) => {
     const ents = esProp() ? await S.list('entidades', {}, 'razon_social') : [await S.get('entidades', st.perfil.entidad_id)].filter(Boolean);
     let ent = ents.find((e) => e.id === (entId || st.perfil?.entidad_id)) || (ents.length === 1 ? ents[0] : null);
     let cons = [], eqs = [];
     const cargar = async () => { if (!ent) { cons = []; eqs = []; return; } [cons, eqs] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id })]); cons = A.ordenar ? A.ordenar(cons) : cons; eqs = eqs.filter((e) => e.estado !== 'Dado de baja'); };
     await cargar();
     const eqIni = eqId ? eqs.find((e) => e.id === eqId) : null;
-    const sedesDe = () => (A.sedesDe && ent ? A.sedesDe(cons, ent) : [...new Set(cons.map((c) => c.sede || 'Sede principal'))]);
+    const sedesDe = () => { const l = A.sedesDe && ent ? A.sedesDe(cons, ent) : [...new Set(cons.map((c) => c.sede || 'Sede principal'))]; return sedeFija ? l.filter((x) => x === sedeFija) : l; };
     const opc = (l, sel, vacio) => `<option value="">${vacio}</option>` + l.map(([v, t]) => `<option value="${h(v)}" ${v === sel ? 'selected' : ''}>${h(t)}</option>`).join('');
     modal({ titulo: 'Reportar daño de un equipo biomédico', size: 'wide',
       cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Diligencie los datos. El reporte queda guardado con fecha y hora para la trazabilidad del equipo y se avisa a IBCOL Ingeniería Biomédica.</p>
@@ -132,11 +132,12 @@
   };
 
   // ---------------------------------------------------------------- lista (panel del propietario y de la entidad)
-  A.panelReportes = async (cont, { entidadId = null } = {}) => {
+  A.panelReportes = async (cont, { entidadId = null, sede = null } = {}) => {
+    const deSede = (l) => (sede ? l.filter((r) => (r.sede || 'Sede principal') === sede) : l);
     if (!cont) return;
     let reps = [];
-    try { reps = await S.list('reportes_dano', entidadId ? { entidad_id: entidadId } : {}, '-created_at'); }
-    catch (e) { if (!faltaTabla(e)) console.warn(e); cont.innerHTML = `<header><h3>${I.alerta.replace('<svg', '<svg width="18" height="18" style="vertical-align:-3px"')} Reportes de daño de equipos</h3><div class="actions"><button class="btn pri" data-rep-nuevo>${I.mas} Reportar daño de un equipo</button></div></header><p class="muted">${esProp() ? 'Falta activar la tabla de reportes en la base de datos.' : 'Pronto podrá reportar aquí los daños de los equipos.'}</p>`; cont.querySelector('[data-rep-nuevo]').onclick = () => A.formReporteDano({ entId: entidadId }); return; }
+    try { reps = deSede(await S.list('reportes_dano', entidadId ? { entidad_id: entidadId } : {}, '-created_at')); }
+    catch (e) { if (!faltaTabla(e)) console.warn(e); cont.innerHTML = `<header><h3>${I.alerta.replace('<svg', '<svg width="18" height="18" style="vertical-align:-3px"')} Reportes de daño de equipos</h3><div class="actions"><button class="btn pri" data-rep-nuevo>${I.mas} Reportar daño de un equipo</button></div></header><p class="muted">${esProp() ? 'Falta activar la tabla de reportes en la base de datos.' : 'Pronto podrá reportar aquí los daños de los equipos.'}</p>`; cont.querySelector('[data-rep-nuevo]').onclick = () => A.formReporteDano({ entId: entidadId, sede }); return; }
     const [ents, cons, eqs] = await Promise.all([entidadId ? Promise.resolve([await S.get('entidades', entidadId)]) : S.list('entidades'), S.list('consultorios', entidadId ? { entidad_id: entidadId } : {}), S.list('equipos', entidadId ? { entidad_id: entidadId } : {})]);
     // reportes llevados antes a "Mantenimientos preventivos": pasarlos a "Mantenimientos correctivos"
     if (esProp()) for (const r of reps.filter((x) => x.documento_id && !x.datos?.carpeta_ok)) {
@@ -161,10 +162,10 @@
               <button class="btn sm" data-rep-mto="${r.id}" ${eq ? '' : 'disabled'} title="Crear el reporte de mantenimiento correctivo (FMB-005) con la falla ya escrita">Correctivo</button>
               <button class="btn sm" data-rep-est="${r.id}">Estado</button><button class="btn sm" data-rep-pdf="${r.id}" title="Ver PDF">${I.pdf}</button></div></td>` : ''}
           </tr>`; }).join('')}</tbody></table></div>` : `<p class="muted">${reps.length ? 'No hay reportes con ese filtro.' : 'No hay reportes de daño. Si un equipo falla, use “Reportar daño de un equipo”.'}</p>`}`;
-      cont.querySelector('[data-rep-nuevo]').onclick = () => A.formReporteDano({ entId: entidadId });
+      cont.querySelector('[data-rep-nuevo]').onclick = () => A.formReporteDano({ entId: entidadId, sede });
       cont.querySelector('[data-rep-f]').onchange = (e) => { filtro = e.target.value; pintar(); };
       const R = (id) => reps.find((x) => x.id === id);
-      cont.querySelectorAll('[data-rep-llevar]').forEach((b) => (b.onclick = async () => { const r = R(b.dataset.repLlevar); b.disabled = true; try { await llevarAlEquipo(r, E(r.entidad_id), C(r.consultorio_id), Q(r.equipo_id)); reps = await S.list('reportes_dano', entidadId ? { entidad_id: entidadId } : {}, '-created_at'); pintar(); } finally { b.disabled = false; } }));
+      cont.querySelectorAll('[data-rep-llevar]').forEach((b) => (b.onclick = async () => { const r = R(b.dataset.repLlevar); b.disabled = true; try { await llevarAlEquipo(r, E(r.entidad_id), C(r.consultorio_id), Q(r.equipo_id)); reps = deSede(await S.list('reportes_dano', entidadId ? { entidad_id: entidadId } : {}, '-created_at')); pintar(); } finally { b.disabled = false; } }));
       cont.querySelectorAll('[data-rep-pdf]').forEach((b) => (b.onclick = async () => { const r = R(b.dataset.repPdf); const blob = await pdfReporte(r, E(r.entidad_id), C(r.consultorio_id), Q(r.equipo_id)); window.open(URL.createObjectURL(blob), '_blank'); }));
       cont.querySelectorAll('[data-rep-mto]').forEach((b) => (b.onclick = async () => {
         const r = R(b.dataset.repMto); const eq = Q(r.equipo_id); const consEnt = cons.filter((c) => c.entidad_id === r.entidad_id);
@@ -174,7 +175,7 @@
             const seg = [...(r.datos?.seguimiento || []), { f: new Date().toISOString(), estado: 'Atendido', nota: `Reporte de mantenimiento correctivo ${mt?.numero || ''} realizado` }];
             await S.update('reportes_dano', r.id, { estado: 'Atendido', datos: { ...(r.datos || {}), mantenimiento_id: mt?.id || null, seguimiento: seg } });
             S.log('EDITAR', 'reportes_dano', r.id, `Reporte ${r.numero}: correctivo ${mt?.numero || ''}`);
-            reps = await S.list('reportes_dano', entidadId ? { entidad_id: entidadId } : {}, '-created_at'); pintar();
+            reps = deSede(await S.list('reportes_dano', entidadId ? { entidad_id: entidadId } : {}, '-created_at')); pintar();
           } });
       }));
       cont.querySelectorAll('[data-rep-est]').forEach((b) => (b.onclick = () => {
@@ -183,7 +184,7 @@
           acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
             const v = leer(m.body); const seg = [...(r.datos?.seguimiento || []), { f: new Date().toISOString(), estado: v.estado, nota: v.nota || '' }];
             await S.update('reportes_dano', r.id, { estado: v.estado, datos: { ...(r.datos || {}), seguimiento: seg } }); S.log('EDITAR', 'reportes_dano', r.id, `Reporte ${r.numero}: ${v.estado}`);
-            reps = await S.list('reportes_dano', entidadId ? { entidad_id: entidadId } : {}, '-created_at'); pintar(); toast('Estado actualizado');
+            reps = deSede(await S.list('reportes_dano', entidadId ? { entidad_id: entidadId } : {}, '-created_at')); pintar(); toast('Estado actualizado');
           } }] });
       }));
     };

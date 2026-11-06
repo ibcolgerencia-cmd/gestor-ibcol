@@ -113,7 +113,7 @@ window.Store = (() => {
       async log(accion, tabla, registro, detalle) {
         try { await sb.rpc('registrar_evento', { p_accion: accion, p_tabla: tabla, p_registro: String(registro || ''), p_detalle: detalle || '' }); } catch {}
       },
-      async crearUsuarioCliente({ usuario, clave, nombre, entidad_id, rol = 'cliente' }) {
+      async crearUsuarioCliente({ usuario, clave, nombre, entidad_id, rol = 'cliente', sede = null }) {
         const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil);
         // cliente temporal sin sesión persistente para no cerrar la sesión del propietario
         const tmp = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY,
@@ -121,7 +121,11 @@ window.Store = (() => {
         const r = chk(await tmp.auth.signUp({ email: aCorreo(usuario), password: clave, options: { data: { usuario, nombre } } }));
         if (!r.user) throw new Error('No se pudo crear el usuario');
         if (r.user.identities && r.user.identities.length === 0) throw new Error('Ese usuario ya existe');
-        chk(await sb.rpc(rol === 'calidad' ? 'asignar_perfil_calidad' : 'asignar_perfil', { p_user: r.user.id, p_entidad: entidad_id, p_nombre: nombre, p_usuario: usuario }));
+        const args = { p_user: r.user.id, p_entidad: entidad_id, p_nombre: nombre, p_usuario: usuario };
+        if (rol === 'calidad' && sede) args.p_sede = sede;
+        const rr = await sb.rpc(rol === 'calidad' ? 'asignar_perfil_calidad' : 'asignar_perfil', args);
+        if (rr.error && sede && /function|schema cache|p_sede/i.test(rr.error.message)) throw new Error('Falta activar los usuarios de calidad por sede en la base de datos (supabase/calidad_sedes.sql). El usuario quedó creado sin sede: asígnela después de ejecutar el SQL.');
+        chk(rr);
         return r.user.id;
       },
       async cambiarClave(id, clave) { const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil); chk(await sb.rpc('cambiar_clave', { p_user: id, p_clave: clave })); },
@@ -206,7 +210,12 @@ window.Store = (() => {
         if (['empresa', 'formatos'].includes(t)) return true;
         if (t === 'perfiles') return r.id === perfil.id;
         if (t === 'entidades') return r.id === perfil.entidad_id;
-        return ['consultorios', 'equipos', 'listas_limpieza', 'reportes_dano'].includes(t) && r.entidad_id === perfil.entidad_id;
+        if (!['consultorios', 'equipos', 'listas_limpieza', 'reportes_dano'].includes(t) || r.entidad_id !== perfil.entidad_id) return false;
+        if (!perfil.sede) return true;
+        const sedeDe = (cid) => { const c = tabla('consultorios').find((x) => x.id === cid); return c ? (c.sede || 'Sede principal') : null; };
+        if (t === 'consultorios') return (r.sede || 'Sede principal') === perfil.sede;
+        if (t === 'reportes_dano') return sedeDe(r.consultorio_id) === perfil.sede || r.sede === perfil.sede;
+        return sedeDe(r.consultorio_id) === perfil.sede;
       }
       if (['auditoria', '_usuarios'].includes(t)) return false;
       if (['empresa', 'formatos'].includes(t)) return true;
@@ -292,13 +301,13 @@ window.Store = (() => {
       },
       async removeFile(path) { if (!esProp()) noPermiso(); memFiles.delete(path); await idbOp('readwrite', (s) => s.delete(path)); },
       async log(accion, t, reg, detalle) { auditar(accion, t, reg, null, null, detalle); guardar(); },
-      async crearUsuarioCliente({ usuario, clave, nombre, entidad_id, rol = 'cliente' }) {
+      async crearUsuarioCliente({ usuario, clave, nombre, entidad_id, rol = 'cliente', sede = null }) {
         if (!esProp()) noPermiso();
         const u = usuario.trim().toLowerCase();
         if (db.perfiles.some((p) => p.usuario === u)) throw new Error('Ese usuario ya existe');
         const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil);
         const id = uid();
-        db.perfiles.push({ id, usuario: u, nombre, email: aCorreo(u), rol: rol === 'calidad' ? 'calidad' : 'cliente', entidad_id, activo: true, created_at: ahora() });
+        db.perfiles.push({ id, usuario: u, nombre, email: aCorreo(u), rol: rol === 'calidad' ? 'calidad' : 'cliente', entidad_id, sede: rol === 'calidad' ? (sede || null) : null, activo: true, created_at: ahora() });
         db._usuarios.push({ id, clave: await hash(clave) });
         auditar('INSERT', 'perfiles', id, null, { usuario: u, entidad_id }); guardar(); return id;
       },
