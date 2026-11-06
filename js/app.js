@@ -370,7 +370,7 @@ window.APP = (() => {
       ${sede ? migas([...A.rutaEnt(ent), sede.toUpperCase()]) : esProp() ? migas([['Entidades', 'entidades'], ent.razon_social]) : ''}
       <div class="page-head"><div><span class="eyebrow">${sede ? `Sede · ${h(ent.razon_social)}` : 'Carpeta digital de la entidad'}</span><h1>${h(sede ? sede.toUpperCase() : ent.razon_social)}</h1>
         <span class="muted">NIT <span class="mono">${h(ent.nit || '—')}</span> · REPS <span class="mono">${h(ent.reps || '—')}</span> · ${h(ent.ciudad || '')}</span></div>
-        ${esProp() ? `<div class="actions"><button class="btn" data-act="editEnt">${I.edit} Editar</button><button class="btn" data-act="usuariosEnt">${I.users} Accesos</button>${sede ? `<button class="btn danger" data-act="borrarSede" data-s="${h(sede)}">${I.del} Eliminar sede</button>` : ''}${!sede ? `<button class="btn" data-act="nuevaSede" title="Agregar una sede o servicio (ej. HOME CARE)">${I.mas} Sede</button>` : ''}<button class="btn" data-act="configCarp" title="Quitar o volver a mostrar carpetas para esta entidad">${I.carpeta} Carpetas${ocE.size + A.ocultas(ent, 'eq').size ? ` <span class="pill">${ocE.size + A.ocultas(ent, 'eq').size} quitadas</span>` : ''}</button><button class="btn pri" data-act="importarDrive">${I.subir} Importar carpeta de la entidad</button></div>` : ''}</div>
+        ${esProp() ? `<div class="actions"><button class="btn" data-act="editEnt">${I.edit} Editar</button><button class="btn" data-act="usuariosEnt">${I.users} Accesos</button>${sede ? `<button class="btn danger" data-act="borrarSede" data-s="${h(sede)}">${I.del} Eliminar sede</button>` : ''}${!sede ? `<button class="btn" data-act="nuevaSede" title="Agregar una sede o servicio (ej. HOME CARE)">${I.mas} Sede</button>` : ''}<button class="btn" data-act="carpetaPDF" title="Descargar toda la carpeta de la entidad en un solo PDF (solo administrador)">${I.pdf} Descargar carpeta PDF</button><button class="btn" data-act="configCarp" title="Quitar o volver a mostrar carpetas para esta entidad">${I.carpeta} Carpetas${ocE.size + A.ocultas(ent, 'eq').size ? ` <span class="pill">${ocE.size + A.ocultas(ent, 'eq').size} quitadas</span>` : ''}</button><button class="btn pri" data-act="importarDrive">${I.subir} Importar carpeta de la entidad</button></div>` : ''}</div>
       ${tarjetasSedes}
       <section class="panel" data-reportes></section>
       ${A.kpiTiles(k, ['mp', 'mm', 'mv', 'disp'])}
@@ -381,6 +381,7 @@ window.APP = (() => {
       abrirEq: (d) => go('equipo', { id: d.id }),
       carpeta: (d) => (d.k === CARP_EQ ? go('areas', { id, ...(sede ? { sede } : {}) }) : go('carpeta', { ent: id, k: d.k, ...(sede ? { sede } : {}) })),
       abrirSede: (d) => go('entidad', { id, sede: d.s }),
+      carpetaPDF: () => A.exportarCarpetaPDF(ent, sede),
       borrarSede: (d) => A.eliminarSede(ent, d.s, consE, sedesE, eqsT, docsT),
       nuevaSede: () => modal({
         titulo: 'Agregar sede', size: 'sm',
