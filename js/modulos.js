@@ -1147,8 +1147,15 @@
         if (!(await confirmar(`¿Eliminar definitivamente el usuario «${u.usuario}»${u.nombre ? ` (${u.nombre})` : ''}? Ya no podrá ingresar y no se puede deshacer. Los documentos y registros de la entidad no se borran.`, 'Eliminar'))) return;
         await S.eliminarUsuario(d.id); toast(`Usuario ${u.usuario} eliminado`); A.recargar();
       },
-      editU: (d) => modal({ titulo: 'Editar usuario', size: 'sm', cuerpo: `<div class="form">${f.input('nombre', 'Nombre', p(d.id).nombre)}${f.sel('entidad_id', 'Entidad', ents.map((e) => [e.id, e.razon_social]), p(d.id).entidad_id)}</div>`,
-        acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { await S.update('perfiles', d.id, leer(m.body)); A.recargar(); } }] }),
+      editU: async (d) => {
+        const u = p(d.id); const esCal = u.rol === 'calidad';
+        const sedesDe = async (entId) => (entId ? A.sedesDe(await S.list('consultorios', { entidad_id: entId }), ents.find((e) => e.id === entId)) : []);
+        const sedes = esCal ? await sedesDe(u.entidad_id) : [];
+        modal({ titulo: `Editar usuario · ${u.usuario}`, size: 'sm', cuerpo: `<div class="form">${f.input('nombre', 'Nombre', u.nombre)}${f.sel('entidad_id', 'Entidad', ents.map((e) => [e.id, e.razon_social]), u.entidad_id)}
+            ${esCal ? `<div class="field"><label for="f_usede">Sede (solo verá y diligenciará los servicios de esta sede) *</label><select id="f_usede" name="sede">${sedes.map((x) => `<option ${x === u.sede ? 'selected' : ''}>${h(x)}</option>`).join('')}</select></div>` : ''}</div>`,
+          alAbrir: (m) => { if (!esCal) return; const se = m.body.querySelector('[name=entidad_id]'); se.onchange = async () => { const l = await sedesDe(se.value); m.body.querySelector('[name=sede]').innerHTML = l.map((x) => `<option>${h(x)}</option>`).join(''); }; },
+          acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { const v = leer(m.body); if (esCal && !v.sede) { toast('Seleccione la sede', true); return false; } await S.update('perfiles', d.id, esCal ? v : { nombre: v.nombre, entidad_id: v.entidad_id }); toast('Usuario actualizado'); A.recargar(); } }] });
+      },
     });
   };
 

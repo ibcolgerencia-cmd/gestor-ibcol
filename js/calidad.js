@@ -21,6 +21,10 @@
     if (!ent) { c.innerHTML = '<div class="empty">Su usuario de calidad aún no tiene una entidad asignada. Contacte a IBCOL.</div>'; return; }
     st.calTab = st.calTab || 'limpieza';
     const sede = st.perfil?.sede || null;
+    if (!sede) {
+      const sedes = A.sedesDe(await S.list('consultorios', { entidad_id: ent.id }), ent);
+      if (sedes.length > 1) { c.innerHTML = `<div class="page-head"><div><span class="eyebrow">Portal del área de calidad</span><h1>${h(ent.razon_social)}</h1></div></div><div class="empty">Su usuario de calidad aún no tiene una sede asignada. Pida a IBCOL que le asigne la sede para ver y diligenciar los servicios de esa sede.</div>`; return; }
+    }
     c.innerHTML = `<div class="page-head"><div><span class="eyebrow">Portal del área de calidad${sede ? ' · ' + h(sede) : ''}</span><h1>${h(ent.razon_social)}</h1>
         <span class="muted">Diligencie la lista de chequeo de limpieza y desinfección y reporte los daños de los equipos biomédicos. Las demás carpetas de la entidad no están disponibles con este acceso.</span></div></div>
       <div class="tabs" role="tablist" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
@@ -39,7 +43,7 @@
     return modal({
     titulo: `Usuario del área de calidad · ${ent.razon_social}`, size: 'sm',
     cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Este usuario solo podrá diligenciar la lista de chequeo de limpieza y desinfección y reportar daños de equipos. No ve el resto de la carpeta de la entidad.</p>
-      <div class="fields">${f.sel('sede', 'Sede *', [...(sedes.length > 1 ? [['', 'Todas las sedes de la entidad']] : []), ...sedes.map((x) => [x, x])], sedes.length > 1 ? '' : (sedes[0] || ''), { full: true })}
+      <div class="fields">${f.sel('sede', 'Sede * (solo verá y diligenciará los servicios de esta sede)', [...(sedes.length > 1 ? [['', 'Seleccione la sede…']] : []), ...sedes.map((x) => [x, x])], sedes.length > 1 ? '' : (sedes[0] || ''), { full: true })}
       ${f.input('nombre', 'Nombre del encargado de calidad *', '')}${f.input('usuario', 'Usuario *', '', { attrs: 'autocapitalize="none" placeholder="ej: calidad.siempree"' })}
       ${f.input('clave', 'Contraseña * (mínimo 8, con letras y números)', '', { attrs: 'autocomplete="new-password"' })}</div></form>`,
     acciones: [{ t: 'Cancelar' }, { t: 'Crear usuario', cls: 'pri', fn: async (m) => {
@@ -47,7 +51,8 @@
       if (!d.nombre || !d.usuario) { toast('Escriba el nombre y el usuario', true); return false; }
       if (!/^[a-z0-9._-]+$/.test(d.usuario)) { toast('El usuario solo puede tener letras, números, punto y guion', true); return false; }
       const err = S.claveDebil?.(d.clave); if (err) { toast(err, true); return false; }
-      const sedeU = sedes.length > 1 ? (d.sede || null) : null;
+      if (sedes.length > 1 && !d.sede) { toast('Seleccione la sede del usuario', true); return false; }
+      const sedeU = sedes.length > 1 ? d.sede : null;
       try { await S.crearUsuarioCliente({ ...d, sede: sedeU, entidad_id: ent.id, rol: 'calidad' }); }
       catch (e) { if (/asignar_perfil_calidad|function|schema cache/i.test(e.message)) { toast('Falta activar el portal de calidad en la base de datos (supabase/seguridad_calidad.sql).', true); return false; } throw e; }
       toast(`Usuario de calidad ${d.usuario} creado`);
