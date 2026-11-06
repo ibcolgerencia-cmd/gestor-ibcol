@@ -59,7 +59,7 @@
         else add(nivel, d.nombre, null, 'no incluido: archivo de Excel/Word u otro formato', file, bajarRaw(d));
       };
       if (o.generales) {
-        for (const c of CAT.CARPETAS_ENTIDAD) {
+        for (const c of A.carpetasEnt(ent)) {
           if (ocE.has(c.k)) continue;
           if (c.k === 'equipos') continue;
           const lista = docsGen.filter((d) => d.carpeta === c.k).sort((a, b) => String(a.subcarpeta || '').localeCompare(String(b.subcarpeta || ''), 'es', { numeric: true }) || A.ordenDocs(a, b));
@@ -79,7 +79,7 @@
       }
       if (o.hv || o.mto || o.docs_eq) {
         const carpEq = CAT.CARPETAS_EQUIPO;
-        const nomEq = CAT.CARPETAS_ENTIDAD.find((c) => c.k === 'equipos');
+        const nomEq = A.carpetasEnt(ent).find((c) => c.k === 'equipos');
         const rEq = nomEq ? nom(ent, 'ent', nomEq) : '3. INFORMACIÓN DEL EQUIPO';
         dir = [rEq]; add(0, rEq);
         for (const c of [...cons, ...(!sede && eqs.some((e) => !e.consultorio_id) ? [{ id: null, nombre: 'SIN SERVICIO' }] : [])]) {
@@ -92,7 +92,7 @@
             const rE = [...rServ, `${e.codigo_inv || ''} ${e.nombre || ''}`.trim()];
             dir = rE; add(2, `${e.codigo_inv || ''} · ${e.nombre || ''}${e.marca ? ' · ' + e.marca : ''}${e.serie ? ' · S/N ' + e.serie : ''}`);
             const dEq = docsT.filter((d) => d.equipo_id === e.id || (d.equipos_rel || []).includes(e.id));
-            for (const k of carpEq) {
+            for (const k of A.carpetasEq(ent, e)) {
               if (oc.has(k.k)) continue;
               if (k.k === 'manual' && !o.manuales) continue;
               const nk = nom(ent, 'eq', k, e);

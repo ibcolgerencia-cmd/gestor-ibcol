@@ -387,7 +387,7 @@ window.APP = (() => {
     const nDocs = (c) => (c.k === CARP_EQ ? eqs.filter((e) => e.estado !== 'Dado de baja').length : docs.filter((d) => d.carpeta === c.k && (c.todos || !d.equipo_id)).length);
     const etiqueta = (c) => { const n = nDocs(c); return c.k === CARP_EQ ? `${n} equipo${n === 1 ? '' : 's'} por área` : `${n} archivo${n === 1 ? '' : 's'}${c.gen ? ' · registros' : ''}`; };
     const ocE = A.ocultas(ent, 'ent');
-    const visiblesE = CAT.CARPETAS_ENTIDAD.filter((c) => !ocE.has(c.k));
+    const visiblesE = A.carpetasEnt(ent).filter((c) => !ocE.has(c.k));
     const grupos = [...new Set(visiblesE.map((c) => c.g))];
     content().innerHTML = `
       ${sede ? migas([...A.rutaEnt(ent), sede.toUpperCase()]) : esProp() ? migas([['Entidades', 'entidades'], ent.razon_social]) : ''}
@@ -398,7 +398,7 @@ window.APP = (() => {
       <section class="panel" data-reportes></section>
       ${A.kpiTiles(k, ['mp', 'mm', 'mv', 'disp'])}
       <section class="panel"><header><h2>Alertas de vencimiento</h2><span class="muted">Mantenimientos, calibraciones, garantías y documentos</span></header>${A.listaVenc(venc)}</section>
-      ${porSedes && !sede ? '<h2 class="sede-tit" style="margin-top:8px">TODA LA ENTIDAD (TODAS LAS SEDES)</h2>' : ''}${grupos.map((g) => `<section class="folder-group"><span class="eyebrow">${h(g)}</span><div class="folders">${visiblesE.filter((c) => c.g === g).map((c) => A.tarjetaCarpeta(c, etiqueta(c), 'ent', ent)).join('')}</div></section>`).join('')}`;
+      ${porSedes && !sede ? '<h2 class="sede-tit" style="margin-top:8px">TODA LA ENTIDAD (TODAS LAS SEDES)</h2>' : ''}${grupos.map((g) => `<section class="folder-group"><span class="eyebrow">${h(g)}</span><div class="folders">${visiblesE.filter((c) => c.g === g).map((c) => A.tarjetaCarpeta(c, etiqueta(c), 'ent', ent)).join('')}${esProp() && g === grupos[0] ? `<div class="folder-w"><button class="folder folder-nueva" data-act="nuevaCarpeta" style="border-style:dashed"><span class="ic"></span><b>${I.mas} Nueva carpeta</b><small>Crear carpeta en esta entidad</small></button></div>` : ''}</div></section>`).join('')}`;
     A.panelReportes?.(content().querySelector('[data-reportes]'), { entidadId: id });
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
@@ -422,7 +422,8 @@ window.APP = (() => {
       usuariosEnt: () => go('usuarios', { ent: id }),
       importarDrive: () => A.importarEntidad(ent),
       configCarp: () => A.configCarpetas(ent),
-      quitarCarp: (d) => A.quitarCarpeta(ent, d.tipo, d.k, d.tipo === 'ent' ? nDocs(CAT.CARPETAS_ENTIDAD.find((c) => c.k === d.k)) : null),
+      quitarCarp: (d) => A.quitarCarpeta(ent, d.tipo, d.k, d.tipo === 'ent' ? nDocs(A.carpetasEnt(ent).find((c) => c.k === d.k)) : null),
+      nuevaCarpeta: () => A.nuevaCarpeta(ent),
       renCarp: (d) => A.renombrarCarpeta(ent, d.tipo, d.k),
     });
   };
@@ -572,7 +573,8 @@ window.APP = (() => {
         <div><span>Garantía hasta</span><b>${dd(eq.fecha_fin_garantia)}</b></div>
       </div></div></section>
       <section class="folder-group"><span class="eyebrow">Carpeta del equipo</span><div class="folders">
-        ${CAT.CARPETAS_EQUIPO.filter((k) => !A.ocultasEq(ent, eq).has(k.k)).map((k) => A.tarjetaCarpeta(k, `${cnt(k.k)} documento${cnt(k.k) === 1 ? '' : 's'}`, 'eq', ent, eq)).join('')}
+        ${A.carpetasEq(ent, eq).filter((k) => !A.ocultasEq(ent, eq).has(k.k)).map((k) => A.tarjetaCarpeta(k, `${cnt(k.k)} documento${cnt(k.k) === 1 ? '' : 's'}`, 'eq', ent, eq)).join('')}
+        ${esProp() ? `<div class="folder-w"><button class="folder folder-nueva" data-act="nuevaCarpetaEq" style="border-style:dashed"><span class="ic"></span><b>${I.mas} Nueva carpeta</b><small>Solo este equipo o todos</small></button></div>` : ''}
       </div>${esProp() && (eq.hv?.ocultas || []).length ? `<p class="muted" style="font-size:.85rem;margin-top:6px">Carpetas quitadas solo en este equipo: ${(eq.hv.ocultas).map((k) => h(A.nomCarpeta(ent, 'eq', k))).join(', ')} · <button class="btn sm" data-act="mostrarCarpEq">Volver a mostrar</button></p>` : ''}</section>
       ${esProp() ? `<section class="panel"><header><h3>Acciones del equipo</h3></header><div class="actions">
         <button class="btn" data-act="nuevoMto" data-t="preventivo">${I.mas} Mantenimiento preventivo</button><button class="btn" data-act="nuevoMto" data-t="correctivo">${I.mas} Mantenimiento correctivo</button>
@@ -583,6 +585,7 @@ window.APP = (() => {
       quitarCarp: (d) => A.quitarCarpeta(ent, 'eq', d.k, cnt(d.k), eq),
       mostrarCarpEq: async () => { const act = await S.get('equipos', eq.id); await S.update('equipos', eq.id, { hv: { ...(act.hv || {}), ocultas: [] } }); toast('Carpetas visibles de nuevo en este equipo'); A.recargar(); },
       renCarp: (d) => A.renombrarCarpeta(ent, 'eq', d.k, eq),
+      nuevaCarpetaEq: () => A.nuevaCarpeta(ent, eq),
       pdfHV: () => A.verHojaVida(eq, ent, c, mtos),
       fotoEq: () => A.cargarFotoEquipo(eq),
       editEqRapido: () => A.editarEquipoRapido(eq, cons),
@@ -629,7 +632,7 @@ window.APP = (() => {
     const sedesE = sede && !eqId ? A.sedesDe(await S.list('consultorios', { entidad_id: entId }), ent) : [];
     if (!sedesE.includes(sede)) sede = null;
     const eq = eqId ? await S.get('equipos', eqId) : null;
-    const def = (eq ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD).find((c) => c.k === k);
+    const def = (eq ? A.carpetasEq(ent, eq) : A.carpetasEnt(ent)).find((c) => c.k === k) || { k, n: k };
     const nomDef = A.nomCarpeta(ent, eq ? 'eq' : 'ent', k, eq);
     const ruta = [...A.rutaEnt(ent), ...(sede ? [[sede.toUpperCase(), 'entidad', { id: ent.id, sede }]] : []), ...(eq ? [[A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], [eq.nombre.toUpperCase(), 'equipo', { id: eq.id }]] : []), nomDef];
     content().innerHTML = `${migas(ruta)}
@@ -1082,8 +1085,31 @@ window.APP = (() => {
   // carpetas ocultas de un equipo: las quitadas para toda la entidad + las quitadas solo en ese equipo (equipos.hv.ocultas)
   A.ocultasEq = (ent, eq) => new Set([...A.ocultas(ent, 'eq'), ...((eq?.hv || {}).ocultas || [])]);
   // Nombre de una carpeta para una entidad (puede haberse cambiado en entidades.config.nombres_ent / nombres_eq)
+  // carpetas creadas por el propietario: de la entidad (config.carpetas_ent_extra), de todos los equipos (config.carpetas_eq_extra) y de un solo equipo (hv.carpetas_extra)
+  A.carpetasEnt = (ent) => [...CAT.CARPETAS_ENTIDAD, ...((ent?.config || {}).carpetas_ent_extra || []).map((c) => ({ g: 'Estructura documental', ...c, extra: 'ent' }))];
+  A.carpetasEq = (ent, eq = null) => [...CAT.CARPETAS_EQUIPO, ...((ent?.config || {}).carpetas_eq_extra || []).map((c) => ({ ...c, extra: 'todos' })), ...((eq?.hv || {}).carpetas_extra || []).map((c) => ({ ...c, extra: 'equipo' }))];
+  A.nuevaCarpeta = (ent, eq = null) => modal({
+    titulo: eq ? `Nueva carpeta · ${eq.codigo_inv || eq.nombre}` : `Nueva carpeta · ${ent.razon_social}`, size: 'sm',
+    cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre y número de la carpeta *', '', { full: true, attrs: `placeholder="${eq ? 'Ej: 11. GUÍA RÁPIDA DE USO' : 'Ej: 18. PLAN DE CONTINGENCIA'}"` })}</div>
+      ${eq ? '<label class="checks"><input type="checkbox" name="todos" data-single> <span>Crear esta carpeta en <b>todos los equipos</b> de la entidad (si no la marca, solo se crea en este equipo)</span></label>' : '<p class="muted" style="font-size:.85rem">La carpeta se crea en la carpeta digital de esta entidad. Puede subir archivos y crear subcarpetas dentro.</p>'}</form>`,
+    acciones: [{ t: 'Cancelar' }, { t: 'Crear carpeta', cls: 'pri', fn: async (m) => {
+      const d = leer(m.body); const n = String(d.nombre || '').replace(/\s+/g, ' ').trim().toUpperCase();
+      if (!n) { toast('Escriba el nombre de la carpeta', true); return false; }
+      const nueva = { k: 'x_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), n };
+      if (eq && !d.todos) {
+        const act = await S.get('equipos', eq.id);
+        await S.update('equipos', eq.id, { hv: { ...(act.hv || {}), carpetas_extra: [...((act.hv || {}).carpetas_extra || []), nueva] } });
+        S.log('EDITAR', 'equipos', eq.id, `Nueva carpeta «${n}» (solo ${eq.codigo_inv || eq.nombre})`);
+      } else {
+        const fresca = await S.get('entidades', ent.id); const cfg = { ...(fresca.config || {}) }; const key = eq ? 'carpetas_eq_extra' : 'carpetas_ent_extra';
+        cfg[key] = [...(cfg[key] || []), nueva]; if (!(await guardarConfig(fresca, cfg))) return false;
+        S.log('EDITAR', 'entidades', ent.id, `Nueva carpeta «${n}»${eq ? ' en todos los equipos' : ''}`);
+      }
+      toast(`Carpeta «${n}» creada`); A.recargar();
+    } }],
+  });
   // nombre de carpeta: 1) el propio del equipo (hv.nombres_carpetas), 2) el de la entidad, 3) el original
-  A.nomCarpeta = (ent, tipo, k, eq = null) => { const pe = tipo === 'eq' ? eq?.hv?.nombres_carpetas?.[k] : null; if (pe) return pe; const n = ((ent?.config || {})[tipo === 'eq' ? 'nombres_eq' : 'nombres_ent'] || {})[k]; return n || ((tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD).find((c) => c.k === k)?.n || k); };
+  A.nomCarpeta = (ent, tipo, k, eq = null) => { const pe = tipo === 'eq' ? eq?.hv?.nombres_carpetas?.[k] : null; if (pe) return pe; const n = ((ent?.config || {})[tipo === 'eq' ? 'nombres_eq' : 'nombres_ent'] || {})[k]; return n || ((tipo === 'eq' ? A.carpetasEq(ent, eq) : A.carpetasEnt(ent)).find((c) => c.k === k)?.n || k); };
   A.tarjetaCarpeta = (c, sub, tipo, ent, eq = null) => { const nom = A.nomCarpeta(ent, tipo, c.k, eq); return `<div class="folder-w"><button class="folder" data-act="carpeta" data-k="${c.k}"><span class="ic"></span><b>${h(nom)}</b><small>${sub}</small></button>${esProp() ? `<div class="folder-tools"><button class="folder-x" data-act="renCarp" data-tipo="${tipo}" data-k="${c.k}" title="Cambiar el nombre de esta carpeta" aria-label="Cambiar nombre de ${h(nom)}">${I.edit}</button>${!OBLIG.has(c.k) ? `<button class="folder-x del" data-act="quitarCarp" data-tipo="${tipo}" data-k="${c.k}" title="Quitar esta carpeta para esta entidad" aria-label="Quitar carpeta ${h(nom)}">${I.x}</button>` : ''}</div>` : ''}</div>`; };
   // cambio de nombre y número de una carpeta SOLO en este equipo (no afecta a los demás)
   function renombrarCarpetaEquipo(ent, eq, c) {
@@ -1115,7 +1141,7 @@ window.APP = (() => {
     }
   }
   A.renombrarCarpeta = (ent, tipo, k, eq = null) => {
-    const cat = tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD, c = cat.find((x) => x.k === k); if (!c) return;
+    const cat = tipo === 'eq' ? A.carpetasEq(ent, eq) : A.carpetasEnt(ent), c = cat.find((x) => x.k === k); if (!c) return;
     if (tipo === 'eq' && eq) return renombrarCarpetaEquipo(ent, eq, c);
     const key = tipo === 'eq' ? 'nombres_eq' : 'nombres_ent', actual = A.nomCarpeta(ent, tipo, k);
     modal({
@@ -1148,7 +1174,7 @@ window.APP = (() => {
   };
   A.guardarConfig = (ent, config) => guardarConfig(ent, config);
   A.quitarCarpeta = async (ent, tipo, k, nArch, eq = null) => {
-    const cat = tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD, c0 = cat.find((x) => x.k === k); if (!c0) return;
+    const cat = tipo === 'eq' ? A.carpetasEq(ent, eq) : A.carpetasEnt(ent), c0 = cat.find((x) => x.k === k); if (!c0) return;
     const c = { ...c0, n: A.nomCarpeta(ent, tipo, k, eq) };
     if (tipo === 'eq' && eq) return quitarCarpetaEquipo(ent, eq, k, c.n, nArch);
     const extra = nArch ? ` Tiene ${nArch} archivo${nArch === 1 ? '' : 's'}: no se borran, quedan guardados y vuelven a aparecer si activa la carpeta otra vez.` : '';
