@@ -1118,7 +1118,7 @@
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Entidad</th><th>Estado</th><th></th></tr></thead><tbody>
         ${lista.map((p) => `<tr><td class="mono"><b>${h(p.usuario || p.email)}</b></td><td>${h(p.nombre || '')}</td><td><span class="pill ${p.rol === 'propietario' ? 'acc' : p.rol === 'calidad' ? 'warn' : ''}">${p.rol === 'propietario' ? 'Propietario' : p.rol === 'calidad' ? 'Calidad · limpieza y reporte de daño' + (p.sede ? ' · ' + h(p.sede) : '') : 'Cliente · consulta'}</span></td><td>${p.rol === 'propietario' ? 'Todas' : h(en(p.entidad_id))}</td>
           <td>${p.activo ? '<span class="pill ok">Activo</span>' : '<span class="pill bad">Desactivado</span>'}</td>
-          <td><div class="row-actions">${p.rol !== 'propietario' ? `<button class="btn sm" data-act="clave" data-id="${p.id}">${I.llave} Contraseña</button><button class="btn sm" data-act="activo" data-id="${p.id}">${p.activo ? 'Desactivar' : 'Activar'}</button><button class="icon-btn" data-act="editU" data-id="${p.id}" aria-label="Editar">${I.edit}</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin usuarios.</td></tr>'}
+          <td><div class="row-actions">${p.rol !== 'propietario' ? `<button class="btn sm" data-act="clave" data-id="${p.id}">${I.llave} Contraseña</button><button class="btn sm" data-act="activo" data-id="${p.id}">${p.activo ? 'Desactivar' : 'Activar'}</button><button class="icon-btn" data-act="editU" data-id="${p.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn danger" data-act="borrarU" data-id="${p.id}" aria-label="Eliminar usuario" title="Eliminar usuario">${I.del}</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin usuarios.</td></tr>'}
       </tbody></table></div>
       ${S.modo === 'nube' ? '<p class="muted">El cliente ingresa con su usuario (sin @) y su contraseña. Internamente el sistema lo convierte en un correo del dominio configurado.</p>' : ''}`;
     const p = (id) => perf.find((x) => x.id === id);
@@ -1142,6 +1142,11 @@
       clave: (d) => modal({ titulo: `Nueva contraseña · ${p(d.id).usuario}`, size: 'sm', cuerpo: `<div class="form">${f.input('clave', 'Nueva contraseña (mínimo 8, con letras y números)', '', { attrs: 'autocomplete="new-password"' })}</div>`,
         acciones: [{ t: 'Cancelar' }, { t: 'Cambiar', cls: 'pri', fn: async (m) => { await S.cambiarClave(d.id, leer(m.body).clave); toast('Contraseña actualizada'); } }] }),
       activo: async (d) => { await S.update('perfiles', d.id, { activo: !p(d.id).activo }); A.recargar(); },
+      borrarU: async (d) => {
+        const u = p(d.id); if (!u || u.rol === 'propietario') return;
+        if (!(await confirmar(`¿Eliminar definitivamente el usuario «${u.usuario}»${u.nombre ? ` (${u.nombre})` : ''}? Ya no podrá ingresar y no se puede deshacer. Los documentos y registros de la entidad no se borran.`, 'Eliminar'))) return;
+        await S.eliminarUsuario(d.id); toast(`Usuario ${u.usuario} eliminado`); A.recargar();
+      },
       editU: (d) => modal({ titulo: 'Editar usuario', size: 'sm', cuerpo: `<div class="form">${f.input('nombre', 'Nombre', p(d.id).nombre)}${f.sel('entidad_id', 'Entidad', ents.map((e) => [e.id, e.razon_social]), p(d.id).entidad_id)}</div>`,
         acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { await S.update('perfiles', d.id, leer(m.body)); A.recargar(); } }] }),
     });
