@@ -572,7 +572,7 @@ window.APP = (() => {
         <div><span>Garantía hasta</span><b>${dd(eq.fecha_fin_garantia)}</b></div>
       </div></div></section>
       <section class="folder-group"><span class="eyebrow">Carpeta del equipo</span><div class="folders">
-        ${CAT.CARPETAS_EQUIPO.filter((k) => !A.ocultasEq(ent, eq).has(k.k)).map((k) => A.tarjetaCarpeta(k, `${cnt(k.k)} documento${cnt(k.k) === 1 ? '' : 's'}`, 'eq', ent)).join('')}
+        ${CAT.CARPETAS_EQUIPO.filter((k) => !A.ocultasEq(ent, eq).has(k.k)).map((k) => A.tarjetaCarpeta(k, `${cnt(k.k)} documento${cnt(k.k) === 1 ? '' : 's'}`, 'eq', ent, eq)).join('')}
       </div>${esProp() && (eq.hv?.ocultas || []).length ? `<p class="muted" style="font-size:.85rem;margin-top:6px">Carpetas quitadas solo en este equipo: ${(eq.hv.ocultas).map((k) => h(A.nomCarpeta(ent, 'eq', k))).join(', ')} · <button class="btn sm" data-act="mostrarCarpEq">Volver a mostrar</button></p>` : ''}</section>
       ${esProp() ? `<section class="panel"><header><h3>Acciones del equipo</h3></header><div class="actions">
         <button class="btn" data-act="nuevoMto" data-t="preventivo">${I.mas} Mantenimiento preventivo</button><button class="btn" data-act="nuevoMto" data-t="correctivo">${I.mas} Mantenimiento correctivo</button>
@@ -582,7 +582,7 @@ window.APP = (() => {
       carpeta: (d) => go('carpeta', { ent: eq.entidad_id, eq: id, k: d.k }),
       quitarCarp: (d) => A.quitarCarpeta(ent, 'eq', d.k, cnt(d.k), eq),
       mostrarCarpEq: async () => { const act = await S.get('equipos', eq.id); await S.update('equipos', eq.id, { hv: { ...(act.hv || {}), ocultas: [] } }); toast('Carpetas visibles de nuevo en este equipo'); A.recargar(); },
-      renCarp: (d) => A.renombrarCarpeta(ent, 'eq', d.k),
+      renCarp: (d) => A.renombrarCarpeta(ent, 'eq', d.k, eq),
       pdfHV: () => A.verHojaVida(eq, ent, c, mtos),
       fotoEq: () => A.cargarFotoEquipo(eq),
       editEqRapido: () => A.editarEquipoRapido(eq, cons),
@@ -630,7 +630,7 @@ window.APP = (() => {
     if (!sedesE.includes(sede)) sede = null;
     const eq = eqId ? await S.get('equipos', eqId) : null;
     const def = (eq ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD).find((c) => c.k === k);
-    const nomDef = A.nomCarpeta(ent, eq ? 'eq' : 'ent', k);
+    const nomDef = A.nomCarpeta(ent, eq ? 'eq' : 'ent', k, eq);
     const ruta = [...A.rutaEnt(ent), ...(sede ? [[sede.toUpperCase(), 'entidad', { id: ent.id, sede }]] : []), ...(eq ? [[A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], [eq.nombre.toUpperCase(), 'equipo', { id: eq.id }]] : []), nomDef];
     content().innerHTML = `${migas(ruta)}
       <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : sede ? `Sede ${h(sede)}` : 'Carpeta de la entidad'}</span><h1>${h(nomDef)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq && k === 'hoja_vida' ? `<button class="btn pri" data-act="iaHV" title="La IA lee manual, ficha técnica, inventario, registro sanitario y factura del equipo y propone los datos">${I.ia} Actualizar hoja de vida con IA</button>` : ''}${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
@@ -1082,10 +1082,41 @@ window.APP = (() => {
   // carpetas ocultas de un equipo: las quitadas para toda la entidad + las quitadas solo en ese equipo (equipos.hv.ocultas)
   A.ocultasEq = (ent, eq) => new Set([...A.ocultas(ent, 'eq'), ...((eq?.hv || {}).ocultas || [])]);
   // Nombre de una carpeta para una entidad (puede haberse cambiado en entidades.config.nombres_ent / nombres_eq)
-  A.nomCarpeta = (ent, tipo, k) => { const n = ((ent?.config || {})[tipo === 'eq' ? 'nombres_eq' : 'nombres_ent'] || {})[k]; return n || ((tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD).find((c) => c.k === k)?.n || k); };
-  A.tarjetaCarpeta = (c, sub, tipo, ent) => { const nom = A.nomCarpeta(ent, tipo, c.k); return `<div class="folder-w"><button class="folder" data-act="carpeta" data-k="${c.k}"><span class="ic"></span><b>${h(nom)}</b><small>${sub}</small></button>${esProp() ? `<div class="folder-tools"><button class="folder-x" data-act="renCarp" data-tipo="${tipo}" data-k="${c.k}" title="Cambiar el nombre de esta carpeta" aria-label="Cambiar nombre de ${h(nom)}">${I.edit}</button>${!OBLIG.has(c.k) ? `<button class="folder-x del" data-act="quitarCarp" data-tipo="${tipo}" data-k="${c.k}" title="Quitar esta carpeta para esta entidad" aria-label="Quitar carpeta ${h(nom)}">${I.x}</button>` : ''}</div>` : ''}</div>`; };
-  A.renombrarCarpeta = (ent, tipo, k) => {
+  // nombre de carpeta: 1) el propio del equipo (hv.nombres_carpetas), 2) el de la entidad, 3) el original
+  A.nomCarpeta = (ent, tipo, k, eq = null) => { const pe = tipo === 'eq' ? eq?.hv?.nombres_carpetas?.[k] : null; if (pe) return pe; const n = ((ent?.config || {})[tipo === 'eq' ? 'nombres_eq' : 'nombres_ent'] || {})[k]; return n || ((tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD).find((c) => c.k === k)?.n || k); };
+  A.tarjetaCarpeta = (c, sub, tipo, ent, eq = null) => { const nom = A.nomCarpeta(ent, tipo, c.k, eq); return `<div class="folder-w"><button class="folder" data-act="carpeta" data-k="${c.k}"><span class="ic"></span><b>${h(nom)}</b><small>${sub}</small></button>${esProp() ? `<div class="folder-tools"><button class="folder-x" data-act="renCarp" data-tipo="${tipo}" data-k="${c.k}" title="Cambiar el nombre de esta carpeta" aria-label="Cambiar nombre de ${h(nom)}">${I.edit}</button>${!OBLIG.has(c.k) ? `<button class="folder-x del" data-act="quitarCarp" data-tipo="${tipo}" data-k="${c.k}" title="Quitar esta carpeta para esta entidad" aria-label="Quitar carpeta ${h(nom)}">${I.x}</button>` : ''}</div>` : ''}</div>`; };
+  // cambio de nombre y número de una carpeta SOLO en este equipo (no afecta a los demás)
+  function renombrarCarpetaEquipo(ent, eq, c) {
+    const actual = A.nomCarpeta(ent, 'eq', c.k, eq);
+    const deEnt = A.nomCarpeta(ent, 'eq', c.k);
+    modal({
+      titulo: `Cambiar nombre de la carpeta · ${eq.codigo_inv || eq.nombre}`, size: 'sm',
+      cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre y número de la carpeta', actual, { full: true })}</div>
+        <p class="muted" style="font-size:.85rem">Nombre general: <b>${h(deEnt)}</b>. El cambio aplica <b>solo a este equipo</b> (${h(eq.codigo_inv || '')} ${h(eq.nombre || '')}); los demás equipos no cambian. Los archivos no se mueven.</p>
+        <label class="checks"><input type="checkbox" name="todos" data-single> <span>Aplicar este nombre a <b>todos los equipos</b> de la entidad</span></label></form>`,
+      acciones: [{ t: 'Cancelar' }, { t: 'Nombre general', fn: async () => guardar('') }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
+        const d = leer(m.body); const v = d.nombre.replace(/\s+/g, ' ').trim(); if (!v) { toast('Escriba el nombre', true); return false; }
+        if (d.todos) {
+          const cfg = { ...(ent.config || {}) }; const mp = { ...(cfg.nombres_eq || {}) }; if (v === c.n) delete mp[c.k]; else mp[c.k] = v; cfg.nombres_eq = mp;
+          if (!(await guardarConfig(ent, cfg))) return false;
+          const act = await S.get('equipos', eq.id); const nc = { ...(act.hv?.nombres_carpetas || {}) }; delete nc[c.k];
+          await S.update('equipos', eq.id, { hv: { ...(act.hv || {}), nombres_carpetas: nc } });
+          S.log('EDITAR', 'entidades', ent.id, `Carpeta ${c.n} → ${v} (todos los equipos)`); toast(`Carpeta renombrada a “${v}” en todos los equipos`); A.recargar(); return;
+        }
+        return guardar(v === deEnt ? '' : v);
+      } }],
+    });
+    async function guardar(nombre) {
+      const act = await S.get('equipos', eq.id); const nc = { ...(act.hv?.nombres_carpetas || {}) };
+      if (nombre) nc[c.k] = nombre; else delete nc[c.k];
+      await S.update('equipos', eq.id, { hv: { ...(act.hv || {}), nombres_carpetas: nc } });
+      S.log('EDITAR', 'equipos', eq.id, `Carpeta ${c.n} → ${nombre || deEnt} (solo ${eq.codigo_inv || eq.nombre})`);
+      toast(nombre ? `Carpeta renombrada a “${nombre}” solo en este equipo` : 'Se restauró el nombre general'); A.recargar();
+    }
+  }
+  A.renombrarCarpeta = (ent, tipo, k, eq = null) => {
     const cat = tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD, c = cat.find((x) => x.k === k); if (!c) return;
+    if (tipo === 'eq' && eq) return renombrarCarpetaEquipo(ent, eq, c);
     const key = tipo === 'eq' ? 'nombres_eq' : 'nombres_ent', actual = A.nomCarpeta(ent, tipo, k);
     modal({
       titulo: 'Cambiar nombre de la carpeta', size: 'sm',
@@ -1118,7 +1149,7 @@ window.APP = (() => {
   A.guardarConfig = (ent, config) => guardarConfig(ent, config);
   A.quitarCarpeta = async (ent, tipo, k, nArch, eq = null) => {
     const cat = tipo === 'eq' ? CAT.CARPETAS_EQUIPO : CAT.CARPETAS_ENTIDAD, c0 = cat.find((x) => x.k === k); if (!c0) return;
-    const c = { ...c0, n: A.nomCarpeta(ent, tipo, k) };
+    const c = { ...c0, n: A.nomCarpeta(ent, tipo, k, eq) };
     if (tipo === 'eq' && eq) return quitarCarpetaEquipo(ent, eq, k, c.n, nArch);
     const extra = nArch ? ` Tiene ${nArch} archivo${nArch === 1 ? '' : 's'}: no se borran, quedan guardados y vuelven a aparecer si activa la carpeta otra vez.` : '';
     const donde = tipo === 'eq' ? 'de TODOS los equipos de' : 'de la carpeta de';

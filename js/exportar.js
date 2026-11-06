@@ -10,7 +10,7 @@
   const { h, I, toast, modal, leer, f } = UI;
   const esPDF = (d) => /pdf/i.test(d.mime || '') || /\.pdf$/i.test(d.nombre || d.archivo || '');
   const esImg = (d) => /^image\/(png|jpe?g)/i.test(d.mime || '') || /\.(png|jpe?g)$/i.test(d.nombre || '');
-  const nom = (ent, nivel, c) => (A.nomCarpeta ? A.nomCarpeta(ent, nivel, c.k) : c.n) || c.n;
+  const nom = (ent, nivel, c, eq = null) => (A.nomCarpeta ? A.nomCarpeta(ent, nivel, c.k, eq) : c.n) || c.n;
   const limpio = (t) => String(t || '').replace(/\s+/g, ' ').trim();
 
   A.exportarCarpetaPDF = async (ent, sede = null) => {
@@ -95,7 +95,7 @@
             for (const k of carpEq) {
               if (oc.has(k.k)) continue;
               if (k.k === 'manual' && !o.manuales) continue;
-              const nk = nom(ent, 'eq', k);
+              const nk = nom(ent, 'eq', k, e);
               dir = [...rE, nk]; vacias.push(dir);
               if (k.k === 'hoja_vida' && o.hv) add(3, `${nk}`, async () => ({ bytes: await (await FMT.hojaVida({ eq: e, ent, cons: c.id ? c : null, fmt: st.fmt.hoja_vida })).arrayBuffer() }), '', `Hoja de vida ${e.codigo_inv || ''} ${e.nombre || ''}.pdf`);
               if (o.mto && /^mto:/.test(k.gen || '')) {
