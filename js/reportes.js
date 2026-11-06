@@ -66,7 +66,8 @@
           <div class="field"><label for="f_req">Equipo *</label><select id="f_req" name="equipo"></select></div>
           <div class="field full" data-otro-eq style="display:none"><label for="f_reqt">¿Qué equipo? (si no está en la lista)</label><input id="f_reqt" name="equipo_texto" placeholder="Nombre, marca, serie o placa del equipo"></div>
           ${f.area('descripcion', 'Descripción del daño o falla *', '', { rows: 4, full: true, ph: '¿Qué le pasa al equipo? ¿Desde cuándo? ¿Afectó a algún paciente?' })}
-          <label class="checks full radio-line"><input type="checkbox" name="fuera_servicio" data-single> El equipo quedó <b>fuera de servicio</b> (no se puede usar)</label>
+          <label class="checks full radio-line"><input type="checkbox" name="fuera_servicio" data-single> <span>El equipo quedó <b>fuera de servicio</b> (no se puede usar)</span></label>
+          <label class="checks full radio-line"><input type="checkbox" name="autoriza_datos"> <span>Autorizo a IBCOL el tratamiento de mi nombre y celular para gestionar este reporte y contactarme, según la <a href="politicas.html" target="_blank" rel="noopener">Política de tratamiento de datos personales</a> (Ley 1581 de 2012). *</span></label>
         </div></form>`,
       alAbrir: (m) => {
         const sE = m.body.querySelector('[name=ent]'), sS = m.body.querySelector('[name=sede]'), sV = m.body.querySelector('[name=servicio]'), sQ = m.body.querySelector('[name=equipo]'), otro = m.body.querySelector('[data-otro-eq]');
@@ -79,12 +80,12 @@
       },
       acciones: [{ t: 'Cancelar' }, { t: 'Enviar reporte', cls: 'pri', fn: async (m) => {
         const d = leer(m.body); const entSel = ents.find((e) => e.id === (m.body.querySelector('[name=ent]').value)) || ent;
-        const falta = [!d.nombre && 'nombre y apellido', !String(d.celular || '').replace(/\D/g, '').match(/^\d{7,12}$/) && 'celular válido', !entSel && 'entidad', !d.sede && 'sede', !d.servicio && 'servicio', !d.equipo && 'equipo', (d.equipo === '__otro' && !d.equipo_texto) && 'nombre del equipo', !d.descripcion && 'descripción del daño'].filter(Boolean);
+        const falta = [!d.nombre && 'nombre y apellido', !String(d.celular || '').replace(/\D/g, '').match(/^\d{7,12}$/) && 'celular válido', !entSel && 'entidad', !d.sede && 'sede', !d.servicio && 'servicio', !d.equipo && 'equipo', (d.equipo === '__otro' && !d.equipo_texto) && 'nombre del equipo', !d.descripcion && 'descripción del daño', !d.autoriza_datos && 'autorización de tratamiento de datos'].filter(Boolean);
         if (falta.length) { toast('Falta: ' + falta.join(', '), true); return false; }
         const eq = d.equipo !== '__otro' ? eqs.find((e) => e.id === d.equipo) : null; const cn = cons.find((c) => c.id === d.servicio);
         const numero = `RD-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
         const reg = { entidad_id: entSel.id, consultorio_id: cn?.id || null, equipo_id: eq?.id || null, sede: d.sede, nombre: d.nombre.trim(), celular: String(d.celular).replace(/\D/g, ''), descripcion: d.descripcion.trim(), fuera_servicio: !!d.fuera_servicio, estado: 'Nuevo', numero,
-          datos: { equipo_texto: d.equipo === '__otro' ? d.equipo_texto : '', equipo: eq ? { codigo: eq.codigo_inv, nombre: eq.nombre, marca: eq.marca, modelo: eq.modelo, serie: eq.serie } : null, servicio: cn?.nombre || '', reporto_usuario: st.perfil?.usuario || st.perfil?.nombre || '' } };
+          datos: { equipo_texto: d.equipo === '__otro' ? d.equipo_texto : '', equipo: eq ? { codigo: eq.codigo_inv, nombre: eq.nombre, marca: eq.marca, modelo: eq.modelo, serie: eq.serie } : null, servicio: cn?.nombre || '', reporto_usuario: st.perfil?.usuario || st.perfil?.nombre || '', autorizacion_datos: { acepta: true, fecha: new Date().toISOString(), politica: 'PL-PDP-001 v' + (window.POLITICAS?.VERSION || '1.0') } } };
         let r;
         try { r = await S.insert('reportes_dano', reg); } catch (e) { if (faltaTabla(e)) { avisoTabla(); return false; } throw e; }
         S.log('CREAR', 'reportes_dano', r?.id, `Reporte de daño ${numero}: ${eq ? eq.codigo_inv + ' ' + eq.nombre : d.equipo_texto} (${entSel.razon_social})`);

@@ -58,6 +58,7 @@ window.APP = (() => {
           ${f.input('clave', 'Contraseña', '', { type: 'password', req: true, attrs: 'autocomplete="current-password"' })}
           <div class="err" id="lErr">${h(msg)}</div>
           <button class="btn pri" style="justify-content:center;padding:10px" type="submit">Ingresar</button>
+          <p class="muted" style="font-size:.8rem;margin:0">Al ingresar acepta la <a href="politicas.html" target="_blank" rel="noopener">Política de tratamiento de datos personales y de seguridad de la información</a> (Ley 1581 de 2012).</p>
           ${demo ? `<div class="demo-hint"><b>Modo demostración</b><span>Propietario: <span class="mono">ibcol</span> / <span class="mono">ibcol2026</span></span><span>Cliente: <span class="mono">ips.demo</span> / <span class="mono">demo2026</span></span>
             <div class="actions"><button type="button" class="btn sm" data-demo="ibcol|ibcol2026">Entrar como propietario</button><button type="button" class="btn sm" data-demo="ips.demo|demo2026">Entrar como cliente</button></div></div>` : ''}
         </form>
@@ -80,6 +81,7 @@ window.APP = (() => {
     if (esProp()) go('panel', {}, true);
     else if (p.entidad_id) go('entidad', { id: p.entidad_id }, true);
     else { content().innerHTML = '<div class="empty">Su usuario aún no tiene una entidad asignada. Contacte a IBCOL.</div>'; }
+    setTimeout(() => A.verificarPoliticas?.(p), 400);
   }
 
   A.cargarConfig = async () => {
@@ -105,8 +107,8 @@ window.APP = (() => {
     const p = st.perfil;
     const nav = esProp()
       ? [['grp', 'Operación'], ['panel', 'Panel de control', I.panel], ['entidades', 'Entidades y equipos', I.ent], ['comercial', 'Cotizaciones y cobros', I.plata], ['asistente', 'Asistente IA', I.ia],
-        ['grp', 'Administración'], ['usuarios', 'Usuarios y accesos', I.users], ['formatos', 'Formatos', I.fmt], ['consecutivos', 'Consecutivos', I.cal], ['auditoria', 'Auditoría', I.audit], ['empresa', 'Mi empresa y firma', I.emp]]
-      : [['grp', 'Mi entidad'], ['entidad', 'Documentación', I.ent], ['cuenta', 'Mi cuenta', I.llave]];
+        ['grp', 'Administración'], ['usuarios', 'Usuarios y accesos', I.users], ['formatos', 'Formatos', I.fmt], ['consecutivos', 'Consecutivos', I.cal], ['auditoria', 'Auditoría', I.audit], ['empresa', 'Mi empresa y firma', I.emp], ['politicas', 'Privacidad y seguridad', I.llave]]
+      : [['grp', 'Mi entidad'], ['entidad', 'Documentación', I.ent], ['cuenta', 'Mi cuenta', I.llave], ['politicas', 'Privacidad y seguridad', I.audit]];
     root.innerHTML = `<div class="app" id="app">
       <aside class="side" aria-label="Menú principal">
         <button class="side-tog" data-menu aria-label="Desplegar menú" title="Desplegar menú">${I.menu}<span>Menú</span></button>
