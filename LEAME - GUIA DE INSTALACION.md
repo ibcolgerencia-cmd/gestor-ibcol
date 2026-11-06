@@ -89,6 +89,7 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 ## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
 
+- **Nombre de carpetas por equipo (v91):** el lápiz de una carpeta dentro de un equipo cambia el nombre y número solo en ese equipo; para cambiarlo en todos los equipos de la entidad marque «Aplicar este nombre a todos los equipos». «Nombre general» vuelve al nombre común.
 - **Sede obligatoria para usuarios de calidad (v90):** en entidades con varias sedes, cada usuario de calidad debe tener su sede (ya no existe la opción «Todas las sedes»); solo ve y diligencia los servicios de esa sede. La sede se cambia con el lápiz en Usuarios y accesos.
 - **Eliminar usuarios (v88):** en Usuarios y accesos, el ícono de papelera elimina definitivamente un usuario cliente o de calidad (no el propietario); queda en Auditoría. Requiere ejecutar una vez supabase/eliminar_usuario.sql.
 - **Usuarios de calidad por sede (v87):** al crear un usuario de calidad (Panel de control › Portal del área de calidad › + Usuario de calidad) se elige la sede: ese usuario solo ve los servicios y equipos de su sede y solo diligencia la lista de limpieza y reporta daños de esa sede (o «Todas las sedes»). Requiere ejecutar una vez supabase/calidad_sedes.sql.
