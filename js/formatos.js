@@ -296,7 +296,7 @@ window.FMT = (() => {
       anio1: cruza ? rango(y1) : `AÑO ${anio}`, anio2: cruza ? rango(y2) : `AÑO ${anio}`,
       fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined, __extra: extra };
     const hojas = partes(filas, cap).map((grupo, h) => {
-      const v = { ...base };
+      const v = { ...base, __nFilas: grupo.length };
       grupo.forEach((r, i) => {
         const e = eqs(r.equipo_id);
         const it = e.hv?.nr?.item ? 'NR' : val(e, 'item');
@@ -320,7 +320,7 @@ window.FMT = (() => {
     const base = { ...cabEntidad(ent, cons), reps: ent?.reps || '', servicio: `SERVICIO: ${cons ? U(cons.nombre) : 'TODOS LOS SERVICIOS'}`, fecha_act: `FECHA ACTUALIZACIÓN: ${fD(UI.hoy())}`,
       fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined };
     const hojas = partes(equipos, cap).map((grupo, h) => {
-      const v = { ...base };
+      const v = { ...base, __nFilas: grupo.length };
       grupo.forEach((e, i) => Object.assign(v, { [`r${i}_item`]: String((e.hv?.nr?.item ? 'NR' : val(e, 'item')) || h * cap + i + 1), [`r${i}_cod`]: val(e, 'codigo_inv'), [`r${i}_af`]: val(e, 'activo_fijo'), [`r${i}_equipo`]: val(e, 'nombre'),
         [`r${i}_marca`]: val(e, 'marca'), [`r${i}_modelo`]: val(e, 'modelo'), [`r${i}_serie`]: val(e, 'serie') || 'NR', [`r${i}_ubicacion`]: U(val(e, 'ubicacion') || cn(e.consultorio_id)),
         [`r${i}_riesgo`]: riesgoTxt(e), [`r${i}_rs`]: val(e, 'registro_sanitario') || 'NR' }));
