@@ -1116,7 +1116,7 @@
       <div class="page-head"><div><span class="eyebrow">Perfiles de acceso</span><h1>Usuarios y accesos</h1><span class="muted">Cada entidad tiene su propio usuario y contraseña y solo ve su carpeta, en modo consulta. Solo el propietario crea, modifica o elimina información.</span></div>
         <div class="actions"><button class="btn pri" data-act="nuevoU">${I.mas} Nuevo usuario de cliente</button></div></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Entidad</th><th>Estado</th><th></th></tr></thead><tbody>
-        ${lista.map((p) => `<tr><td class="mono"><b>${h(p.usuario || p.email)}</b></td><td>${h(p.nombre || '')}</td><td><span class="pill ${p.rol === 'propietario' ? 'acc' : ''}">${p.rol === 'propietario' ? 'Propietario' : 'Cliente · consulta'}</span></td><td>${p.rol === 'propietario' ? 'Todas' : h(en(p.entidad_id))}</td>
+        ${lista.map((p) => `<tr><td class="mono"><b>${h(p.usuario || p.email)}</b></td><td>${h(p.nombre || '')}</td><td><span class="pill ${p.rol === 'propietario' ? 'acc' : p.rol === 'calidad' ? 'warn' : ''}">${p.rol === 'propietario' ? 'Propietario' : p.rol === 'calidad' ? 'Calidad · limpieza y reporte de daño' : 'Cliente · consulta'}</span></td><td>${p.rol === 'propietario' ? 'Todas' : h(en(p.entidad_id))}</td>
           <td>${p.activo ? '<span class="pill ok">Activo</span>' : '<span class="pill bad">Desactivado</span>'}</td>
           <td><div class="row-actions">${p.rol !== 'propietario' ? `<button class="btn sm" data-act="clave" data-id="${p.id}">${I.llave} Contraseña</button><button class="btn sm" data-act="activo" data-id="${p.id}">${p.activo ? 'Desactivar' : 'Activar'}</button><button class="icon-btn" data-act="editU" data-id="${p.id}" aria-label="Editar">${I.edit}</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin usuarios.</td></tr>'}
       </tbody></table></div>
@@ -1126,16 +1126,20 @@
       nuevoU: () => modal({
         titulo: 'Nuevo usuario de cliente',
         cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.sel('entidad_id', 'Entidad *', [['', '— Seleccione —'], ...ents.map((e) => [e.id, e.razon_social])], filtroEnt || '')}${f.input('nombre', 'Nombre de la persona o cargo', '')}
-          ${f.input('usuario', 'Usuario *', '', { attrs: 'autocapitalize="none" placeholder="ej: clinica.sanjose"' })}${f.input('clave', 'Contraseña * (mínimo 6)', '', { attrs: 'autocomplete="new-password"' })}</div>
-          <p class="muted">Entregue estos datos al cliente. Podrá ver y descargar en PDF toda la documentación de su entidad.</p></form>`,
+          ${f.sel('rol', 'Tipo de acceso *', [['cliente', 'Cliente · consulta de toda la carpeta'], ['calidad', 'Calidad · solo lista de limpieza y reporte de daño']], 'cliente')}
+          ${f.input('usuario', 'Usuario *', '', { attrs: 'autocapitalize="none" placeholder="ej: clinica.sanjose"' })}${f.input('clave', 'Contraseña * (mínimo 8, con letras y números)', '', { attrs: 'autocomplete="new-password"' })}</div>
+          <p class="muted">Entregue estos datos al cliente. El acceso <b>Cliente</b> ve y descarga en PDF toda la documentación de su entidad; el acceso <b>Calidad</b> entra por el enlace del portal de calidad y solo diligencia la lista de chequeo de limpieza y reporta daños.</p></form>`,
         acciones: [{ t: 'Cancelar' }, { t: 'Crear usuario', cls: 'pri', fn: async (m) => {
           const d = leer(m.body); d.usuario = d.usuario.toLowerCase().replace(/\s+/g, '.');
-          if (!d.entidad_id || !d.usuario || d.clave.length < 6) { toast('Complete entidad, usuario y una contraseña de mínimo 6 caracteres', true); return false; }
+          if (!d.entidad_id || !d.usuario) { toast('Complete la entidad y el usuario', true); return false; }
+          const debil = S.claveDebil?.(d.clave); if (debil) { toast(debil, true); return false; }
           if (!/^[a-z0-9._-]+$/.test(d.usuario)) { toast('El usuario solo puede tener letras, números, punto, guion', true); return false; }
-          await S.crearUsuarioCliente(d); toast(`Usuario ${d.usuario} creado`); A.recargar();
+          await S.crearUsuarioCliente(d); toast(`Usuario ${d.usuario} creado`);
+          if (d.rol === 'calidad') { const e = ents.find((x) => x.id === d.entidad_id); if (e) toast(`Enlace del portal de calidad: ${A.linkCalidad?.(e) || ''}`); }
+          A.recargar();
         } }],
       }),
-      clave: (d) => modal({ titulo: `Nueva contraseña · ${p(d.id).usuario}`, size: 'sm', cuerpo: `<div class="form">${f.input('clave', 'Nueva contraseña (mínimo 6)', '', { attrs: 'autocomplete="new-password"' })}</div>`,
+      clave: (d) => modal({ titulo: `Nueva contraseña · ${p(d.id).usuario}`, size: 'sm', cuerpo: `<div class="form">${f.input('clave', 'Nueva contraseña (mínimo 8, con letras y números)', '', { attrs: 'autocomplete="new-password"' })}</div>`,
         acciones: [{ t: 'Cancelar' }, { t: 'Cambiar', cls: 'pri', fn: async (m) => { await S.cambiarClave(d.id, leer(m.body).clave); toast('Contraseña actualizada'); } }] }),
       activo: async (d) => { await S.update('perfiles', d.id, { activo: !p(d.id).activo }); A.recargar(); },
       editU: (d) => modal({ titulo: 'Editar usuario', size: 'sm', cuerpo: `<div class="form">${f.input('nombre', 'Nombre', p(d.id).nombre)}${f.sel('entidad_id', 'Entidad', ents.map((e) => [e.id, e.razon_social]), p(d.id).entidad_id)}</div>`,
