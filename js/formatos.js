@@ -7,7 +7,7 @@
 //  Para regenerar fondos y mapas: tools/build_formatos.py
 // =====================================================================
 window.FMT = (() => {
-  const VER = 'f9';
+  const VER = 'f10';
   const cache = {};
   const cargar = (k) => (cache[k] = cache[k] || Promise.all([
     fetch(`formatos/${k}.pdf?${VER}`).then((r) => { if (!r.ok) throw new Error('No se encontró el formato ' + k); return r.arrayBuffer(); }),
@@ -48,7 +48,7 @@ window.FMT = (() => {
     const pad = 1.5, ancho = c.w - 2 * pad;
     let size = c.size || 8, lineas;
     const multilinea = c.wrap || c.h >= size * 2.3 || txt.includes('\n');
-    for (; size >= 3.5; size -= 0.25) {
+    for (; size >= (c.wrap ? 2.4 : 3.5); size -= 0.25) {
       lineas = multilinea ? partir(txt, font, size, ancho) : [txt];
       const cabe = lineas.every((l) => font.widthOfTextAtSize(l, size) <= ancho) && lineas.length * size * 1.12 <= c.h + 0.5;
       if (cabe) break;
