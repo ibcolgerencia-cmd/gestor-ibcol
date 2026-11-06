@@ -1,6 +1,8 @@
 // =====================================================================
 //  Gestor biomédico IBCOL — núcleo de la aplicación y vistas principales
 // =====================================================================
+// Protección contra clickjacking: el gestor no se deja abrir dentro de marcos de otros sitios
+if (window.top !== window.self) { try { window.top.location.replace(window.self.location.href); } catch { document.documentElement.innerHTML = '<p style="font:16px sans-serif;padding:20px">Por seguridad, abra el Gestor Biomédico IBCOL directamente en el navegador.</p>'; } }
 window.APP = (() => {
   const { h, I, toast, modal, confirmar, leer, f } = UI;
   const S = window.Store;
@@ -8,6 +10,10 @@ window.APP = (() => {
   const A = { st, S };
   const esProp = () => st.perfil?.rol === 'propietario';
   A.esProp = esProp;
+  const esCalidad = () => st.perfil?.rol === 'calidad';
+  A.esCalidad = esCalidad;
+  const portal = (() => { try { const q = new URLSearchParams(location.search); return q.get('portal') === 'calidad' ? { nombre: (q.get('n') || '').slice(0, 120) } : null; } catch { return null; } })();
+  A.portal = portal;
   const root = document.getElementById('root');
 
   // ---------------------------------------------------------------- arranque
@@ -53,7 +59,7 @@ window.APP = (() => {
       </section>
       <section class="login-form">
         <form id="fLogin" novalidate>
-          <div style="display:grid;gap:4px"><span class="eyebrow">Acceso seguro</span><h2>Ingresar al gestor</h2></div>
+          ${portal ? `<div style="display:grid;gap:4px"><span class="eyebrow">Portal del área de calidad${portal.nombre ? ' · ' + h(portal.nombre) : ''}</span><h2>Limpieza y reporte de daño</h2><span class="muted" style="font-size:.88rem">Ingrese con el usuario y la contraseña del encargado de calidad. Este acceso solo permite diligenciar la lista de chequeo de limpieza y desinfección y reportar daños de equipos.</span></div>` : '<div style="display:grid;gap:4px"><span class="eyebrow">Acceso seguro</span><h2>Ingresar al gestor</h2></div>'}
           ${f.input('usuario', 'Usuario o correo', '', { req: true, attrs: 'autocomplete="username" autocapitalize="none"' })}
           ${f.input('clave', 'Contraseña', '', { type: 'password', req: true, attrs: 'autocomplete="current-password"' })}
           <div class="err" id="lErr">${h(msg)}</div>
@@ -64,9 +70,18 @@ window.APP = (() => {
         </form>
       </section></div>`;
     const fm = document.getElementById('fLogin');
+    // límite de intentos fallidos (protección contra adivinar contraseñas): 5 intentos → espera de 5 minutos
+    const KI = 'ibcol_intentos';
+    const intentos = () => { try { return JSON.parse(localStorage.getItem(KI) || '{"n":0,"t":0}'); } catch { return { n: 0, t: 0 }; } };
+    const guardarInt = (o) => { try { localStorage.setItem(KI, JSON.stringify(o)); } catch { /* */ } };
     const ir = async (u, c) => {
-      const b = fm.querySelector('[type=submit]'); b.disabled = true; b.textContent = 'Verificando…';
-      try { entrar(await S.login(u, c)); } catch (e) { document.getElementById('lErr').textContent = e.message; b.disabled = false; b.textContent = 'Ingresar'; }
+      const b = fm.querySelector('[type=submit]');
+      const it = intentos(); const espera = it.n >= 5 ? it.t + 5 * 60000 - Date.now() : 0;
+      if (espera > 0) { document.getElementById('lErr').textContent = `Demasiados intentos fallidos. Por seguridad espere ${Math.ceil(espera / 60000)} minuto(s) e intente de nuevo.`; return; }
+      if (it.n >= 5) guardarInt({ n: 0, t: 0 });
+      b.disabled = true; b.textContent = 'Verificando…';
+      try { const p = await S.login(u, c); guardarInt({ n: 0, t: 0 }); entrar(p); }
+      catch (e) { const o = intentos(); o.n = (o.n || 0) + 1; o.t = Date.now(); guardarInt(o); document.getElementById('lErr').textContent = e.message + (o.n >= 3 && o.n < 5 ? ` (intento ${o.n} de 5)` : ''); b.disabled = false; b.textContent = 'Ingresar'; }
     };
     fm.onsubmit = (e) => { e.preventDefault(); const d = leer(fm); if (!d.usuario || !d.clave) { document.getElementById('lErr').textContent = 'Escriba usuario y contraseña'; return; } ir(d.usuario, d.clave); };
     fm.querySelectorAll('[data-demo]').forEach((b) => (b.onclick = () => { const [u, c] = b.dataset.demo.split('|'); ir(u, c); }));
@@ -79,6 +94,7 @@ window.APP = (() => {
     shell();
     vigilarInactividad();
     if (esProp()) go('panel', {}, true);
+    else if (esCalidad()) go('calidad', {}, true);
     else if (p.entidad_id) go('entidad', { id: p.entidad_id }, true);
     else { content().innerHTML = '<div class="empty">Su usuario aún no tiene una entidad asignada. Contacte a IBCOL.</div>'; }
     setTimeout(() => A.verificarPoliticas?.(p), 400);
@@ -108,6 +124,7 @@ window.APP = (() => {
     const nav = esProp()
       ? [['grp', 'Operación'], ['panel', 'Panel de control', I.panel], ['entidades', 'Entidades y equipos', I.ent], ['comercial', 'Cotizaciones y cobros', I.plata], ['asistente', 'Asistente IA', I.ia],
         ['grp', 'Administración'], ['usuarios', 'Usuarios y accesos', I.users], ['formatos', 'Formatos', I.fmt], ['consecutivos', 'Consecutivos', I.cal], ['auditoria', 'Auditoría', I.audit], ['empresa', 'Mi empresa y firma', I.emp], ['politicas', 'Privacidad y seguridad', I.llave]]
+      : esCalidad() ? [['grp', 'Área de calidad'], ['calidad', 'Limpieza y reporte de daño', I.ent], ['politicas', 'Privacidad y seguridad', I.audit]]
       : [['grp', 'Mi entidad'], ['entidad', 'Documentación', I.ent], ['cuenta', 'Mi cuenta', I.llave], ['politicas', 'Privacidad y seguridad', I.audit]];
     root.innerHTML = `<div class="app" id="app">
       <aside class="side" aria-label="Menú principal">
@@ -158,7 +175,9 @@ window.APP = (() => {
   }
   A.go = go;
   async function render() {
-    const { vista, params } = st.pila[st.pila.length - 1];
+    let { vista, params } = st.pila[st.pila.length - 1];
+    // el usuario de calidad solo puede ver su portal (lista de limpieza y reporte de daño)
+    if (esCalidad() && !['calidad', 'politicas'].includes(vista)) { vista = 'calidad'; params = {}; st.pila = [{ vista, params }]; }
     st.acts = {};
     document.querySelectorAll('.nav [data-nav]').forEach((b) => b.classList.toggle('on', b.dataset.nav === (st.pila[0]?.vista)));
     const c = content(); c.innerHTML = '<div class="loading">Cargando…</div>';
@@ -260,6 +279,7 @@ window.APP = (() => {
         <div class="actions"><button class="btn pri" data-act="nuevaEnt">${I.mas} Nueva entidad</button></div></div>
       ${graves.length ? `<div class="panel" style="border-color:var(--bad)"><b style="color:var(--bad)">${I.alerta.replace('<svg', '<svg width="18" height="18" style="vertical-align:-3px"')} ${graves.length} evento(s) adverso(s) grave(s) abierto(s)</b><span class="muted">Deben notificarse al Programa Nacional de Tecnovigilancia del INVIMA dentro de las 72 horas siguientes al conocimiento del evento.</span></div>` : ''}
       <section class="panel" data-reportes></section>
+      <section class="panel" data-portales></section>
       <div class="kpis">
         <div class="kpi"><span class="l">Entidades activas</span><span class="v">${ents.filter((e) => e.activo !== false).length}</span><span class="meta">Clientes con carpeta digital</span></div>
         <div class="kpi"><span class="l">Equipos biomédicos</span><span class="v">${eqs.filter((e) => e.estado !== 'Dado de baja').length}</span><span class="meta">${eqs.filter((e) => e.estado === 'Fuera de servicio').length} fuera de servicio</span></div>
@@ -276,6 +296,7 @@ window.APP = (() => {
       <section class="panel"><header><h2>Actividad reciente</h2><button class="btn sm" data-act="verAud">Ver auditoría completa</button></header>
         <div class="tbl-wrap"><table class="tbl"><tbody>${aud.slice(0, 8).map((a) => `<tr><td class="muted num" style="white-space:nowrap">${UI.fechaHora(a.fecha)}</td><td><b>${h(a.usuario || '')}</b></td><td>${A.accionTxt(a)}</td></tr>`).join('') || '<tr><td class="empty">Sin actividad.</td></tr>'}</tbody></table></div></section>`;
     A.panelReportes?.(content().querySelector('[data-reportes]'));
+    A.panelPortales?.(content().querySelector('[data-portales]'));
     A.acts({ abrirEq: (d) => go('equipo', { id: d.id }), abrirEnt: (d) => go('entidad', { id: d.id }), nuevaEnt: () => A.formEntidad(), verAud: () => go('auditoria', {}, true) });
   };
 

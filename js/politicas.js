@@ -156,6 +156,7 @@
   <ul>
     <li><b>Usuario propietario (administrador IBCOL):</b> único perfil que crea, modifica y elimina entidades, equipos, documentos y formatos; gestiona usuarios y permisos; firma documentos como prestador; descarga la carpeta completa de una entidad; consulta la auditoría.</li>
     <li><b>Usuario cliente (entidad):</b> consulta y descarga únicamente la documentación de su propia entidad, reporta daños de equipos y diligencia los formularios que IBCOL habilite. No puede modificar formatos ni documentos de IBCOL.</li>
+    <li><b>Usuario de calidad (portal del área de calidad):</b> acceso independiente por entidad, con usuario y contraseña propios, que solo permite diligenciar la lista de chequeo de limpieza y desinfección y reportar daños de equipos. No puede ver documentos, hojas de vida ni el resto de la carpeta de la entidad.</li>
     <li><b>Todos los usuarios:</b> custodian sus credenciales, usan la información solo para los fines autorizados y reportan de inmediato cualquier incidente o sospecha.</li>
   </ul>
 
@@ -167,6 +168,7 @@
     <li><b>Mínimo privilegio:</b> cada perfil tiene solo los permisos necesarios para su función.</li>
     <li><b>Cierre automático de sesión</b> tras 30 minutos de inactividad.</li>
     <li>Los accesos se revocan cuando termina la relación con el usuario o con la entidad.</li>
+    <li><b>Contraseñas:</b> el gestor exige mínimo 8 caracteres combinando letras y números, y rechaza contraseñas fáciles de adivinar. Tras 5 intentos fallidos de ingreso, el acceso se bloquea temporalmente por 5 minutos en ese dispositivo.</li>
     <li>Contraseñas recomendadas: mínimo 10 caracteres, con mayúsculas, minúsculas, números y símbolos; no reutilizar contraseñas de otros servicios; cambiarla de inmediato si se sospecha que fue conocida por otra persona.</li>
   </ul>
 
@@ -176,6 +178,8 @@
     <li>La información se almacena en infraestructura en la nube del proveedor, con cifrado en reposo y controles de acceso físico y lógico del proveedor.</li>
     <li>Los documentos compartidos por WhatsApp o correo se envían mediante <b>enlaces seguros y temporales</b> que vencen (1, 7 o 30 días), en lugar de dejar los archivos públicos.</li>
     <li>Las entidades no tienen acceso a los formatos editables (Excel) de IBCOL; solo a los documentos finales en PDF.</li>
+    <li><b>Protección contra virus y archivos maliciosos:</b> el gestor rechaza programas, scripts, páginas web, archivos comprimidos y documentos de Office con macros; verifica que el contenido de cada PDF, imagen o documento de Office corresponda realmente a su tipo; y limita el tamaño de cada archivo a 60 MB.</li>
+    <li><b>Protección de la aplicación web:</b> política de seguridad de contenido (CSP) que solo permite cargar código desde los orígenes autorizados, protección contra la inserción del gestor en páginas de terceros (clickjacking), escape de todo texto ingresado por los usuarios para evitar inyección de código, y reglas de acceso en la base de datos que se aplican en el servidor aunque alguien manipule el navegador.</li>
   </ul>
 
   <h3>7. Trazabilidad y auditoría</h3>

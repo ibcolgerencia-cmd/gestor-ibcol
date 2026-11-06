@@ -1,7 +1,7 @@
 // Datos de EJEMPLO para el modo demostración (no son datos reales)
 window.DemoSeed = async (hash, uid) => {
   const anio = new Date().getFullYear();
-  const propId = uid(), cliId = uid(), entId = uid(), ent2 = uid();
+  const propId = uid(), cliId = uid(), calId = uid(), entId = uid(), ent2 = uid();
   const c1 = uid(), c2 = uid(), c3 = uid();
   const d = (m, dd) => `${anio}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
   const plan = (per, ini, ejecHasta) => {
@@ -48,9 +48,10 @@ window.DemoSeed = async (hash, uid) => {
   const perfiles = [
     { id: propId, usuario: 'ibcol', nombre: 'Laura María Pistala Enríquez', email: 'ibcolgerencia@gmail.com', rol: 'propietario', entidad_id: null, activo: true },
     { id: cliId, usuario: 'ips.demo', nombre: 'Coordinación de calidad', email: 'ips.demo@ibcol.app', rol: 'cliente', entidad_id: entId, activo: true },
+    { id: calId, usuario: 'calidad.demo', nombre: 'Encargada de calidad (ejemplo)', email: 'calidad.demo@ibcol.app', rol: 'calidad', entidad_id: entId, activo: true },
   ];
   return {
-    _usuarios: [{ id: propId, clave: await hash('ibcol2026') }, { id: cliId, clave: await hash('demo2026') }],
+    _usuarios: [{ id: propId, clave: await hash('ibcol2026') }, { id: cliId, clave: await hash('demo2026') }, { id: calId, clave: await hash('calidad2026') }],
     perfiles, empresa, formatos,
     entidades: [
       { id: entId, razon_social: 'IPS Salud Integral del Cauca S.A.S. (ejemplo)', nit: '900.000.001-1', representante: 'María Fernanda Ortiz', direccion: 'Calle 5 # 10-20', ciudad: 'Popayán', email: 'calidad@ejemplo.co', telefono: '3000000000', reps: '190010000001', activo: true },

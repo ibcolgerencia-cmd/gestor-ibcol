@@ -1,6 +1,33 @@
 // =====================================================================
 //  Capa de datos: misma interfaz para la NUBE (Supabase) y el MODO DEMO
 // =====================================================================
+
+// ---- seguridad: validación de archivos y contraseñas (se usa en nube y en demostración)
+const IBCOL_SEG = (() => {
+  const BLOQ = /\.(exe|msi|msp|bat|cmd|com|scr|pif|cpl|gadget|js|jse|mjs|vbs|vbe|wsf|wsh|ps1|psm1|psd1|sh|bash|zsh|jar|apk|app|dmg|dll|sys|drv|lnk|hta|html?|xhtml|shtml|svg|svgz|php\d?|phtml|asp|aspx|jsp|cgi|py|pyc|rb|pl|reg|inf|iso|img|vhdx?|xlsm|xltm|xlam|docm|dotm|pptm|potm|ppsm|ppam|sldm|zip|rar|7z|tar|gz|tgz|bz2|cab|swf)$/i;
+  const MAX = 60 * 1024 * 1024;
+  const empieza = async (blob, firmas) => { const b = new Uint8Array(await blob.slice(0, 8).arrayBuffer()); return firmas.some((f) => f.every((x, i) => b[i] === x)); };
+  async function validarArchivo(path, blob) {
+    const nombre = String(path || '').split('/').pop() || '';
+    if (!blob) throw new Error('Archivo vacío');
+    if (blob.size > MAX) throw new Error(`El archivo «${nombre}» supera el máximo permitido (60 MB).`);
+    if (BLOQ.test(nombre) || /(html|javascript|svg|x-msdownload|x-msdos|x-sh|x-executable|java-archive|x-php)/i.test(blob.type || '')) throw new Error(`Por seguridad no se permite subir «${nombre}» (programas, páginas web, scripts, archivos comprimidos o documentos con macros pueden contener virus). Súbalo en PDF, imagen, Excel o Word sin macros.`);
+    if (/\.pdf$/i.test(nombre) && !(await empieza(blob, [[0x25, 0x50, 0x44, 0x46]]))) throw new Error(`«${nombre}» no es un PDF válido (el contenido no corresponde a un PDF).`);
+    if (/\.png$/i.test(nombre) && !(await empieza(blob, [[0x89, 0x50, 0x4e, 0x47]]))) throw new Error(`«${nombre}» no es una imagen PNG válida.`);
+    if (/\.jpe?g$/i.test(nombre) && !(await empieza(blob, [[0xff, 0xd8, 0xff]]))) throw new Error(`«${nombre}» no es una imagen JPG válida.`);
+    if (/\.(xlsx|docx|pptx)$/i.test(nombre) && !(await empieza(blob, [[0x50, 0x4b, 0x03, 0x04]]))) throw new Error(`«${nombre}» no es un archivo de Office válido.`);
+    if (await empieza(blob, [[0x4d, 0x5a]])) throw new Error(`«${nombre}» contiene un programa ejecutable y no se puede subir.`);
+  }
+  function claveDebil(c) {
+    c = String(c || '');
+    if (c.length < 8) return 'La contraseña debe tener mínimo 8 caracteres.';
+    if (!/[a-zA-Z]/.test(c) || !/\d/.test(c)) return 'La contraseña debe combinar letras y números.';
+    if (/^(.)\1+$/.test(c) || /^(12345678|password|contraseña|ibcol\d*|qwerty)/i.test(c)) return 'La contraseña es demasiado fácil de adivinar.';
+    return null;
+  }
+  return { validarArchivo, claveDebil };
+})();
+window.IBCOL_SEG = IBCOL_SEG;
 window.Store = (() => {
   const C = window.IBCOL_CONFIG || {};
   // Los formatos en Excel nunca quedan visibles para las entidades (la regla de la base de datos exige visible_cliente)
@@ -73,7 +100,9 @@ window.Store = (() => {
       async update(t, id, o) { return chk(await sb.from(t).update(sinExcel(t, o)).eq(KEYS[t] || 'id', id).select().single()); },
       async upsert(t, o) { return chk(await sb.from(t).upsert(o).select().single()); },
       async remove(t, id) { chk(await sb.from(t).delete().eq(KEYS[t] || 'id', id)); },
+      claveDebil: IBCOL_SEG.claveDebil,
       async upload(path, blob) {
+        await IBCOL_SEG.validarArchivo(path, blob);
         chk(await sb.storage.from('documentos').upload(path, blob, { upsert: true, contentType: blob.type || 'application/octet-stream' }));
         return path;
       },
@@ -84,17 +113,18 @@ window.Store = (() => {
       async log(accion, tabla, registro, detalle) {
         try { await sb.rpc('registrar_evento', { p_accion: accion, p_tabla: tabla, p_registro: String(registro || ''), p_detalle: detalle || '' }); } catch {}
       },
-      async crearUsuarioCliente({ usuario, clave, nombre, entidad_id }) {
+      async crearUsuarioCliente({ usuario, clave, nombre, entidad_id, rol = 'cliente' }) {
+        const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil);
         // cliente temporal sin sesión persistente para no cerrar la sesión del propietario
         const tmp = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY,
           { auth: { persistSession: false, autoRefreshToken: false, storageKey: 'ibcol-tmp' } });
         const r = chk(await tmp.auth.signUp({ email: aCorreo(usuario), password: clave, options: { data: { usuario, nombre } } }));
         if (!r.user) throw new Error('No se pudo crear el usuario');
         if (r.user.identities && r.user.identities.length === 0) throw new Error('Ese usuario ya existe');
-        chk(await sb.rpc('asignar_perfil', { p_user: r.user.id, p_entidad: entidad_id, p_nombre: nombre, p_usuario: usuario }));
+        chk(await sb.rpc(rol === 'calidad' ? 'asignar_perfil_calidad' : 'asignar_perfil', { p_user: r.user.id, p_entidad: entidad_id, p_nombre: nombre, p_usuario: usuario }));
         return r.user.id;
       },
-      async cambiarClave(id, clave) { chk(await sb.rpc('cambiar_clave', { p_user: id, p_clave: clave })); },
+      async cambiarClave(id, clave) { const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil); chk(await sb.rpc('cambiar_clave', { p_user: id, p_clave: clave })); },
       async rpc(fn, args) { return chk(await sb.rpc(fn, args)); },
       async ia(body) {
         const { data, error } = await sb.functions.invoke('asistente-ia', { body });
@@ -118,7 +148,7 @@ window.Store = (() => {
         if (data?.error) throw new Error(data.error);
         return data;
       },
-      async cambiarMiClave(clave) { chk(await sb.auth.updateUser({ password: clave })); },
+      async cambiarMiClave(clave) { const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil); chk(await sb.auth.updateUser({ password: clave })); },
     };
   }
 
@@ -172,6 +202,12 @@ window.Store = (() => {
     const noPermiso = () => { throw new Error('No tiene permiso para esta acción'); };
     function visible(t, r) {
       if (esProp()) return true;
+      if (perfil?.rol === 'calidad') {
+        if (['empresa', 'formatos'].includes(t)) return true;
+        if (t === 'perfiles') return r.id === perfil.id;
+        if (t === 'entidades') return r.id === perfil.entidad_id;
+        return ['consultorios', 'equipos', 'listas_limpieza', 'reportes_dano'].includes(t) && r.entidad_id === perfil.entidad_id;
+      }
       if (['auditoria', '_usuarios'].includes(t)) return false;
       if (['empresa', 'formatos'].includes(t)) return true;
       if (t === 'perfiles') return r.id === perfil.id;
@@ -244,8 +280,10 @@ window.Store = (() => {
         if (t === 'entidades') ['consultorios', 'equipos', 'documentos', 'mantenimientos', 'cronogramas', 'alertas', 'eventos'].forEach((tt) => { db[tt] = tabla(tt).filter((x) => x.entidad_id !== id); });
         guardar();
       },
+      claveDebil: IBCOL_SEG.claveDebil,
       async upload(path, blob) {
         if (!esProp()) noPermiso();
+        await IBCOL_SEG.validarArchivo(path, blob);
         memFiles.set(path, blob); await idbOp('readwrite', (s) => s.put(blob, path)); return path;
       },
       async fileBlob(path) {
@@ -254,24 +292,24 @@ window.Store = (() => {
       },
       async removeFile(path) { if (!esProp()) noPermiso(); memFiles.delete(path); await idbOp('readwrite', (s) => s.delete(path)); },
       async log(accion, t, reg, detalle) { auditar(accion, t, reg, null, null, detalle); guardar(); },
-      async crearUsuarioCliente({ usuario, clave, nombre, entidad_id }) {
+      async crearUsuarioCliente({ usuario, clave, nombre, entidad_id, rol = 'cliente' }) {
         if (!esProp()) noPermiso();
         const u = usuario.trim().toLowerCase();
         if (db.perfiles.some((p) => p.usuario === u)) throw new Error('Ese usuario ya existe');
-        if (clave.length < 6) throw new Error('La contraseña debe tener mínimo 6 caracteres');
+        const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil);
         const id = uid();
-        db.perfiles.push({ id, usuario: u, nombre, email: aCorreo(u), rol: 'cliente', entidad_id, activo: true, created_at: ahora() });
+        db.perfiles.push({ id, usuario: u, nombre, email: aCorreo(u), rol: rol === 'calidad' ? 'calidad' : 'cliente', entidad_id, activo: true, created_at: ahora() });
         db._usuarios.push({ id, clave: await hash(clave) });
         auditar('INSERT', 'perfiles', id, null, { usuario: u, entidad_id }); guardar(); return id;
       },
       async cambiarClave(id, clave) {
         if (!esProp()) noPermiso();
-        if (clave.length < 6) throw new Error('La contraseña debe tener mínimo 6 caracteres');
+        const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil);
         const c = db._usuarios.find((x) => x.id === id); c.clave = await hash(clave);
         auditar('UPDATE', 'perfiles', id, null, null, 'Cambio de contraseña'); guardar();
       },
       async cambiarMiClave(clave) {
-        if (clave.length < 6) throw new Error('La contraseña debe tener mínimo 6 caracteres');
+        const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil);
         const c = db._usuarios.find((x) => x.id === perfil.id); c.clave = await hash(clave); guardar();
       },
       async rpc(fn) { throw new Error(`Función ${fn} no disponible en modo demostración`); },
