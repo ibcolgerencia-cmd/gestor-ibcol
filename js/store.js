@@ -128,6 +128,11 @@ window.Store = (() => {
         chk(rr);
         return r.user.id;
       },
+      async eliminarUsuario(id) {
+        const r = await sb.rpc('eliminar_usuario', { p_user: id });
+        if (r.error && /eliminar_usuario|function|schema cache/i.test(r.error.message) && !/propietario|trabajando/i.test(r.error.message)) throw new Error('Falta activar la opción de eliminar usuarios en la base de datos (supabase/eliminar_usuario.sql).');
+        chk(r);
+      },
       async cambiarClave(id, clave) { const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil); chk(await sb.rpc('cambiar_clave', { p_user: id, p_clave: clave })); },
       async rpc(fn, args) { return chk(await sb.rpc(fn, args)); },
       async ia(body) {
@@ -310,6 +315,13 @@ window.Store = (() => {
         db.perfiles.push({ id, usuario: u, nombre, email: aCorreo(u), rol: rol === 'calidad' ? 'calidad' : 'cliente', entidad_id, sede: rol === 'calidad' ? (sede || null) : null, activo: true, created_at: ahora() });
         db._usuarios.push({ id, clave: await hash(clave) });
         auditar('INSERT', 'perfiles', id, null, { usuario: u, entidad_id }); guardar(); return id;
+      },
+      async eliminarUsuario(id) {
+        if (!esProp()) noPermiso();
+        const p = db.perfiles.find((x) => x.id === id); if (!p) return;
+        if (p.rol === 'propietario' || id === perfil?.id) throw new Error('No se puede eliminar un usuario propietario');
+        db.perfiles = db.perfiles.filter((x) => x.id !== id); db._usuarios = db._usuarios.filter((x) => x.id !== id);
+        auditar('DELETE', 'perfiles', id, p, null, `Usuario eliminado: ${p.usuario}`); guardar();
       },
       async cambiarClave(id, clave) {
         if (!esProp()) noPermiso();
