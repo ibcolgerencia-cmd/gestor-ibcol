@@ -62,7 +62,7 @@
   // ---------------------------------------------------------------- sección del panel de control (propietario)
   A.panelPortales = async (cont) => {
     if (!cont || st.perfil?.rol !== 'propietario') return;
-    const [ents, perf] = await Promise.all([S.list('entidades', {}, 'razon_social'), S.list('perfiles').catch(() => [])]);
+    const [ents, perf] = await Promise.all([S.list('entidades', {}, 'razon_social'), S.list('perfiles').then((l) => l.filter((p) => !String(p.usuario || '').includes('.eliminado.'))).catch(() => [])]);
     const usuarios = (id) => perf.filter((p) => p.rol === 'calidad' && p.entidad_id === id);
     cont.innerHTML = `<header><h3>${I.users.replace('<svg', '<svg width="18" height="18" style="vertical-align:-3px"')} Portal del área de calidad · limpieza y reporte de daño</h3></header>
       <p class="muted" style="margin-top:0">Un enlace para el encargado de calidad de cada entidad o de cada sede, con usuario y contraseña propios. Solo permite diligenciar la lista de chequeo de limpieza y desinfección y reportar daños de equipos; el resto de la carpeta queda protegido.</p>

@@ -1109,7 +1109,7 @@
 
   // =================================================================== USUARIOS
   A.V.usuarios = async ({ ent: filtroEnt } = {}) => {
-    const [perf, ents] = await Promise.all([S.list('perfiles'), S.list('entidades', {}, 'razon_social')]);
+    const [perfT, ents] = await Promise.all([S.list('perfiles'), S.list('entidades', {}, 'razon_social')]); const perf = perfT.filter((p) => !String(p.usuario || '').includes('.eliminado.'));
     const en = (id) => ents.find((e) => e.id === id)?.razon_social || '—';
     const lista = perf.filter((p) => !filtroEnt || p.entidad_id === filtroEnt).sort((a, b) => (a.rol === 'propietario' ? -1 : b.rol === 'propietario' ? 1 : en(a.entidad_id).localeCompare(en(b.entidad_id))));
     A.content().innerHTML = `${filtroEnt ? A.migasNav([['Entidades', 'entidades'], [en(filtroEnt), 'entidad', { id: filtroEnt }], 'Accesos']) : ''}
