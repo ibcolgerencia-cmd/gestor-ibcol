@@ -15,9 +15,12 @@
 
   A.exportarCarpetaPDF = async (ent, sede = null) => {
     if (st.perfil?.rol !== 'propietario') return toast('Solo el administrador puede descargar la carpeta completa.', true);
-    modal({ titulo: `Descargar carpeta completa en PDF · ${ent.razon_social}${sede ? ' · ' + sede : ''}`, size: 'sm',
-      cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Se arma un solo PDF con portada, índice y todos los documentos de la carpeta. Los archivos de Excel o Word no se pueden unir al PDF: quedan nombrados en el índice.</p>
+    modal({ titulo: `Descargar carpeta completa · ${ent.razon_social}${sede ? ' · ' + sede : ''}`, size: 'sm',
+      cuerpo: `<form class="form" onsubmit="return false">
         <div class="fields">
+          <div class="field full"><label>¿Cómo la quiere descargar?</label>
+            <label class="checks radio-line"><input type="radio" name="formato" value="zip" checked> <b>En carpetas</b>, organizada igual que en el gestor (archivo .zip con una carpeta por cada carpeta, servicio y equipo; cada documento en PDF y los Excel/Word tal cual)</label>
+            <label class="checks radio-line"><input type="radio" name="formato" value="pdf"> <b>Un solo PDF</b> con portada e índice (los Excel/Word quedan nombrados en el índice)</label></div>
           <label class="checks full radio-line"><input type="checkbox" name="generales" checked> Carpetas generales (inventario, cronogramas, protocolos, alertas, capacitación, indicadores, contratos…)</label>
           <label class="checks full radio-line"><input type="checkbox" name="hv" checked> Hoja de vida de cada equipo</label>
           <label class="checks full radio-line"><input type="checkbox" name="mto" checked> Reportes de mantenimiento preventivo, correctivo y metrología</label>
@@ -25,7 +28,7 @@
           <label class="checks full radio-line"><input type="checkbox" name="manuales"> Incluir manuales y fichas técnicas (pueden ser muy pesados)</label>
           <label class="checks full radio-line"><input type="checkbox" name="baja"> Incluir equipos dados de baja</label>
         </div></form>`,
-      acciones: [{ t: 'Cancelar' }, { t: `Generar PDF`, cls: 'pri', fn: (m) => { const o = leer(m.body); setTimeout(() => armar(ent, sede, o), 50); } }] });
+      acciones: [{ t: 'Cancelar' }, { t: `${I.bajar} Descargar`, cls: 'pri', fn: (m) => { const o = leer(m.body); setTimeout(() => armar(ent, sede, o), 50); } }] });
   };
 
   async function armar(ent, sede, o) {
@@ -46,11 +49,14 @@
 
       // ---- plan de trabajo: lista de piezas en orden { nivel, titulo, tarea }
       const piezas = []; // { nivel:0|1|2|3, titulo, fuente: async () => ({ bytes } | { img, tipo } | null), nota }
-      const add = (nivel, titulo, fuente = null, nota = '') => piezas.push({ nivel, titulo, fuente, nota });
+      let dir = []; const vacias = [];
+      const add = (nivel, titulo, fuente = null, nota = '', file = null, raw = null) => piezas.push({ nivel, titulo, fuente, nota, dir: [...dir], file: file || (fuente ? titulo : null), raw });
+      const bajarRaw = (d) => async () => (await S.fileBlob(d.archivo)).arrayBuffer();
       const docPieza = (nivel, d) => {
-        if (esPDF(d)) add(nivel, d.nombre, async () => ({ bytes: await (await S.fileBlob(d.archivo)).arrayBuffer() }));
-        else if (esImg(d)) add(nivel, d.nombre, async () => ({ img: await (await S.fileBlob(d.archivo)).arrayBuffer(), png: /png/i.test(d.mime || d.nombre) }));
-        else add(nivel, d.nombre, null, 'no incluido: archivo de Excel/Word u otro formato');
+        const file = /\.[a-z0-9]{2,5}$/i.test(d.nombre || '') ? d.nombre : `${d.nombre || 'documento'}${(d.archivo || '').match(/\.[a-z0-9]{2,5}$/i)?.[0] || ''}`;
+        if (esPDF(d)) add(nivel, d.nombre, async () => ({ bytes: await (await S.fileBlob(d.archivo)).arrayBuffer() }), '', file, bajarRaw(d));
+        else if (esImg(d)) add(nivel, d.nombre, async () => ({ img: await (await S.fileBlob(d.archivo)).arrayBuffer(), png: /png/i.test(d.mime || d.nombre) }), '', file, bajarRaw(d));
+        else add(nivel, d.nombre, null, 'no incluido: archivo de Excel/Word u otro formato', file, bajarRaw(d));
       };
       if (o.generales) {
         for (const c of CAT.CARPETAS_ENTIDAD) {
@@ -58,12 +64,14 @@
           if (c.k === 'equipos') continue;
           const lista = docsGen.filter((d) => d.carpeta === c.k).sort((a, b) => String(a.subcarpeta || '').localeCompare(String(b.subcarpeta || ''), 'es', { numeric: true }) || A.ordenDocs(a, b));
           const genInv = c.k === 'inventarios' && eqs.length;
+          vacias.push([nom(ent, 'ent', c)]); (c.subs || []).forEach((x) => vacias.push([nom(ent, 'ent', c), x]));
           if (!lista.length && !genInv) continue;
-          add(0, nom(ent, 'ent', c));
-          if (genInv) add(1, `Inventario de equipos biomédicos${sede ? ' · ' + sede : ''} (${eqs.length} equipos)`, async () => ({ bytes: await (await FMT.inventario({ ent, equipos: eqs, consultorios: consT, fmt: st.fmt.inventario, cons: null })).arrayBuffer() }));
+          dir = [nom(ent, 'ent', c)]; add(0, nom(ent, 'ent', c));
+          if (genInv) add(1, `Inventario de equipos biomédicos${sede ? ' · ' + sede : ''} (${eqs.length} equipos)`, async () => ({ bytes: await (await FMT.inventario({ ent, equipos: eqs, consultorios: consT, fmt: st.fmt.inventario, cons: null })).arrayBuffer() }), '', `Inventario ${ent.razon_social}${sede ? ' - ' + sede : ''}.pdf`);
           let subAnt = null;
           for (const d of lista) {
             const sub = d.subcarpeta ? d.subcarpeta.split('/').join(' › ') : '';
+            dir = [nom(ent, 'ent', c), ...(d.subcarpeta ? d.subcarpeta.split('/').filter(Boolean) : [])];
             if (sub && sub !== subAnt) { add(1, sub); subAnt = sub; }
             docPieza(sub ? 2 : 1, d);
           }
@@ -72,26 +80,30 @@
       if (o.hv || o.mto || o.docs_eq) {
         const carpEq = CAT.CARPETAS_EQUIPO;
         const nomEq = CAT.CARPETAS_ENTIDAD.find((c) => c.k === 'equipos');
-        add(0, nomEq ? nom(ent, 'ent', nomEq) : '3. INFORMACIÓN DEL EQUIPO');
+        const rEq = nomEq ? nom(ent, 'ent', nomEq) : '3. INFORMACIÓN DEL EQUIPO';
+        dir = [rEq]; add(0, rEq);
         for (const c of [...cons, ...(!sede && eqs.some((e) => !e.consultorio_id) ? [{ id: null, nombre: 'SIN SERVICIO' }] : [])]) {
           const lista = eqs.filter((e) => (e.consultorio_id || null) === c.id);
           if (!lista.length) continue;
-          add(1, `${sedes.length > 1 && c.sede ? c.sede + ' › ' : ''}${c.nombre}`);
+          const rServ = [rEq, ...(sedes.length > 1 && !sede ? [c.sede || 'Sede principal'] : []), c.nombre];
+          dir = rServ; add(1, `${sedes.length > 1 && c.sede ? c.sede + ' › ' : ''}${c.nombre}`);
           for (const e of lista) {
             const oc = A.ocultasEq(ent, e);
-            add(2, `${e.codigo_inv || ''} · ${e.nombre || ''}${e.marca ? ' · ' + e.marca : ''}${e.serie ? ' · S/N ' + e.serie : ''}`);
+            const rE = [...rServ, `${e.codigo_inv || ''} ${e.nombre || ''}`.trim()];
+            dir = rE; add(2, `${e.codigo_inv || ''} · ${e.nombre || ''}${e.marca ? ' · ' + e.marca : ''}${e.serie ? ' · S/N ' + e.serie : ''}`);
             const dEq = docsT.filter((d) => d.equipo_id === e.id || (d.equipos_rel || []).includes(e.id));
             for (const k of carpEq) {
               if (oc.has(k.k)) continue;
               if (k.k === 'manual' && !o.manuales) continue;
               const nk = nom(ent, 'eq', k);
-              if (k.k === 'hoja_vida' && o.hv) add(3, `${nk}`, async () => ({ bytes: await (await FMT.hojaVida({ eq: e, ent, cons: c.id ? c : null, fmt: st.fmt.hoja_vida })).arrayBuffer() }));
+              dir = [...rE, nk]; vacias.push(dir);
+              if (k.k === 'hoja_vida' && o.hv) add(3, `${nk}`, async () => ({ bytes: await (await FMT.hojaVida({ eq: e, ent, cons: c.id ? c : null, fmt: st.fmt.hoja_vida })).arrayBuffer() }), '', `Hoja de vida ${e.codigo_inv || ''} ${e.nombre || ''}.pdf`);
               if (o.mto && /^mto:/.test(k.gen || '')) {
                 const tipo = k.gen.split(':')[1];
                 for (const m of mtosT.filter((x) => x.equipo_id === e.id && x.tipo === tipo)) {
                   const fmt = st.fmt[tipo === 'metrologia' ? 'metrologia' : 'mto_' + tipo];
                   const fn = tipo === 'preventivo' ? FMT.mtoPreventivo : tipo === 'correctivo' ? FMT.mtoCorrectivo : FMT.metrologia;
-                  add(3, `${nk} · Reporte ${m.numero || ''} · ${UI.fecha(m.fecha)}`, async () => ({ bytes: await (await fn({ m, eq: e, ent, cons: c.id ? c : null, fmt })).arrayBuffer() }));
+                  add(3, `${nk} · Reporte ${m.numero || ''} · ${UI.fecha(m.fecha)}`, async () => ({ bytes: await (await fn({ m, eq: e, ent, cons: c.id ? c : null, fmt })).arrayBuffer() }), '', `${String(m.fecha || '').slice(0, 10)} Reporte ${tipo === 'metrologia' ? 'metrología' : 'mantenimiento ' + tipo} ${m.numero || ''} ${e.codigo_inv || ''}.pdf`);
                 }
               }
               if (o.docs_eq || (k.k === 'hoja_vida' && o.hv) || (/^mto:/.test(k.gen || '') && o.mto)) {
@@ -102,7 +114,8 @@
         }
       }
       const conFuente = piezas.filter((p) => p.fuente);
-      if (!conFuente.length) { cerrar(); return toast('La carpeta no tiene documentos para unir con esas opciones.', true); }
+      if (!conFuente.length && !piezas.some((p) => p.raw)) { cerrar(); return toast('La carpeta no tiene documentos con esas opciones.', true); }
+      if (o.formato !== 'pdf') { await zipear(ent, sede, piezas, { vacias, avance, cancelado: () => cancelado }); cerrar(); return; }
 
       // ---- unir
       const { PDFDocument, StandardFonts, rgb } = PDFLib;
@@ -182,6 +195,37 @@
       if (e.message === '__cancel') return toast('Descarga cancelada');
       console.error(e); toast('No se pudo armar el PDF: ' + (e.message || e), true);
     }
+  }
+  // ------------------------------------------------------------------ descarga en carpetas (.zip) con la misma estructura del gestor
+  const cargarZip = () => window.JSZip ? Promise.resolve() : new Promise((ok, mal) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; sc.onload = ok; sc.onerror = () => mal(new Error('No se pudo cargar el compresor ZIP (revise la conexión)')); document.head.appendChild(sc); });
+  const seg = (t) => limpio(t).replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/[. ]+$/, '').slice(0, 90) || 'sin nombre';
+  async function zipear(ent, sede, piezas, { vacias = [], avance, cancelado }) {
+    await cargarZip();
+    const zip = new JSZip(); const raiz = seg(`${ent.razon_social}${sede ? ' - ' + sede : ''}`);
+    const usados = new Set(); const fallas = [];
+    const items = piezas.filter((p) => p.fuente || p.raw);
+    // carpetas vacías también (para que se vea la misma estructura)
+    [...vacias, ...piezas.map((p) => p.dir)].forEach((d) => { if (d?.length) zip.folder([raiz, ...d.map(seg)].join('/')); });
+    let i = 0;
+    for (const p of items) {
+      if (cancelado()) throw new Error('__cancel');
+      i++; avance('Descargando y organizando en carpetas…', i, items.length, `${i} de ${items.length} · ${limpio(p.file || p.titulo).slice(0, 80)}`);
+      let nombre = seg(p.file || p.titulo); if (p.fuente && !p.raw && !/\.pdf$/i.test(nombre)) nombre += '.pdf';
+      let ruta = [raiz, ...p.dir.map(seg), nombre].join('/');
+      for (let n = 2; usados.has(ruta.toLowerCase()); n++) ruta = [raiz, ...p.dir.map(seg), nombre.replace(/(\.[^.]+)?$/, ` (${n})$1`)].join('/');
+      usados.add(ruta.toLowerCase());
+      try {
+        const bytes = p.raw ? await p.raw() : (await p.fuente()).bytes;
+        zip.file(ruta, bytes, { binary: true, compression: /\.pdf$|\.(png|jpe?g|zip)$/i.test(ruta) ? 'STORE' : 'DEFLATE' });
+      } catch (e) { console.warn('No se pudo agregar', ruta, e); fallas.push(ruta.replace(raiz + '/', '')); }
+    }
+    if (fallas.length) zip.file(`${raiz}/ARCHIVOS NO INCLUIDOS.txt`, `Estos archivos no se pudieron descargar (dañados o no encontrados):\r\n\r\n${fallas.join('\r\n')}`);
+    avance('Comprimiendo…', 0, 100);
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', streamFiles: true }, (m) => avance('Comprimiendo…', m.percent, 100));
+    const nombre = `Carpeta ${ent.razon_social}${sede ? ' - ' + sede : ''} ${UI.hoy()}.zip`.replace(/[\\/:*?"<>|]+/g, '-');
+    S.log('DESCARGA', 'entidades', ent.id, `Carpeta completa en carpetas (.zip, ${items.length - fallas.length} archivos)`);
+    toast(`Carpeta lista: ${items.length - fallas.length} archivos${fallas.length ? ` · ${fallas.length} no se pudieron descargar (ver ARCHIVOS NO INCLUIDOS.txt)` : ''}`);
+    UI.descargar(blob, nombre);
   }
   const limpioPDF = (t, font) => { let out = ''; for (const ch of String(t)) { try { font.encodeText(ch); out += ch; } catch { out += ch.normalize('NFD').replace(/[̀-ͯ]/g, '') || '?'; } } return out; };
 })();
