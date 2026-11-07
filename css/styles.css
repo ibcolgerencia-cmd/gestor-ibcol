@@ -567,3 +567,7 @@ h1 .icon-btn { vertical-align: middle; }
 .inv-vistas .sp { flex: 1; }
 .borrar-bar[hidden] { display: none; }
 .borrar-bar.mover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+/* Alertas de vencimiento en pestaña desplegable */
+.alertas-plegables > summary::-webkit-details-marker { display: none; }
+.alertas-plegables[open] > summary .chev { transform: rotate(90deg); }
+.alertas-plegables > summary:hover h2 { color: var(--pri, #0a7c99); }
