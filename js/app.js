@@ -227,6 +227,24 @@ window.APP = (() => {
   A.listaVenc = (v) => (v.length ? `<div class="alerts">${v.map((x) => `<div class="alert ${x.nivel}"><i></i><div><b>${h(x.txt)}</b><small>${h(x.sub)}</small></div>
       <div style="display:flex;gap:8px;align-items:center"><span class="pill ${x.nivel === 'acc' ? 'acc' : x.nivel}">${x.d < 0 ? `Vencido hace ${-x.d} d` : x.d === 0 ? 'Vence hoy' : `En ${x.d} d`}</span>${x.eq ? `<button class="icon-btn" data-act="abrirEq" data-id="${x.eq.id}" aria-label="Abrir equipo">${I.ver}</button>` : ''}</div></div>`).join('')}</div>`
     : '<div class="empty">Sin vencimientos en los próximos 30 días.</div>');
+  // alertas en una pestaña desplegable (cerrada por defecto; se recuerda si el usuario la abre)
+  A.alertasPlegables = (v, sub, clave = 'general') => {
+    const venc = v.filter((x) => x.d < 0).length, prox = v.length - venc;
+    let abierto = false; try { abierto = localStorage.getItem('ibcol_alertas_' + clave) === '1'; } catch { /* */ }
+    return `<details class="panel alertas-plegables" data-alertas="${h(clave)}" ${abierto ? 'open' : ''}>
+      <summary style="display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;flex-wrap:wrap">
+        <span class="chev" aria-hidden="true" style="display:inline-block;transition:transform .2s">▸</span>
+        <h2 style="margin:0">Alertas de vencimiento</h2>
+        ${venc ? `<span class="pill bad">${venc} vencida${venc === 1 ? '' : 's'}</span>` : ''}${prox ? `<span class="pill warn">${prox} próxima${prox === 1 ? '' : 's'}</span>` : ''}${!v.length ? '<span class="pill ok">Sin alertas</span>' : ''}
+        <span class="muted" style="margin-left:auto">${h(sub)} · ${abierto ? 'clic para ocultar' : 'clic para ver'}</span></summary>
+      <div style="margin-top:12px">${A.listaVenc(v)}</div></details>`;
+  };
+  document.addEventListener('toggle', (e) => {
+    const d = e.target; if (!d?.matches?.('details[data-alertas]')) return;
+    try { localStorage.setItem('ibcol_alertas_' + d.dataset.alertas, d.open ? '1' : '0'); } catch { /* */ }
+    const m = d.querySelector('summary .muted'); if (m) m.textContent = m.textContent.replace(/clic para (ver|ocultar)/, d.open ? 'clic para ocultar' : 'clic para ver');
+    const c = d.querySelector('.chev'); if (c) c.style.transform = d.open ? 'rotate(90deg)' : '';
+  }, true);
 
   // Indicadores de gestión
   A.kpis = ({ equipos, cronos, mtos, eventos, alertas, anio = new Date().getFullYear() }) => {
@@ -287,7 +305,7 @@ window.APP = (() => {
         <div class="kpi ${venc.some((v) => v.d < 0) ? 'bad' : venc.length ? 'warn' : 'ok'}"><span class="l">Vencimientos</span><span class="v">${venc.length}</span><span class="meta">${venc.filter((v) => v.d < 0).length} vencidos · ${venc.filter((v) => v.d >= 0).length} próximos 30 días</span></div>
       </div>
       <div class="grid2">
-        <section class="panel"><header><h2>Alertas de vencimiento</h2><span class="muted">Próximos 30 días</span></header>${A.listaVenc(venc.slice(0, 12))}</section>
+        ${A.alertasPlegables(venc, 'Próximos 30 días', 'panel')}
         <section class="panel"><header><h2>Cumplimiento por entidad</h2><span class="muted">Mantenimiento preventivo ${anio}</span></header>
           ${porEnt.length ? `<div class="bars">${porEnt.map((x) => `<div class="bar"><button class="btn ghost sm" style="justify-content:flex-start;min-width:0;overflow:hidden;text-overflow:ellipsis" data-act="abrirEnt" data-id="${x.e.id}">${h(x.e.razon_social)}</button><div class="t"><i style="width:${x.mp ?? 0}%;background:${(x.mp ?? 0) >= 95 ? 'var(--ok)' : (x.mp ?? 0) >= 80 ? 'var(--warn)' : 'var(--bad)'}"></i></div><span class="num">${x.mp === null ? '—' : x.mp + '%'}</span></div>`).join('')}</div>` : '<div class="empty">Aún no hay entidades.</div>'}
         </section>
@@ -397,7 +415,7 @@ window.APP = (() => {
       ${tarjetasSedes}
       <section class="panel" data-reportes></section>
       ${A.kpiTiles(k, ['mp', 'mm', 'mv', 'disp'])}
-      <section class="panel"><header><h2>Alertas de vencimiento</h2><span class="muted">Mantenimientos, calibraciones, garantías y documentos</span></header>${A.listaVenc(venc)}</section>
+      ${A.alertasPlegables(venc, 'Mantenimientos, calibraciones, garantías y documentos', 'entidad')}
       ${porSedes && !sede ? '<h2 class="sede-tit" style="margin-top:8px">TODA LA ENTIDAD (TODAS LAS SEDES)</h2>' : ''}${grupos.map((g) => `<section class="folder-group"><span class="eyebrow">${h(g)}</span><div class="folders">${visiblesE.filter((c) => c.g === g).map((c) => A.tarjetaCarpeta(c, etiqueta(c), 'ent', ent)).join('')}${esProp() && g === grupos[0] ? `<div class="folder-w"><button class="folder folder-nueva" data-act="nuevaCarpeta" style="border-style:dashed"><span class="ic"></span><b>${I.mas} Nueva carpeta</b><small>Crear carpeta en esta entidad</small></button></div>` : ''}</div></section>`).join('')}`;
     A.panelReportes?.(content().querySelector('[data-reportes]'), { entidadId: id });
     A.acts({
