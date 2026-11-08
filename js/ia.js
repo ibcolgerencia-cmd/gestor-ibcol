@@ -132,12 +132,20 @@
     const grupo = eq ? 'equipo' : (PLANTILLAS[carpeta] ? carpeta : null);
     const opciones = [...(grupo ? PLANTILLAS[grupo] : Object.entries(PLANTILLAS).filter(([k]) => k !== 'equipo' && k !== 'libre').flatMap(([, v]) => v)), ...PLANTILLAS.libre];
     let historial = [], ultimo = '';
+    // instrucciones predeterminadas: las guardadas por el propietario (Mi empresa) o las originales
+    const propia = (i) => st.emp?.ia_instr?.[opciones[i][0]];
+    const instr = (i) => propia(i) || opciones[i][1];
+    const esProp = st.perfil?.rol === 'propietario';
     const m = modal({
       titulo: `Asistente de IA${eq ? ' · ' + eq.nombre : ent ? ' · ' + ent.razon_social : ''}`, size: 'wide',
       cuerpo: `<div class="form ia">
         <div class="fields">
           ${f.sel('plantilla', 'Documento a redactar', opciones.map(([t], i) => [i, t]), 0, { full: true })}
-          ${f.area('instruccion', 'Instrucciones (puede ajustarlas o agregar detalles)', opciones[0][1], { rows: 4 })}
+          ${f.area('instruccion', 'Instrucciones (puede ajustarlas o agregar detalles)', instr(0), { rows: 4 })}
+          ${esProp ? `<div class="field full" style="margin-top:-6px"><div class="actions" style="margin:0;gap:6px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn sm" data-ia="guardarinstr" title="Usar este texto cada vez que elija este documento">${I.subir} Guardar como predeterminadas</button>
+            <button type="button" class="btn sm" data-ia="restaurarinstr" title="Volver a las instrucciones originales de IBCOL">Restaurar originales</button>
+            <span class="muted" style="font-size:.8rem" data-instrest></span></div></div>` : ''}
           <div class="field full"><label class="checks"><input type="checkbox" name="inv" data-single checked> Usar los datos reales de la entidad y su inventario</label></div>
           ${eq ? '<fieldset class="field full" data-fuentes><legend>Fuentes del equipo: la IA lee estos documentos</legend><span class="muted">Buscando documentos del equipo…</span></fieldset>' : ''}
         </div>
@@ -165,7 +173,7 @@
         const l2 = docsEq.filter(fn); if (!l2.length) return '';
         return `<div style="margin:4px 0"><b style="font-size:.85rem">${h(l)}</b>${l2.map((d) => `<label class="checks" style="display:flex;gap:6px;align-items:center;font-size:.85rem"><input type="checkbox" data-doc="${d.id}" checked> ${h(d.nombre)}</label>`).join('')}</div>`;
       }).join('') || '<span class="muted">Este equipo aún no tiene manuales, fichas técnicas, registro sanitario ni facturas cargados. Súbalos en sus carpetas para que la IA los use.</span>');
-      if (auto === 'hv') { const i = opciones.findIndex((o) => o[2] === 'hv'); if (i >= 0) { $('[name=plantilla]').value = i; $('[name=instruccion]').value = opciones[i][1]; body.querySelector('[data-ia=redactar]').click(); } }
+      if (auto === 'hv') { const i = opciones.findIndex((o) => o[2] === 'hv'); if (i >= 0) { $('[name=plantilla]').value = i; $('[name=instruccion]').value = instr(i); body.querySelector('[data-ia=redactar]').click(); } }
     })();
     const modoHV = () => opciones[+$('[name=plantilla]').value][2] === 'hv';
     const modoMto = () => opciones[+$('[name=plantilla]').value][2] === 'mto';
@@ -226,7 +234,20 @@
       } catch (e) { console.warn(e); }
       return '';
     };
-    $('[name=plantilla]').onchange = (e) => { $('[name=instruccion]').value = opciones[+e.target.value][1]; };
+    const marcaInstr = () => { const n = $('[data-instrest]'); if (n) n.textContent = propia(+$('[name=plantilla]').value) ? 'Usando sus instrucciones guardadas' : 'Usando las instrucciones originales'; };
+    marcaInstr();
+    $('[name=plantilla]').onchange = (e) => { $('[name=instruccion]').value = instr(+e.target.value); marcaInstr(); };
+    const guardarInstr = async (texto) => {
+      if (!esProp) return toast('Solo el propietario puede cambiar las instrucciones predeterminadas', true);
+      const i = +$('[name=plantilla]').value, k = opciones[i][0];
+      const map = { ...(st.emp?.ia_instr || {}) };
+      if (texto && texto !== opciones[i][1]) map[k] = texto; else delete map[k];
+      const e = await S.get('empresa', 1);
+      await S.upsert('empresa', { id: 1, datos: { ...(e?.datos || {}), ia_instr: map }, firma: e?.firma ?? st.firma });
+      await A.cargarConfig();
+      $('[name=instruccion]').value = instr(i); marcaInstr();
+      toast(texto ? `Instrucciones guardadas para «${k}»` : `Se restauraron las instrucciones originales de «${k}»`);
+    };
     const pedir = async (instruccion, conHist) => {
       estado.textContent = 'Redactando… puede tardar hasta un minuto.';
       body.querySelectorAll('[data-ia]').forEach((b) => (b.disabled = true));
@@ -296,6 +317,8 @@
       }
       if (a === 'verhv') { const e2 = await S.get('equipos', eq.id); const cons = (await S.list('consultorios', { entidad_id: e2.entidad_id })).find((c) => c.id === e2.consultorio_id); return UI.verPDF({ titulo: `Hoja de vida · ${e2.nombre}`, blob: await FMT.hojaVida({ eq: e2, ent, cons, fmt: st.fmt.hoja_vida }), nombre: `HV_${e2.codigo_inv}.pdf` }); }
       if (a === 'redactar' && modoMto()) return reporteMto();
+      if (a === 'guardarinstr') { const t = $('[name=instruccion]').value.trim(); if (!t) return toast('Escriba las instrucciones antes de guardarlas', true); return guardarInstr(t); }
+      if (a === 'restaurarinstr') return guardarInstr('');
       if (a === 'redactar') { const t = $('[name=instruccion]').value.trim(); if (!t) return toast('Escriba qué documento necesita', true); historial = []; return pedir(t, false); }
       if (a === 'ajustar') { const t = $('[name=ajuste]').value.trim(); if (!t) return toast('Escriba el ajuste', true); historial[historial.length - 1] = { rol: 'ia', texto: $('[name=resultado]').value }; $('[name=ajuste]').value = ''; return pedir(t, true); }
       const texto = $('[name=resultado]').value;
