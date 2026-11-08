@@ -879,7 +879,7 @@
     const pm = !m && tipo === 'preventivo' ? eq.hv?.protocolo_mto : null;
     const pruebasIni = d.pruebas || (pm?.pruebas?.length ? pm.pruebas : fp.pruebas || []).map((p) => ({ item: p, r: 'Pasa' }));
     const actsSel = d.actividades || (pm?.actividades?.length ? pm.actividades : fp.actividades);
-    const actsTodas = [...new Set([...(fp.actividades || []), ...(pm?.actividades || []), ...(d.actividades || [])])];
+    const actsTodas = [...new Set([...(d.actividades || []), ...(pm?.actividades || []), ...(fp.actividades || [])])];
     const herrSel = d.herramientas || (pm?.herramientas?.length ? (fp.herramientas || []).filter((x) => pm.herramientas.some((y) => y.toLowerCase().includes(x.toLowerCase()) || x.toLowerCase().includes(y.toLowerCase()))) : []);
     const obsBase = d.observaciones ?? (pm?.observaciones || '');
     const obsIni = notaAuto?.texto && !obsBase.includes(notaAuto.texto) ? [notaAuto.texto, obsBase].filter(Boolean).join('\n') : obsBase;
@@ -920,7 +920,7 @@
         if (bia) bia.onclick = async () => {
           const est = mm.body.querySelector('[data-iamto-est]'); bia.disabled = true;
           try {
-            const x = await A.iaMantenimiento(eq, { onEstado: (t) => { est.textContent = t; } });
+            const x = await A.iaMantenimiento(eq, { onEstado: (t) => { est.textContent = t; }, instruccion: A.instrIA?.('Reporte de mantenimiento preventivo (FMB-004)') || '' });
             if (!x.pruebas.length && !x.actividades.length) throw new Error('La IA no encontró pruebas ni actividades para este equipo');
             const ACT_LBL = 'Actividades de mantenimiento (máximo 12 en el formato)';
             if (x.pruebas.length) mm.body.querySelector('[data-pruebas-box]').innerHTML = rep('pruebas', [{ k: 'item', ph: 'Prueba', w: '3fr' }, { k: 'r', ph: 'Resultado', opts: ['Pasa', 'No pasa', 'N/A'] }], x.pruebas.map((p) => ({ item: p, r: 'Pasa' })));
