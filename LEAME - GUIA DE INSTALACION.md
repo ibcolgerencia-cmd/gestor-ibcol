@@ -89,6 +89,7 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 ## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
 
+- **Instrucciones predeterminadas del Asistente de IA (v94):** en la ventana del Asistente, el propietario puede escribir sus propias instrucciones para cada documento (ej. Reporte de mantenimiento preventivo FMB-004) y pulsar «Guardar como predeterminadas»: desde ese momento aparecen cada vez que se elige ese documento, en todos los equipos y entidades. «Restaurar originales» vuelve al texto de IBCOL. Se guardan en Mi empresa.
 - **Alertas de vencimiento desplegables (v93):** en el Panel de control y en la carpeta de cada entidad, las alertas quedan en una pestaña plegable que muestra cuántas están vencidas y próximas; se abre con un clic y el gestor recuerda si se dejó abierta.
 - **Crear carpetas (v92):** en la carpeta de un equipo, la tarjeta «+ Nueva carpeta» crea una carpeta solo en ese equipo o, marcando la casilla, en todos los equipos de la entidad; en la carpeta digital de la entidad también hay «+ Nueva carpeta». Las carpetas nuevas permiten subir archivos, subcarpetas, cambiar nombre y quitarlas, y se incluyen en «Descargar carpeta».
 - **Nombre de carpetas por equipo (v91):** el lápiz de una carpeta dentro de un equipo cambia el nombre y número solo en ese equipo; para cambiarlo en todos los equipos de la entidad marque «Aplicar este nombre a todos los equipos». «Nombre general» vuelve al nombre común.
