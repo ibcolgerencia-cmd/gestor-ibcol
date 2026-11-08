@@ -258,16 +258,21 @@
 
   // ------------------------------------------------------------------ reporte de mantenimiento preventivo (FMB-004)
   // Lee manuales, fichas técnicas y guías del equipo + Google y propone pruebas, actividades y observaciones
-  A.iaMantenimiento = async (eq, { onEstado } = {}) => {
-    const docs = (await S.list('documentos', { equipo_id: eq.id })).filter((d) => ['manual', 'hoja_vida'].includes(d.carpeta) && /\.pdf$/i.test(d.nombre || d.archivo || ''));
+  A.iaMantenimiento = async (eq, { onEstado, instruccion = '', docs: elegidos = null } = {}) => {
+    const esPdf = (d) => /\.pdf$/i.test(d.nombre || d.archivo || '');
+    const docs = elegidos ? elegidos.filter(esPdf) : (await S.list('documentos', { equipo_id: eq.id })).filter((d) => ['manual', 'hoja_vida'].includes(d.carpeta) && esPdf(d));
     const orden = (d) => (/mantenim|servic/i.test(nrm(d.subcarpeta) + nrm(d.nombre)) ? 0 : /operac|usuario|manual/i.test(nrm(d.subcarpeta) + nrm(d.nombre)) ? 1 : /guia/.test(nrm(d.nombre)) ? 2 : d.carpeta === 'hoja_vida' ? 4 : 3);
     const usar = docs.sort((a, b) => orden(a) - orden(b)).slice(0, 5);
-    const partes = [];
+    // instrucciones del ingeniero (las del asistente, incluidas las guardadas como predeterminadas) y exigencia de un reporte propio de ESTE equipo
+    const nomEq = [eq.nombre, eq.marca, eq.modelo].filter(Boolean).join(' · ');
+    const partes = [`### INSTRUCCIONES DEL INGENIERO BIOMÉDICO (obligatorias, tienen prioridad)\n${String(instruccion || '').trim() || 'Completa el reporte de mantenimiento preventivo de este equipo.'}\n` +
+      `- Las pruebas, actividades y observaciones deben ser PROPIAS de este equipo (${nomEq}) y de su tecnología, según su manual o las recomendaciones del fabricante; no uses una lista genérica igual para todos los equipos.\n` +
+      `- No copies sin revisar las listas del formato ni reportes anteriores: genera el contenido de nuevo para este equipo.` + (usar.length ? '' : `\n- Este equipo no tiene manuales cargados: busca en Google el manual de servicio o de usuario del fabricante (${nomEq}) y, si no aparece, usa las buenas prácticas para este tipo de equipo.`)];
     for (const [i, d] of usar.entries()) { onEstado?.(`Leyendo ${d.nombre} (${i + 1} de ${usar.length})…`); partes.push(`### DOCUMENTO: ${d.nombre}\n${await A.textoDocIA(d, Math.floor(50000 / Math.max(usar.length, 1)))}`); }
     const prev = (await S.list('mantenimientos', { equipo_id: eq.id, tipo: 'preventivo' }, '-fecha'))[0];
     const fp = st.fmt.mto_preventivo || {};
     onEstado?.(usar.length ? 'Consultando la IA de Google con los manuales…' : 'Sin manuales cargados: buscando en Google…');
-    const r = await llamar({ accion: 'mantenimiento', equipo: datosEq(eq), documentos: partes.join('\n\n'), protocolo: eq.hv?.protocolo_mto || null,
+    const r = await llamar({ accion: 'mantenimiento', equipo: datosEq(eq), documentos: partes.join('\n\n'), protocolo: null,
       base: { pruebas: fp.pruebas || [], actividades: fp.actividades || [], herramientas: fp.herramientas || [] }, anterior: prev?.datos?.observaciones || '' }, () => onEstado?.('Google está ocupado; reintentando…'));
     const x = r.datos || {};
     const corta = (s) => String(s).replace(/\s+/g, ' ').trim().slice(0, 70);

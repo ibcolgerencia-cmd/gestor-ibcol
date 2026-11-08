@@ -93,6 +93,8 @@
     } catch (e) { return `(${d.nombre}: no se pudo abrir)`; }
   }
   A.textoDocIA = textoDoc;
+  // instrucciones vigentes de un documento: las guardadas por el propietario o las originales
+  A.instrIA = (titulo) => st.emp?.ia_instr?.[titulo] || Object.values(PLANTILLAS).flat().find((o) => o[0] === titulo)?.[1] || '';
   const esFicha = (d) => /FICHA|(^|[^A-Z])FT([^A-Z]|$)|DATASHEET/.test(nrm(d.nombre));
   const GRUPOS = [
     ['manual', 'Manuales', (d) => d.carpeta === 'manual' && !esFicha(d)],
@@ -182,7 +184,11 @@
       body.querySelectorAll('[data-ia]').forEach((b) => (b.disabled = true));
       try {
         let x = null;
-        try { x = await A.iaMantenimiento(eq, { onEstado: (t) => { estado.textContent = t; } }); }
+        try {
+          const selDocs = body.querySelector('[data-doc]') ? [...body.querySelectorAll('[data-doc]:checked')].map((c) => docsEq.find((d) => d.id === c.dataset.doc)).filter(Boolean) : null;
+          x = await A.iaMantenimiento(eq, { onEstado: (t) => { estado.textContent = t; }, instruccion: $('[name=instruccion]').value, docs: selDocs });
+          if (!x.pruebas.length && !x.actividades.length) throw new Error('La IA no devolvió pruebas ni actividades');
+        }
         catch (e1) {
           // respaldo: asistente de IA con los documentos marcados como fuente
           estado.textContent = 'Usando el asistente de IA con los manuales del equipo…';
