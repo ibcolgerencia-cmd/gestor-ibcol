@@ -571,3 +571,4 @@ h1 .icon-btn { vertical-align: middle; }
 .alertas-plegables > summary::-webkit-details-marker { display: none; }
 .alertas-plegables[open] > summary .chev { transform: rotate(90deg); }
 .alertas-plegables > summary:hover h2 { color: var(--pri, #0a7c99); }
+.form.ia [hidden] { display: none !important; }
