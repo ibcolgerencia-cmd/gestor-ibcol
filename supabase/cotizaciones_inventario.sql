@@ -47,6 +47,9 @@ create trigger trg_updated_catalogo_cotizacion before update on public.catalogo_
 drop trigger if exists trg_updated_cotizaciones_detalle on public.cotizaciones_detalle;
 create trigger trg_updated_cotizaciones_detalle before update on public.cotizaciones_detalle for each row execute function public.fn_updated_at();
 
+-- precio de metrología por equipo (vacío = No aplica)
+alter table public.catalogo_cotizacion add column if not exists valor_metrologia numeric;
+
 -- columnas que ve el cliente
 alter table public.cotizaciones add column if not exists descripcion text;
 alter table public.cotizaciones add column if not exists subtotal numeric;
