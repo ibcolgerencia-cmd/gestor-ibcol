@@ -1069,7 +1069,7 @@
           : `${f.sel('estado', 'Estado', ['Pendiente', 'Pagada', 'Anulada'], x?.estado || 'Pendiente')}${tipo === 'factura' ? f.input('total', 'Valor total (COP) *', x?.total, { type: 'number' }) : ''}`}
         ${tipo === 'factura' ? f.area('concepto', 'Por concepto de', x?.concepto, { rows: 2 }) : tipo === 'cuenta_cobro' ? f.area('concepto', 'Texto introductorio del concepto (opcional)', x?.concepto, { rows: 2 }) + '<p class="muted field full">Cada ítem sale numerado en “Por concepto de”, por ejemplo: “Cuota correspondiente al mes de marzo del contrato No. 05-2026, con el objeto de…”.</p>' : ''}</div>
         ${tipo === 'cotizaciones' ? `<div class="fields">${f.area('descripcion', 'Objeto de la cotización (lo ve el cliente, junto con el valor total)', x?.descripcion || '', { rows: 2, full: true })}</div>` : ''}
-        ${tipo !== 'factura' ? `<div class="field"><span class="lbl">Ítems${tipo === 'cotizaciones' ? ' <span class="muted" style="font-weight:400">— la tabla solo la ve usted; el cliente ve el total</span>' : ''}</span>${tipo === 'cotizaciones' ? `<div style="margin-bottom:6px"><button type="button" class="btn sm pri" data-inv>${I.mas} Agregar del inventario</button></div>` : ''}${rep('items', itemsCols, x?.items || [])}<div class="muted" data-tot></div></div>` : `<div class="field"><span class="lbl">PDF de la factura electrónica</span><input type="file" accept="application/pdf" data-fact>${x?.archivo ? '<span class="muted">Ya tiene un PDF adjunto; cargue otro para reemplazarlo.</span>' : ''}</div>`}
+        ${tipo !== 'factura' ? `<div class="field"><span class="lbl">Ítems${tipo === 'cotizaciones' ? ' <span class="muted" style="font-weight:400">— la tabla solo la ve usted; el cliente ve el total</span>' : ''}</span>${tipo === 'cotizaciones' ? `<div data-invdrag></div><div style="margin-bottom:6px"><button type="button" class="btn sm" data-inv>${I.mas} Elegir varios del inventario</button></div>` : ''}${rep('items', itemsCols, x?.items || [])}<div class="muted" data-tot></div></div>` : `<div class="field"><span class="lbl">PDF de la factura electrónica</span><input type="file" accept="application/pdf" data-fact>${x?.archivo ? '<span class="muted">Ya tiene un PDF adjunto; cargue otro para reemplazarlo.</span>' : ''}</div>`}
         ${tipo === 'cotizaciones' ? f.area('condiciones', 'Condiciones comerciales', x?.condiciones ?? st.fmt.cotizacion.condiciones, { rows: 4 }) : ''}</form>`,
       alAbrir: (m) => {
         repBind(m.body);
@@ -1077,16 +1077,30 @@
         const calc = () => { if (!t) return; const s = totalItems(repLeer(m.body, 'items')); const iva = Number(m.body.querySelector('[name=iva]')?.value || 0); t.textContent = `Subtotal ${PDF.pesos(s)}${iva ? ` · IVA ${PDF.pesos(s * iva / 100)}` : ''} · Total ${PDF.pesos(s * (1 + iva / 100))}`; };
         m.body.addEventListener('input', calc); m.body.addEventListener('click', () => setTimeout(calc)); calc();
         const fa = m.body.querySelector('[data-fact]'); if (fa) fa.onchange = (e) => { archivo = e.target.files[0] || null; };
-        const bi = m.body.querySelector('[data-inv]');
-        if (bi) bi.onclick = () => A.elegirDelInventario((nuevos) => {
+        // agrega ítems a la tabla (si el mismo servicio ya está, suma la cantidad)
+        const agregarItems = (nuevos, aviso = true) => {
           const box = m.body.querySelector('[data-rep="items"]'); const add = box.querySelector('[data-addrep]');
           nuevos.forEach((it) => {
+            const igual = [...box.querySelectorAll('.ri')].find((r) => r.querySelector('[data-k="descripcion"]').value.trim() === it.descripcion && Number(r.querySelector('[data-k="valor"]').value) === Number(it.valor));
+            if (igual) { const c = igual.querySelector('[data-k="cantidad"]'); c.value = (Number(c.value) || 0) + (Number(it.cantidad) || 1); igual.classList.remove('ri-nueva'); void igual.offsetWidth; igual.classList.add('ri-nueva'); return; }
             let ri = [...box.querySelectorAll('.ri')].find((r) => [...r.querySelectorAll('input')].every((i) => !i.value.trim()));
             if (!ri) { add.insertAdjacentHTML('beforebegin', repFila(itemsCols)); ri = [...box.querySelectorAll('.ri')].pop(); }
             itemsCols.forEach((c) => { ri.querySelector(`[data-k="${c.k}"]`).value = it[c.k] ?? ''; });
+            ri.classList.add('ri-nueva');
           });
-          calc(); toast(`${nuevos.length} ítem(s) agregados del inventario`);
-        });
+          calc(); if (aviso) toast(nuevos.length === 1 ? `Agregado: ${nuevos[0].descripcion}` : `${nuevos.length} ítem(s) agregados del inventario`);
+        };
+        const bi = m.body.querySelector('[data-inv]');
+        if (bi) bi.onclick = () => A.elegirDelInventario((nuevos) => agregarItems(nuevos));
+        // panel del inventario: arrastrar precios y servicios a la tabla (o tocar para agregar)
+        const pd = m.body.querySelector('[data-invdrag]');
+        if (pd) {
+          A.panelArrastre(pd, (it) => agregarItems([it], false));
+          const zona = m.body.querySelector('[data-rep="items"]');
+          zona.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('application/x-ibcol-item')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; zona.classList.add('drop-on'); } });
+          zona.addEventListener('dragleave', (e) => { if (!zona.contains(e.relatedTarget)) zona.classList.remove('drop-on'); });
+          zona.addEventListener('drop', (e) => { const d = e.dataTransfer.getData('application/x-ibcol-item'); zona.classList.remove('drop-on'); if (!d) return; e.preventDefault(); try { agregarItems([JSON.parse(d)], false); } catch {} });
+        }
       },
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
         const v = leer(m.body); if (!v.entidad_id) { toast('Seleccione la entidad', true); return false; }
