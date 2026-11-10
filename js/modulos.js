@@ -1022,19 +1022,19 @@
     const [lista, ents] = await Promise.all([S.list(tabla, filtros, '-fecha'), entidadId ? Promise.resolve([]) : S.list('entidades', {}, 'razon_social')]);
     const en = (id) => ents.find((e) => e.id === id)?.razon_social || '—';
     const nom = { cotizaciones: 'Cotizaciones', cuenta_cobro: 'Cuentas de cobro', factura: 'Facturas' }[tipo];
-    const tot = (x) => (tipo === 'factura' ? Number(x.total) || 0 : totalItems(x.items) * (1 + (Number(x.iva) || 0) / 100));
+    const tot = (x) => (tipo === 'factura' ? Number(x.total) || 0 : tipo === 'cotizaciones' ? A.totalCot(x) : totalItems(x.items));
     const est = (e) => `<span class="pill ${['Aprobada', 'Pagada'].includes(e) ? 'ok' : ['Rechazada', 'Anulada'].includes(e) ? 'bad' : e === 'Enviada' ? 'acc' : 'warn'}">${h(e)}</span>`;
     el.innerHTML = `<section class="panel"><header><h2>${nom}</h2>${esProp() ? `<button class="btn pri" data-act="nuevoCom">${I.mas} ${tipo === 'cotizaciones' ? 'Nueva cotización' : tipo === 'factura' ? 'Registrar factura' : 'Nueva cuenta de cobro'}</button>` : ''}</header>
       ${lista.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Número</th><th>Fecha</th>${entidadId ? '' : '<th>Entidad</th>'}<th>${tipo === 'cotizaciones' ? 'Validez' : 'Concepto'}</th><th class="r">Total</th><th>Estado</th><th></th></tr></thead><tbody>
         ${lista.map((x) => `<tr class="clic" data-act="verCom" data-id="${x.id}"><td class="mono">${h(x.numero)}</td><td class="num">${UI.fecha(x.fecha)}</td>${entidadId ? '' : `<td>${h(en(x.entidad_id))}</td>`}<td class="muted">${tipo === 'cotizaciones' ? `${x.validez_dias || 30} días` : h((x.concepto || '').slice(0, 70))}</td><td class="r num"><b>${PDF.pesos(tot(x))}</b></td><td>${est(x.estado)}</td>
-          <td><div class="row-actions"><button class="icon-btn" data-act="verCom" data-id="${x.id}" aria-label="Ver PDF">${I.pdf}</button>${esProp() ? `${tipo === 'cotizaciones' && x.estado === 'Aprobada' ? `<button class="btn sm" data-act="convertir" data-id="${x.id}">Cuenta de cobro</button>` : ''}<button class="icon-btn" data-act="editCom" data-id="${x.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-act="delCom" data-id="${x.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`).join('')}
+          <td><div class="row-actions"><button class="icon-btn" data-act="verCom" data-id="${x.id}" aria-label="Ver PDF" title="${tipo === 'cotizaciones' && esProp() ? 'PDF con la tabla de ítems (solo usted)' : 'Ver PDF'}">${I.pdf}</button>${tipo === 'cotizaciones' && esProp() ? `<button class="icon-btn" data-act="verCom" data-id="${x.id}" data-cliente="1" aria-label="PDF para el cliente" title="PDF para el cliente: solo el valor total (más IVA)">${I.ojo}</button>` : ''}${esProp() ? `${tipo === 'cotizaciones' && x.estado === 'Aprobada' ? `<button class="btn sm" data-act="convertir" data-id="${x.id}">Cuenta de cobro</button>` : ''}<button class="icon-btn" data-act="editCom" data-id="${x.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-act="delCom" data-id="${x.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`).join('')}
       </tbody></table></div>` : '<div class="empty">Sin registros.</div>'}</section>`;
     const reg = (id) => lista.find((x) => x.id === id);
     A.acts({
       nuevoCom: () => A.formComercial(tipo, null, entidadId),
       editCom: (d) => A.formComercial(tipo, reg(d.id), entidadId),
       delCom: async (d) => { const x = reg(d.id); if (await confirmar(`¿Eliminar ${x.numero}?`)) { await S.remove(tabla, x.id); if (x.archivo) { try { await S.removeFile(x.archivo); } catch {} } A.recargar(); } },
-      convertir: async (d) => { const c = reg(d.id); const todos = await S.list('cobros', { tipo: 'cuenta_cobro' }); A.formComercial('cuenta_cobro', { entidad_id: c.entidad_id, numero: A.consecutivoCC(todos), fecha: UI.hoy(), concepto: `Servicios según cotización ${c.numero}.`, items: c.items, estado: 'Pendiente', _nuevo: true }, entidadId); },
+      convertir: async (d) => { const c = reg(d.id); const todos = await S.list('cobros', { tipo: 'cuenta_cobro' }); A.formComercial('cuenta_cobro', { entidad_id: c.entidad_id, numero: A.consecutivoCC(todos), fecha: UI.hoy(), concepto: `Servicios según cotización ${c.numero}.`, items: await A.itemsCot(c), estado: 'Pendiente', _nuevo: true }, entidadId); },
       verCom: async (d) => {
         const x = reg(d.id); const ent = await S.get('entidades', x.entidad_id);
         if (tipo === 'factura') {
@@ -1042,9 +1042,10 @@
           const b = await S.fileBlob(x.archivo); if (!b) return toast('El archivo no está disponible', true);
           return UI.verPDF({ titulo: `Factura ${x.numero}`, blob: b, nombre: `Factura_${x.numero}.pdf` });
         }
-        const blob = tipo === 'cotizaciones' ? PDF.cotizacion({ c: x, ent, emp: st.emp, fmt: st.fmt.cotizacion, firma: st.firma }).output('blob') : await FMT.cuentaCobro({ cc: x, ent });
+        const detalle = tipo === 'cotizaciones' && esProp() && !d.cliente;
+        const blob = tipo === 'cotizaciones' ? PDF.cotizacion({ c: detalle ? { ...x, items: await A.itemsCot(x) } : { ...x, items: [], total: A.totalCot(x), subtotal: x.subtotal ?? totalItems(x.items) }, ent, emp: st.emp, fmt: st.fmt.cotizacion, firma: st.firma, detalle }).output('blob') : await FMT.cuentaCobro({ cc: x, ent });
         S.log('CONSULTA', tabla, x.id, x.numero);
-        UI.verPDF({ titulo: x.numero, blob, nombre: `${x.numero}.pdf` });
+        UI.verPDF({ titulo: tipo === 'cotizaciones' ? `${x.numero}${detalle ? ' · detalle (solo propietario)' : ' · versión cliente'}` : x.numero, blob, nombre: `${x.numero}${tipo === 'cotizaciones' && !detalle && esProp() ? '_cliente' : ''}.pdf` });
       },
     });
   };
@@ -1058,6 +1059,7 @@
     if (sugeridoCC && (!numero || x?._nuevo)) numero = sugeridoCC;
     if (!numero) { const todos = await S.list(tabla, tabla === 'cobros' ? { tipo } : {}); numero = tipo === 'factura' ? '' : tipo === 'cuenta_cobro' ? (await A.CONS.siguiente('cuenta_cobro')) || A.consecutivoCC(todos) : A.consecutivo(todos, 'numero', `COT-${anioAct}-`); }
     let archivo = null;
+    if (tipo === 'cotizaciones' && x && !x._nuevo) x = { ...x, items: await A.itemsCot(x) };
     const itemsCols = [{ k: 'descripcion', ph: 'Descripción del servicio o producto', w: '3fr' }, { k: 'cantidad', ph: 'Cant.', type: 'number', w: '.6fr' }, { k: 'valor', ph: 'Valor unitario', type: 'number', w: '1fr' }];
     modal({
       titulo: { cotizaciones: 'Cotización', cuenta_cobro: 'Cuenta de cobro', factura: 'Factura' }[tipo] + (nuevo ? ' nueva' : ` ${x.numero}`), size: 'wide',
@@ -1066,7 +1068,8 @@
         ${tipo === 'cotizaciones' ? `${f.input('validez_dias', 'Validez (días)', x?.validez_dias || 30, { type: 'number' })}${f.input('iva', 'IVA %', x?.iva ?? 0, { type: 'number' })}${f.sel('estado', 'Estado', ['Borrador', 'Enviada', 'Aprobada', 'Rechazada'], x?.estado || 'Borrador')}`
           : `${f.sel('estado', 'Estado', ['Pendiente', 'Pagada', 'Anulada'], x?.estado || 'Pendiente')}${tipo === 'factura' ? f.input('total', 'Valor total (COP) *', x?.total, { type: 'number' }) : ''}`}
         ${tipo === 'factura' ? f.area('concepto', 'Por concepto de', x?.concepto, { rows: 2 }) : tipo === 'cuenta_cobro' ? f.area('concepto', 'Texto introductorio del concepto (opcional)', x?.concepto, { rows: 2 }) + '<p class="muted field full">Cada ítem sale numerado en “Por concepto de”, por ejemplo: “Cuota correspondiente al mes de marzo del contrato No. 05-2026, con el objeto de…”.</p>' : ''}</div>
-        ${tipo !== 'factura' ? `<div class="field"><span class="lbl">Ítems</span>${rep('items', itemsCols, x?.items || [])}<div class="muted" data-tot></div></div>` : `<div class="field"><span class="lbl">PDF de la factura electrónica</span><input type="file" accept="application/pdf" data-fact>${x?.archivo ? '<span class="muted">Ya tiene un PDF adjunto; cargue otro para reemplazarlo.</span>' : ''}</div>`}
+        ${tipo === 'cotizaciones' ? `<div class="fields">${f.area('descripcion', 'Objeto de la cotización (lo ve el cliente, junto con el valor total)', x?.descripcion || '', { rows: 2, full: true })}</div>` : ''}
+        ${tipo !== 'factura' ? `<div class="field"><span class="lbl">Ítems${tipo === 'cotizaciones' ? ' <span class="muted" style="font-weight:400">— la tabla solo la ve usted; el cliente ve el total</span>' : ''}</span>${tipo === 'cotizaciones' ? `<div style="margin-bottom:6px"><button type="button" class="btn sm pri" data-inv>${I.mas} Agregar del inventario</button></div>` : ''}${rep('items', itemsCols, x?.items || [])}<div class="muted" data-tot></div></div>` : `<div class="field"><span class="lbl">PDF de la factura electrónica</span><input type="file" accept="application/pdf" data-fact>${x?.archivo ? '<span class="muted">Ya tiene un PDF adjunto; cargue otro para reemplazarlo.</span>' : ''}</div>`}
         ${tipo === 'cotizaciones' ? f.area('condiciones', 'Condiciones comerciales', x?.condiciones ?? st.fmt.cotizacion.condiciones, { rows: 4 }) : ''}</form>`,
       alAbrir: (m) => {
         repBind(m.body);
@@ -1074,12 +1077,26 @@
         const calc = () => { if (!t) return; const s = totalItems(repLeer(m.body, 'items')); const iva = Number(m.body.querySelector('[name=iva]')?.value || 0); t.textContent = `Subtotal ${PDF.pesos(s)}${iva ? ` · IVA ${PDF.pesos(s * iva / 100)}` : ''} · Total ${PDF.pesos(s * (1 + iva / 100))}`; };
         m.body.addEventListener('input', calc); m.body.addEventListener('click', () => setTimeout(calc)); calc();
         const fa = m.body.querySelector('[data-fact]'); if (fa) fa.onchange = (e) => { archivo = e.target.files[0] || null; };
+        const bi = m.body.querySelector('[data-inv]');
+        if (bi) bi.onclick = () => A.elegirDelInventario((nuevos) => {
+          const box = m.body.querySelector('[data-rep="items"]'); const add = box.querySelector('[data-addrep]');
+          nuevos.forEach((it) => {
+            let ri = [...box.querySelectorAll('.ri')].find((r) => [...r.querySelectorAll('input')].every((i) => !i.value.trim()));
+            if (!ri) { add.insertAdjacentHTML('beforebegin', repFila(itemsCols)); ri = [...box.querySelectorAll('.ri')].pop(); }
+            itemsCols.forEach((c) => { ri.querySelector(`[data-k="${c.k}"]`).value = it[c.k] ?? ''; });
+          });
+          calc(); toast(`${nuevos.length} ítem(s) agregados del inventario`);
+        });
       },
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
         const v = leer(m.body); if (!v.entidad_id) { toast('Seleccione la entidad', true); return false; }
         if (!v.numero) { toast('Escriba el número', true); return false; }
         const o = { entidad_id: v.entidad_id, numero: v.numero, fecha: v.fecha, estado: v.estado };
-        if (tipo === 'cotizaciones') Object.assign(o, { validez_dias: Number(v.validez_dias) || 30, iva: Number(v.iva) || 0, condiciones: v.condiciones, items: repLeer(m.body, 'items') });
+        let itemsCot = null;
+        if (tipo === 'cotizaciones') {
+          itemsCot = repLeer(m.body, 'items'); const sub = totalItems(itemsCot); const iva = Number(v.iva) || 0;
+          Object.assign(o, { validez_dias: Number(v.validez_dias) || 30, iva, condiciones: v.condiciones, descripcion: v.descripcion || null, subtotal: sub, total: Math.round(sub * (1 + iva / 100)), items: [] });
+        }
         else {
           Object.assign(o, { tipo, concepto: v.concepto });
           if (tipo === 'cuenta_cobro') { o.items = repLeer(m.body, 'items'); o.total = totalItems(o.items); }
@@ -1094,6 +1111,8 @@
         let g;
         try { g = nuevo ? await S.insert(tabla, o) : await S.update(tabla, x.id, o); } catch (e) { if (numReg) await A.CONS.liberar(numReg); throw e; }
         if (numReg) await A.CONS.vincular(numReg, 'cobros', g.id);
+        // el detalle de la cotización se guarda aparte, solo para el propietario
+        if (itemsCot && !(await A.guardarItemsCot(g.id, itemsCot))) { await S.update(tabla, g.id, { items: itemsCot }); toast('Aviso: ejecute supabase/cotizaciones_inventario.sql para ocultar la tabla de ítems al cliente.', true); }
         toast(nuevo && numReg ? `Cuenta de cobro ${o.numero} guardada` : 'Guardado'); A.recargar();
       } }],
     });
@@ -1102,9 +1121,10 @@
   A.V.comercial = async () => {
     const pest = st.comTab || 'cotizaciones';
     A.content().innerHTML = `<div class="page-head"><div><span class="eyebrow">Comercial</span><h1>Cotizaciones y cobros</h1></div></div>
-      <div class="tabs">${[['cotizaciones', 'Cotizaciones'], ['cuenta_cobro', 'Cuentas de cobro'], ['factura', 'Facturas']].map(([k, t]) => `<button data-act="tab" data-k="${k}" class="${k === pest ? 'on' : ''}">${t}</button>`).join('')}</div><div id="com"></div>`;
+      <div class="tabs">${[['cotizaciones', 'Cotizaciones'], ['inventario', 'Inventario de precios'], ['cuenta_cobro', 'Cuentas de cobro'], ['factura', 'Facturas']].map(([k, t]) => `<button data-act="tab" data-k="${k}" class="${k === pest ? 'on' : ''}">${t}</button>`).join('')}</div><div id="com"></div>`;
     A.acts({ tab: (d) => { st.comTab = d.k; A.recargar(); } });
-    await A.listaComercial(document.getElementById('com'), pest, null);
+    if (pest === 'inventario') await A.listaCatalogo(document.getElementById('com'));
+    else await A.listaComercial(document.getElementById('com'), pest, null);
   };
 
   // =================================================================== USUARIOS
