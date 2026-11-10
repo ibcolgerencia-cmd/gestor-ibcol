@@ -1060,6 +1060,7 @@
     if (!numero) { const todos = await S.list(tabla, tabla === 'cobros' ? { tipo } : {}); numero = tipo === 'factura' ? '' : tipo === 'cuenta_cobro' ? (await A.CONS.siguiente('cuenta_cobro')) || A.consecutivoCC(todos) : A.consecutivo(todos, 'numero', `COT-${anioAct}-`); }
     let archivo = null;
     if (tipo === 'cotizaciones' && x && !x._nuevo) x = { ...x, items: await A.itemsCot(x) };
+    const objetoDe = (entId) => String(st.fmt.cotizacion?.objeto ?? CAT.FORMATOS.cotizacion.objeto ?? '').replaceAll('{ENTIDAD}', ents.find((e) => e.id === entId)?.razon_social?.toUpperCase() || 'SU INSTITUCIÓN');
     const itemsCols = [{ k: 'descripcion', ph: 'Descripción del servicio o producto', w: '3fr' }, { k: 'cantidad', ph: 'Cant.', type: 'number', w: '.6fr' }, { k: 'valor', ph: 'Valor unitario', type: 'number', w: '1fr' }];
     modal({
       titulo: { cotizaciones: 'Cotización', cuenta_cobro: 'Cuenta de cobro', factura: 'Factura' }[tipo] + (nuevo ? ' nueva' : ` ${x.numero}`), size: 'wide',
@@ -1068,7 +1069,7 @@
         ${tipo === 'cotizaciones' ? `${f.input('validez_dias', 'Validez (días)', x?.validez_dias || 30, { type: 'number' })}${f.input('iva', 'IVA %', x?.iva ?? 0, { type: 'number' })}${f.sel('estado', 'Estado', ['Borrador', 'Enviada', 'Aprobada', 'Rechazada'], x?.estado || 'Borrador')}`
           : `${f.sel('estado', 'Estado', ['Pendiente', 'Pagada', 'Anulada'], x?.estado || 'Pendiente')}${tipo === 'factura' ? f.input('total', 'Valor total (COP) *', x?.total, { type: 'number' }) : ''}`}
         ${tipo === 'factura' ? f.area('concepto', 'Por concepto de', x?.concepto, { rows: 2 }) : tipo === 'cuenta_cobro' ? f.area('concepto', 'Texto introductorio del concepto (opcional)', x?.concepto, { rows: 2 }) + '<p class="muted field full">Cada ítem sale numerado en “Por concepto de”, por ejemplo: “Cuota correspondiente al mes de marzo del contrato No. 05-2026, con el objeto de…”.</p>' : ''}</div>
-        ${tipo === 'cotizaciones' ? `<div class="fields">${f.area('descripcion', 'Objeto de la cotización (lo ve el cliente, junto con el valor total)', x?.descripcion || '', { rows: 2, full: true })}</div>` : ''}
+        ${tipo === 'cotizaciones' ? `<div class="fields">${f.area('descripcion', 'Objeto de la cotización (lo ve el cliente, junto con el valor total) — puede modificarlo', nuevo && !x?.descripcion ? objetoDe(x?.entidad_id || entidadId) : x?.descripcion || '', { rows: 8, full: true })}<div class="field full" style="margin-top:-6px"><button type="button" class="btn sm" data-objdef>Usar el objeto por defecto</button> <span class="muted" style="font-size:.8rem">Se edita en Formatos › Cotización.</span></div></div>` : ''}
         ${tipo !== 'factura' ? `<div class="field"><span class="lbl">Ítems${tipo === 'cotizaciones' ? ' <span class="muted" style="font-weight:400">— la tabla solo la ve usted; el cliente ve el total</span>' : ''}</span>${tipo === 'cotizaciones' ? `<div data-invdrag></div><div style="margin-bottom:6px"><button type="button" class="btn sm" data-inv>${I.mas} Elegir varios del inventario</button></div>` : ''}${rep('items', itemsCols, x?.items || [])}<div class="muted" data-tot></div></div>` : `<div class="field"><span class="lbl">PDF de la factura electrónica</span><input type="file" accept="application/pdf" data-fact>${x?.archivo ? '<span class="muted">Ya tiene un PDF adjunto; cargue otro para reemplazarlo.</span>' : ''}</div>`}
         ${tipo === 'cotizaciones' ? f.area('condiciones', 'Condiciones comerciales', x?.condiciones ?? st.fmt.cotizacion.condiciones, { rows: 4 }) : ''}</form>`,
       alAbrir: (m) => {
@@ -1090,6 +1091,13 @@
           });
           calc(); if (aviso) toast(nuevos.length === 1 ? `Agregado: ${nuevos[0].descripcion}` : `${nuevos.length} ítem(s) agregados del inventario`);
         };
+        // objeto de la cotización: se actualiza con la entidad mientras no se haya editado a mano
+        const ta = m.body.querySelector('[name=descripcion]'), se = m.body.querySelector('[name=entidad_id]');
+        if (ta && se) {
+          let ultimo = ta.value;
+          se.addEventListener('change', () => { if (!ta.value.trim() || ta.value === ultimo) { ta.value = objetoDe(se.value); ultimo = ta.value; } });
+          m.body.querySelector('[data-objdef]').onclick = async () => { if (ta.value.trim() && ta.value !== ultimo && !(await confirmar('¿Reemplazar el objeto escrito por el objeto por defecto?'))) return; ta.value = objetoDe(se.value); ultimo = ta.value; };
+        }
         const bi = m.body.querySelector('[data-inv]');
         if (bi) bi.onclick = () => A.elegirDelInventario((nuevos) => agregarItems(nuevos));
         // panel del inventario: arrastrar precios y servicios a la tabla (o tocar para agregar)
@@ -1209,7 +1217,7 @@
           titulo: `Formato · ${nombres[d.k]}`,
           cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('titulo', 'Título impreso', x.titulo, { full: true })}${f.input('codigo', 'Código', x.codigo)}${f.input('version', 'Versión', x.version)}${f.input('fecha', 'Fecha de aprobación', x.fecha, { type: 'date' })}
             ${d.k === 'mto_preventivo' ? `${f.area('pruebas', 'Pruebas cualitativas por defecto (una por línea)', lista(x.pruebas), { rows: 6 })}${f.area('actividades', 'Actividades de mantenimiento (una por línea)', lista(x.actividades), { rows: 6 })}${f.area('herramientas', 'Herramientas e insumos (una por línea)', lista(x.herramientas), { rows: 5 })}` : ''}
-            ${d.k === 'cotizacion' ? f.area('condiciones', 'Condiciones comerciales por defecto', x.condiciones, { rows: 5 }) : ''}</div></form>`,
+            ${d.k === 'cotizacion' ? `${f.area('objeto', 'Objeto de la cotización por defecto ({ENTIDAD} se reemplaza por el nombre de la entidad)', x.objeto ?? CAT.FORMATOS.cotizacion.objeto, { rows: 10 })}${f.area('condiciones', 'Condiciones comerciales por defecto', x.condiciones, { rows: 5 })}` : ''}</div></form>`,
           acciones: [{ t: 'Restablecer original', fn: async () => { await S.upsert('formatos', { clave: d.k, datos: CAT.FORMATOS[d.k] }); await A.cargarConfig(); A.recargar(); } }, { t: 'Cancelar' }, { t: 'Guardar formato', cls: 'pri', fn: async (m) => {
             const v = leer(m.body); ['pruebas', 'actividades', 'herramientas'].forEach((k) => { if (k in v) v[k] = v[k].split('\n').map((s) => s.trim()).filter(Boolean); });
             await S.upsert('formatos', { clave: d.k, datos: { ...x, ...v } }); await A.cargarConfig(); toast('Formato actualizado'); A.recargar();
