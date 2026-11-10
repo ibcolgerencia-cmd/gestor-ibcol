@@ -1092,7 +1092,7 @@
       titulo: { cotizaciones: 'Cotización', cuenta_cobro: 'Cuenta de cobro', factura: 'Factura' }[tipo] + (nuevo ? ' nueva' : ` ${x.numero}`), size: 'wide',
       cuerpo: `<form class="form" onsubmit="return false"><div class="fields">
         ${f.sel('entidad_id', 'Entidad *', [['', '— Seleccione —'], ...ents.map((e) => [e.id, e.razon_social])], x?.entidad_id || entidadId || '')}${f.input('numero', tipo === 'factura' ? 'Número de factura *' : 'Número', numero)}${f.input('fecha', 'Fecha', x?.fecha || UI.hoy(), { type: 'date' })}
-        ${tipo === 'cotizaciones' ? `${f.input('validez_dias', 'Validez (días)', x?.validez_dias || 30, { type: 'number' })}${f.input('iva', 'IVA %', x?.iva ?? 0, { type: 'number' })}${f.sel('estado', 'Estado', ['Borrador', 'Enviada', 'Aprobada', 'Rechazada'], x?.estado || 'Borrador')}`
+        ${tipo === 'cotizaciones' ? `${f.input('validez_dias', 'Validez (días)', x?.validez_dias || 30, { type: 'number' })}${f.input('iva', 'IVA %', x?.iva ?? 0, { type: 'number' })}${f.sel('descuento_tipo', 'Descuento en', [['%', 'Porcentaje (%)'], ['$', 'Valor ($)']], x?.descuento_tipo || '%')}${f.input('descuento', 'Descuento (sobre el subtotal, antes de IVA)', x?.descuento || '', { type: 'number', attrs: 'min="0" step="any"' })}${f.sel('estado', 'Estado', ['Borrador', 'Enviada', 'Aprobada', 'Rechazada'], x?.estado || 'Borrador')}`
           : `${f.sel('estado', 'Estado', ['Pendiente', 'Pagada', 'Anulada'], x?.estado || 'Pendiente')}${tipo === 'factura' ? f.input('total', 'Valor total (COP) *', x?.total, { type: 'number' }) : ''}`}
         ${tipo === 'factura' ? f.area('concepto', 'Por concepto de', x?.concepto, { rows: 2 }) : tipo === 'cuenta_cobro' ? f.area('concepto', 'Texto introductorio del concepto (opcional)', x?.concepto, { rows: 2 }) + '<p class="muted field full">Cada ítem sale numerado en “Por concepto de”, por ejemplo: “Cuota correspondiente al mes de marzo del contrato No. 05-2026, con el objeto de…”.</p>' : ''}</div>
         ${tipo === 'cotizaciones' ? `<div class="fields">${f.area('descripcion', 'Objeto de la cotización (lo ve el cliente, junto con el valor total) — puede modificarlo', nuevo && !x?.descripcion ? objetoDe(x?.entidad_id || entidadId) : x?.descripcion || '', { rows: 8, full: true })}<div class="field full" style="margin-top:-6px"><button type="button" class="btn sm" data-objdef>Usar el objeto por defecto</button> <span class="muted" style="font-size:.8rem">Se edita en Formatos › Cotización.</span></div></div>` : ''}
@@ -1105,7 +1105,12 @@
       alAbrir: (m) => {
         repBind(m.body);
         const t = m.body.querySelector('[data-tot]');
-        const calc = () => { if (!t) return; const s = totalItems(repLeer(m.body, 'items')); const iva = Number(m.body.querySelector('[name=iva]')?.value || 0); t.textContent = `Subtotal ${PDF.pesos(s)}${iva ? ` · IVA ${PDF.pesos(s * iva / 100)}` : ''} · Total ${PDF.pesos(s * (1 + iva / 100))}`; };
+        const totales = () => {
+          const s = totalItems(repLeer(m.body, 'items')); const iva = Number(m.body.querySelector('[name=iva]')?.value || 0);
+          const desc = tipo === 'cotizaciones' ? PDF.descuentoCot({ descuento: m.body.querySelector('[name=descuento]')?.value, descuento_tipo: m.body.querySelector('[name=descuento_tipo]')?.value }, s) : 0;
+          const base = s - desc, vIva = Math.round(base * iva / 100); return { s, desc, base, iva, vIva, total: base + vIva };
+        };
+        const calc = () => { if (!t) return; const r = totales(); t.innerHTML = `Subtotal ${PDF.pesos(r.s)}${r.desc ? ` · <span style="color:#b02e26">Descuento − ${PDF.pesos(r.desc)}</span>` : ''}${r.iva ? ` · IVA ${PDF.pesos(r.vIva)}` : ''} · <b>Total ${PDF.pesos(r.total)}</b>`; };
         // forma de pago → primera línea de las condiciones, con el valor de cada cuota
         const fpSel = m.body.querySelector('[name=forma_pago]'), fpN = m.body.querySelector('[name=cuotas]'), cond = m.body.querySelector('[name=condiciones]');
         const pago = () => {
@@ -1114,7 +1119,7 @@
           fpN.closest('.field').style.display = conCuotas ? '' : 'none';
           if (conCuotas && !(Number(fpN.value) >= 1)) fpN.value = FORMAS_PAGO.find((o) => o.k === k).c;
           const n = Math.max(1, Math.round(Number(fpN.value) || 1));
-          const s = totalItems(repLeer(m.body, 'items')); const total = Math.round(s * (1 + Number(m.body.querySelector('[name=iva]')?.value || 0) / 100));
+          const total = totales().total;
           m.body.querySelector('[data-cuota]').textContent = conCuotas && total ? `${n} cuotas de ${PDF.pesos(Math.round(total / n))}` : '';
           const l = lineaPago(k, n, total); if (!l) return;
           const filas = cond.value.split('\n'); const i = filas.findIndex((r) => /^forma de pago/i.test(r.trim()));
@@ -1164,7 +1169,9 @@
         let itemsCot = null;
         if (tipo === 'cotizaciones') {
           itemsCot = repLeer(m.body, 'items'); const sub = totalItems(itemsCot); const iva = Number(v.iva) || 0;
-          Object.assign(o, { validez_dias: Number(v.validez_dias) || 30, iva, condiciones: v.condiciones, descripcion: v.descripcion || null, subtotal: sub, total: Math.round(sub * (1 + iva / 100)), items: [] });
+          const dsc = { descuento: Number(v.descuento) || 0, descuento_tipo: v.descuento_tipo === '$' ? '$' : '%' };
+          const base = sub - PDF.descuentoCot(dsc, sub);
+          Object.assign(o, { validez_dias: Number(v.validez_dias) || 30, iva, condiciones: v.condiciones, descripcion: v.descripcion || null, subtotal: sub, total: base + Math.round(base * iva / 100), items: [], ...dsc });
         }
         else {
           Object.assign(o, { tipo, concepto: v.concepto });
@@ -1178,7 +1185,13 @@
           o.numero = numReg.numero;
         }
         let g;
-        try { g = nuevo ? await S.insert(tabla, o) : await S.update(tabla, x.id, o); } catch (e) { if (numReg) await A.CONS.liberar(numReg); throw e; }
+        const guardarReg = (obj) => (nuevo ? S.insert(tabla, obj) : S.update(tabla, x.id, obj));
+        try { g = await guardarReg(o); }
+        catch (e) {
+          // base de datos sin las columnas de descuento: guardar sin ellas y avisar
+          if (tipo === 'cotizaciones' && /descuento/i.test(e.message || '')) { const { descuento, descuento_tipo, ...sinD } = o; g = await guardarReg(sinD); toast('Aviso: ejecute supabase/cotizaciones_descuento.sql para guardar el descuento.', true); }
+          else { if (numReg) await A.CONS.liberar(numReg); throw e; }
+        }
         if (numReg) await A.CONS.vincular(numReg, 'cobros', g.id);
         // el detalle de la cotización se guarda aparte, solo para el propietario
         if (itemsCot && !(await A.guardarItemsCot(g.id, itemsCot))) { await S.update(tabla, g.id, { items: itemsCot }); toast('Aviso: ejecute supabase/cotizaciones_inventario.sql para ocultar la tabla de ítems al cliente.', true); }
@@ -1359,14 +1372,14 @@
   // =================================================================== EMPRESA Y FIRMA
   A.V.empresa = async () => {
     const e = st.emp;
-    const campos = [['nombre', 'Razón social'], ['sigla', 'Sigla'], ['nit', 'NIT'], ['responsable', 'Profesional responsable'], ['cedula', 'Cédula'], ['cargo', 'Cargo'], ['matricula', 'Matrícula profesional'], ['invima', 'Inscripción INVIMA'], ['direccion', 'Dirección'], ['ciudad', 'Ciudad'], ['telefono', 'Teléfono principal'], ['telefono2', 'Teléfono alterno'], ['email', 'Correo'], ['cobro_titular', 'Cuenta de cobro: titular (DEBE A)'], ['cobro_documento', 'Cuenta de cobro: NIT / C.C. del titular'], ['cobro_expedicion', 'C.C. expedida en'], ['cobro_ciudad', 'Ciudad de expedición de la cuenta'], ['banco', 'Banco'], ['tipo_cuenta', 'Tipo de cuenta (Ahorros / Corriente)'], ['numero_cuenta', 'Número de cuenta'], ['regimen', 'Régimen tributario']];
+    const campos = [['nombre', 'Razón social'], ['sigla', 'Sigla'], ['nit', 'NIT'], ['responsable', 'Profesional responsable'], ['cedula', 'Cédula'], ['cargo', 'Cargo'], ['matricula', 'Matrícula profesional'], ['invima', 'Inscripción INVIMA'], ['direccion', 'Dirección'], ['ciudad', 'Ciudad'], ['telefono', 'Teléfono principal'], ['telefono2', 'Teléfono alterno'], ['email', 'Correo'], ['cobro_titular', 'Cuenta de cobro y cotizaciones: titular que firma'], ['cotiza_cargo', 'Cotizaciones: cargo de quien firma'], ['cobro_documento', 'Cuenta de cobro: NIT / C.C. del titular'], ['cobro_expedicion', 'C.C. expedida en'], ['cobro_ciudad', 'Ciudad de expedición de la cuenta'], ['banco', 'Banco'], ['tipo_cuenta', 'Tipo de cuenta (Ahorros / Corriente)'], ['numero_cuenta', 'Número de cuenta'], ['regimen', 'Régimen tributario']];
     A.content().innerHTML = `<div class="page-head"><div><span class="eyebrow">Configuración</span><h1>Mi empresa y firma</h1><span class="muted">Estos datos aparecen en el pie de todos los formatos, cotizaciones y cuentas de cobro.</span></div></div>
       <div class="grid2"><section class="panel"><header><h2>Datos de la empresa</h2></header><form class="form" id="fEmp" onsubmit="return false"><div class="fields">${campos.map(([k, l]) => f.input(k, l, e[k])).join('')}</div><button class="btn pri" data-act="guardarEmp" style="justify-self:start">Guardar datos</button></form></section>
       <div style="display:grid;gap:18px;align-content:start">
         <section class="panel"><header><h2>Firma digital</h2></header><p class="muted">Se inserta en hojas de vida, reportes, actas, cotizaciones y cuentas de cobro, y sirve para firmar PDF cargados.</p>
           <div class="sig-prev" style="height:110px">${st.firma ? `<img src="${st.firma}" alt="Firma guardada">` : '<span class="muted">Sin firma registrada</span>'}</div>
           <div class="actions"><button class="btn pri" data-act="firma">${I.firma} ${st.firma ? 'Cambiar firma' : 'Registrar firma'}</button>${st.firma ? `<button class="btn danger" data-act="sinFirma">${I.del} Quitar</button>` : ''}</div></section>
-        <section class="panel"><header><h2>Firma de cuentas de cobro</h2></header><p class="muted">Firma de ${h(e.cobro_titular || 'el titular')} que aparece en cada cuenta de cobro.</p>
+        <section class="panel"><header><h2>Firma de cuentas de cobro y cotizaciones</h2></header><p class="muted">Firma de ${h(e.cobro_titular || 'el titular')} que aparece en cada cuenta de cobro y en cada cotización (propuesta económica).</p>
           <div class="sig-prev" style="height:90px">${e.firma_cobro ? `<img src="${e.firma_cobro}" alt="Firma de cuentas de cobro">` : '<span class="muted">Sin firma registrada</span>'}</div>
           <div class="actions"><button class="btn" data-act="firmaCobro">${I.firma} ${e.firma_cobro ? 'Cambiar' : 'Registrar'} firma</button></div></section>
         <section class="panel"><header><h2>Mi contraseña</h2></header><div class="form"><div class="fields">${f.input('nueva', 'Nueva contraseña', '', { type: 'password', attrs: 'autocomplete="new-password"' })}</div><button class="btn" data-act="miClave" style="justify-self:start">${I.llave} Cambiar contraseña</button></div></section>
