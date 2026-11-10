@@ -1060,6 +1060,32 @@
     if (!numero) { const todos = await S.list(tabla, tabla === 'cobros' ? { tipo } : {}); numero = tipo === 'factura' ? '' : tipo === 'cuenta_cobro' ? (await A.CONS.siguiente('cuenta_cobro')) || A.consecutivoCC(todos) : A.consecutivo(todos, 'numero', `COT-${anioAct}-`); }
     let archivo = null;
     if (tipo === 'cotizaciones' && x && !x._nuevo) x = { ...x, items: await A.itemsCot(x) };
+    // formas de pago de la cotización: se escriben como primera línea de las condiciones comerciales
+    const FORMAS_PAGO = [
+      { k: '50y50', n: '50% anticipo y 50% contra entrega' },
+      { k: 'mensual', n: 'Cuotas mensuales', c: 12 },
+      { k: 'bimestral', n: 'Cuotas cada dos meses (bimestral)', c: 6 },
+      { k: 'unico', n: 'Pago único contra entrega' },
+      { k: 'libre', n: 'Otra (escribirla en el texto)' },
+    ];
+    const formaDe = (txt) => {
+      const l = (String(txt || '').split('\n').find((r) => /^forma de pago/i.test(r.trim())) || '').toLowerCase();
+      if (!l) return { k: 'libre' };
+      const n = Number((l.match(/(\d+)\s*cuotas/) || [])[1]) || null;
+      if (/cada dos meses|bimestral/.test(l)) return { k: 'bimestral', n: n || 6 };
+      if (/mensual/.test(l)) return { k: 'mensual', n: n || 12 };
+      if (/50\s*%/.test(l)) return { k: '50y50' };
+      if (/único|unico/.test(l)) return { k: 'unico' };
+      return { k: 'libre' };
+    };
+    const lineaPago = (k, n, total) => {
+      const p = (v) => PDF.pesos(Math.round(v));
+      if (k === '50y50') return `Forma de pago: 50% de anticipo${total ? ` (${p(total / 2)})` : ''} y 50% contra entrega del informe${total ? ` (${p(total - Math.round(total / 2))})` : ''}.`;
+      if (k === 'mensual') return `Forma de pago: ${n} cuotas mensuales${total ? ` de ${p(total / n)} cada una` : ''}.`;
+      if (k === 'bimestral') return `Forma de pago: ${n} cuotas cada dos meses (bimestrales)${total ? ` de ${p(total / n)} cada una` : ''}.`;
+      if (k === 'unico') return `Forma de pago: pago único${total ? ` de ${p(total)}` : ''} contra entrega del informe.`;
+      return null;
+    };
     const objetoDe = (entId) => String(st.fmt.cotizacion?.objeto ?? CAT.FORMATOS.cotizacion.objeto ?? '').replaceAll('{ENTIDAD}', ents.find((e) => e.id === entId)?.razon_social?.toUpperCase() || 'SU INSTITUCIÓN');
     const itemsCols = [{ k: 'descripcion', ph: 'Descripción del servicio o producto', w: '3fr' }, { k: 'cantidad', ph: 'Cant.', type: 'number', w: '.6fr' }, { k: 'valor', ph: 'Valor unitario', type: 'number', w: '1fr' }];
     modal({
@@ -1071,12 +1097,33 @@
         ${tipo === 'factura' ? f.area('concepto', 'Por concepto de', x?.concepto, { rows: 2 }) : tipo === 'cuenta_cobro' ? f.area('concepto', 'Texto introductorio del concepto (opcional)', x?.concepto, { rows: 2 }) + '<p class="muted field full">Cada ítem sale numerado en “Por concepto de”, por ejemplo: “Cuota correspondiente al mes de marzo del contrato No. 05-2026, con el objeto de…”.</p>' : ''}</div>
         ${tipo === 'cotizaciones' ? `<div class="fields">${f.area('descripcion', 'Objeto de la cotización (lo ve el cliente, junto con el valor total) — puede modificarlo', nuevo && !x?.descripcion ? objetoDe(x?.entidad_id || entidadId) : x?.descripcion || '', { rows: 8, full: true })}<div class="field full" style="margin-top:-6px"><button type="button" class="btn sm" data-objdef>Usar el objeto por defecto</button> <span class="muted" style="font-size:.8rem">Se edita en Formatos › Cotización.</span></div></div>` : ''}
         ${tipo !== 'factura' ? `<div class="field"><span class="lbl">Ítems${tipo === 'cotizaciones' ? ' <span class="muted" style="font-weight:400">— la tabla solo la ve usted; el cliente ve el total</span>' : ''}</span>${tipo === 'cotizaciones' ? `<div data-invdrag></div><div style="margin-bottom:6px"><button type="button" class="btn sm" data-inv>${I.mas} Elegir varios del inventario</button></div>` : ''}${rep('items', itemsCols, x?.items || [])}<div class="muted" data-tot></div></div>` : `<div class="field"><span class="lbl">PDF de la factura electrónica</span><input type="file" accept="application/pdf" data-fact>${x?.archivo ? '<span class="muted">Ya tiene un PDF adjunto; cargue otro para reemplazarlo.</span>' : ''}</div>`}
-        ${tipo === 'cotizaciones' ? f.area('condiciones', 'Condiciones comerciales', x?.condiciones ?? st.fmt.cotizacion.condiciones, { rows: 4 }) : ''}</form>`,
+        ${tipo === 'cotizaciones' ? `<fieldset><legend>Condiciones comerciales</legend><div class="fields">
+          ${f.sel('forma_pago', 'Forma de pago', FORMAS_PAGO.map((o) => [o.k, o.n]), formaDe(x?.condiciones ?? st.fmt.cotizacion.condiciones).k)}
+          ${f.input('cuotas', 'Número de cuotas', formaDe(x?.condiciones ?? st.fmt.cotizacion.condiciones).n || '', { type: 'number', attrs: 'min="1" max="60" step="1"' })}
+          <div class="field" data-cuota-info style="align-self:end"><span class="muted" data-cuota></span></div>
+          ${f.area('condiciones', 'Texto de condiciones comerciales (la línea «Forma de pago» se actualiza sola; puede editar el resto)', x?.condiciones ?? st.fmt.cotizacion.condiciones, { rows: 4 })}</div></fieldset>` : ''}</form>`,
       alAbrir: (m) => {
         repBind(m.body);
         const t = m.body.querySelector('[data-tot]');
         const calc = () => { if (!t) return; const s = totalItems(repLeer(m.body, 'items')); const iva = Number(m.body.querySelector('[name=iva]')?.value || 0); t.textContent = `Subtotal ${PDF.pesos(s)}${iva ? ` · IVA ${PDF.pesos(s * iva / 100)}` : ''} · Total ${PDF.pesos(s * (1 + iva / 100))}`; };
-        m.body.addEventListener('input', calc); m.body.addEventListener('click', () => setTimeout(calc)); calc();
+        // forma de pago → primera línea de las condiciones, con el valor de cada cuota
+        const fpSel = m.body.querySelector('[name=forma_pago]'), fpN = m.body.querySelector('[name=cuotas]'), cond = m.body.querySelector('[name=condiciones]');
+        const pago = () => {
+          if (!fpSel) return;
+          const k = fpSel.value, conCuotas = k === 'mensual' || k === 'bimestral';
+          fpN.closest('.field').style.display = conCuotas ? '' : 'none';
+          if (conCuotas && !(Number(fpN.value) >= 1)) fpN.value = FORMAS_PAGO.find((o) => o.k === k).c;
+          const n = Math.max(1, Math.round(Number(fpN.value) || 1));
+          const s = totalItems(repLeer(m.body, 'items')); const total = Math.round(s * (1 + Number(m.body.querySelector('[name=iva]')?.value || 0) / 100));
+          m.body.querySelector('[data-cuota]').textContent = conCuotas && total ? `${n} cuotas de ${PDF.pesos(Math.round(total / n))}` : '';
+          const l = lineaPago(k, n, total); if (!l) return;
+          const filas = cond.value.split('\n'); const i = filas.findIndex((r) => /^forma de pago/i.test(r.trim()));
+          if (i >= 0) filas[i] = l; else filas.unshift(l);
+          cond.value = filas.join('\n');
+        };
+        if (fpSel) { fpSel.addEventListener('change', () => { if (fpSel.value === 'mensual') fpN.value = 12; if (fpSel.value === 'bimestral') fpN.value = 6; pago(); }); }
+        const calc2 = () => { calc(); if (document.activeElement !== cond) pago(); };
+        m.body.addEventListener('input', calc2); m.body.addEventListener('click', () => setTimeout(calc2)); calc(); pago();
         const fa = m.body.querySelector('[data-fact]'); if (fa) fa.onchange = (e) => { archivo = e.target.files[0] || null; };
         // agrega ítems a la tabla (si el mismo servicio ya está, suma la cantidad)
         const agregarItems = (nuevos, aviso = true) => {
@@ -1089,7 +1136,7 @@
             itemsCols.forEach((c) => { ri.querySelector(`[data-k="${c.k}"]`).value = it[c.k] ?? ''; });
             ri.classList.add('ri-nueva');
           });
-          calc(); if (aviso) toast(nuevos.length === 1 ? `Agregado: ${nuevos[0].descripcion}` : `${nuevos.length} ítem(s) agregados del inventario`);
+          calc2(); if (aviso) toast(nuevos.length === 1 ? `Agregado: ${nuevos[0].descripcion}` : `${nuevos.length} ítem(s) agregados del inventario`);
         };
         // objeto de la cotización: se actualiza con la entidad mientras no se haya editado a mano
         const ta = m.body.querySelector('[name=descripcion]'), se = m.body.querySelector('[name=entidad_id]');
