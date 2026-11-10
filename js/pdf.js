@@ -475,7 +475,8 @@ window.PDF = (() => {
   }
 
   // ------------------------------------------------------------------ COTIZACIÓN
-  function cotizacion({ c, ent, emp, fmt, firma }) {
+  // detalle = true: tabla de ítems (solo propietario). detalle = false: versión del cliente, solo el valor total (+ IVA si aplica)
+  function cotizacion({ c, ent, emp, fmt, firma, detalle = true }) {
     const doc = nuevo();
     let y = encabezado(doc, { titulo: fmt.titulo, fmt, ent });
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...TEAL);
@@ -483,16 +484,24 @@ window.PDF = (() => {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
     doc.text(`Popayán, ${fLarga(c.fecha)}`, W(doc) - M, y + 4, { align: 'right' }); y += 9;
     y = kv(doc, y, [['Cliente', ent?.razon_social || '', 'NIT', ent?.nit || ''], ['Atención', ent?.representante || '', 'Ciudad', ent?.ciudad || ''], ['Correo', ent?.email || '', 'Validez', `${c.validez_dias || 30} días`]]);
-    const sub = (c.items || []).reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.valor) || 0), 0);
-    const iva = sub * (Number(c.iva) || 0) / 100;
-    y = tabla(doc, y, ['Ítem', 'Descripción', 'Cant.', 'Valor unitario', 'Valor total'],
-      (c.items || []).map((i, k) => [k + 1, i.descripcion, i.cantidad, pesos(i.valor), pesos((Number(i.cantidad) || 0) * (Number(i.valor) || 0))]),
-      { cols: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 14, halign: 'center' }, 3: { cellWidth: 30, halign: 'right' }, 4: { cellWidth: 32, halign: 'right' } } });
-    const tot = [['Subtotal', pesos(sub)], [`IVA ${Number(c.iva) || 0}%`, pesos(iva)], ['TOTAL', pesos(sub + iva)]];
-    doc.autoTable({ startY: y - 2, body: tot, theme: 'grid', margin: { left: W(doc) - M - 72, right: M }, styles: { fontSize: 8.5, cellPadding: 1.4 }, columnStyles: { 0: { fontStyle: 'bold', fillColor: GRIS }, 1: { halign: 'right' } },
-      didParseCell: (d) => { if (d.row.index === 2) { d.cell.styles.fillColor = TEAL; d.cell.styles.textColor = 255; d.cell.styles.fontStyle = 'bold'; } } });
+    const items = (c.items || []).filter((i) => i.descripcion || Number(i.valor));
+    const subItems = items.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.valor) || 0), 0);
+    const pIva = Number(c.iva) || 0;
+    const sub = detalle && items.length ? subItems : c.subtotal != null && c.subtotal !== '' ? Number(c.subtotal) || 0 : c.total != null && c.total !== '' ? (Number(c.total) || 0) / (1 + pIva / 100) : subItems;
+    const iva = sub * pIva / 100;
+    const total = detalle && items.length ? sub + iva : c.total != null && c.total !== '' ? Number(c.total) || 0 : sub + iva;
+    if (c.descripcion) { y = seccion(doc, y, 'Objeto de la cotización'); y = parrafo(doc, y, c.descripcion, 9); y += 1; }
+    if (detalle) {
+      y = tabla(doc, y, ['Ítem', 'Descripción', 'Cant.', 'Valor unitario', 'Valor total'],
+        items.map((i, k) => [k + 1, i.descripcion, i.cantidad, pesos(i.valor), pesos((Number(i.cantidad) || 0) * (Number(i.valor) || 0))]),
+        { cols: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 14, halign: 'center' }, 3: { cellWidth: 30, halign: 'right' }, 4: { cellWidth: 32, halign: 'right' } } });
+    } else y += 2;
+    const tot = pIva ? [['Subtotal', pesos(sub)], [`IVA ${pIva}%`, pesos(iva)], ['VALOR TOTAL', pesos(total)]] : [['VALOR TOTAL', pesos(total)]];
+    const last = tot.length - 1;
+    doc.autoTable({ startY: y - 2, body: tot, theme: 'grid', margin: { left: W(doc) - M - (detalle ? 72 : 90), right: M }, styles: { fontSize: detalle ? 8.5 : 10, cellPadding: detalle ? 1.4 : 2.2 }, columnStyles: { 0: { fontStyle: 'bold', fillColor: GRIS }, 1: { halign: 'right' } },
+      didParseCell: (d) => { if (d.row.index === last) { d.cell.styles.fillColor = TEAL; d.cell.styles.textColor = 255; d.cell.styles.fontStyle = 'bold'; } } });
     y = doc.lastAutoTable.finalY + 5;
-    doc.setFontSize(8.5); doc.text(`Son: ${enLetras(sub + iva)} pesos m/cte.`, M, y); y += 6;
+    doc.setFontSize(8.5); doc.text(doc.splitTextToSize(`Son: ${enLetras(total)} pesos m/cte.${pIva ? ` IVA ${pIva}% incluido.` : ''}`, W(doc) - 2 * M), M, y); y += 6;
     y = seccion(doc, y, 'Condiciones comerciales');
     y = parrafo(doc, y, c.condiciones || '', 8.5);
     firmas(doc, y + 4, [firmaIBCOL(emp, firma, 'Atentamente')]);

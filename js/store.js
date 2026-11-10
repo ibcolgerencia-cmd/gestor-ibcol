@@ -222,7 +222,7 @@ window.Store = (() => {
         if (t === 'reportes_dano') return sedeDe(r.consultorio_id) === perfil.sede || r.sede === perfil.sede;
         return sedeDe(r.consultorio_id) === perfil.sede;
       }
-      if (['auditoria', '_usuarios'].includes(t)) return false;
+      if (['auditoria', '_usuarios', 'catalogo_cotizacion', 'cotizaciones_detalle'].includes(t)) return false;
       if (['empresa', 'formatos'].includes(t)) return true;
       if (t === 'perfiles') return r.id === perfil.id;
       if (t === 'entidades') return r.id === perfil.entidad_id;

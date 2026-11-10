@@ -71,6 +71,14 @@ window.DemoSeed = async (hash, uid) => {
     eventos: [
       { id: uid(), entidad_id: entId, equipo_id: equipos[7].id, fecha_evento: `${d(Math.max(1, mesAct - 1), 1)}T09:30:00`, servicio: 'Urgencias', reportante: 'Carlos Ruiz', cargo: 'Jefe de enfermería', descripcion: 'Durante la prueba diaria el desfibrilador no superó la autoprueba de batería. No se usó en paciente.', afecto_paciente: false, consecuencia: 'Sin consecuencias', retiro_equipo: true, contingencia: 'Se dispuso desfibrilador de respaldo del servicio de hospitalización.', estado: 'Cerrado' },
     ],
+    catalogo_cotizacion: [
+      ['Mantenimiento preventivo', 'MP-001', 'Mantenimiento preventivo de tensiómetro', 'Equipo', 45000],
+      ['Mantenimiento preventivo', 'MP-002', 'Mantenimiento preventivo de unidad odontológica', 'Equipo', 180000],
+      ['Mantenimiento correctivo', 'MC-001', 'Visita de diagnóstico y mantenimiento correctivo', 'Visita', 120000],
+      ['Calibración', 'CAL-001', 'Calibración de báscula con certificado', 'Equipo', 60000],
+      ['Calibración', 'CAL-002', 'Calibración de termohigrómetro con certificado', 'Equipo', 75000],
+      ['Equipo biomédico', 'EQ-001', 'Tensiómetro digital de brazo', 'Unidad', 190000],
+    ].map(([tipo, codigo, descripcion, unidad, valor]) => ({ id: uid(), tipo, codigo, descripcion, unidad, valor, activo: true })),
     cotizaciones: [
       { id: uid(), entidad_id: entId, numero: `COT-${anio}-001`, fecha: d(Math.max(1, mesAct - 1), 2), validez_dias: 30, iva: 0, estado: 'Aprobada', condiciones: CAT.FORMATOS.cotizacion.condiciones,
         items: [{ descripcion: 'Mantenimiento preventivo equipos biomédicos (9 equipos)', cantidad: 9, valor: 45000 }, { descripcion: 'Calibración de tensiómetro y báscula con certificado', cantidad: 2, valor: 60000 }, { descripcion: 'Actualización de hojas de vida y cronogramas', cantidad: 1, valor: 150000 }] },
