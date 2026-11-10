@@ -146,6 +146,36 @@
     toast(`Inventario importado: ${n} nuevos, ${u} actualizados`); alListo?.();
   };
 
+  // ---------------------------------------------------------------- panel para arrastrar a la cotización
+  // Cada precio es una ficha que se arrastra a la tabla de ítems (en celular: tocar la ficha la agrega)
+  A.panelArrastre = async (cont, alAgregar) => {
+    const lista = ordenar((await cargar()).filter((x) => x.activo !== false));
+    if (faltaTabla || !lista.length) { cont.innerHTML = ''; return; }
+    let q = '';
+    const extra = (x) => (x.marca || x.modelo ? ` (${[x.marca, x.modelo].filter(Boolean).join(' ')})` : '');
+    const itemDe = (x, k) => (k === 'met'
+      ? { descripcion: `Metrología / calibración ${x.descripcion}${extra(x)}`, cantidad: 1, valor: Number(x.valor_metrologia) || 0 }
+      : { descripcion: esMyM(x) ? `Mantenimiento preventivo ${x.descripcion}${extra(x)}` : `${x.descripcion}${extra(x)}`, cantidad: 1, valor: Number(x.valor) || 0 });
+    let abierto = true; try { abierto = localStorage.getItem('ibcol_inv_drag') !== '0'; } catch {}
+    cont.innerHTML = `<details class="inv-drag" ${abierto ? 'open' : ''}><summary><b>Inventario de precios</b> <span class="muted">— arrastre un precio a la tabla de ítems (o tóquelo para agregarlo)</span></summary>
+      <input type="search" data-dq placeholder="Buscar equipo o servicio…" style="width:100%;margin:8px 0">
+      <div class="inv-drag-lista" data-dl></div></details>`;
+    cont.querySelector('details').addEventListener('toggle', (e) => { try { localStorage.setItem('ibcol_inv_drag', e.target.open ? '1' : '0'); } catch {} });
+    const pintar = () => {
+      const nq = nrm(q);
+      const l = lista.filter((x) => !nq || nrm([x.codigo, x.descripcion, x.marca, x.modelo, x.tipo].join(' ')).includes(nq)).slice(0, 150);
+      cont.querySelector('[data-dl]').innerHTML = l.length ? l.map((x) => `<div class="inv-drag-fila"><span class="mono muted">${h(x.codigo || '')}</span><span class="inv-drag-nom">${h(x.descripcion)}</span>
+        <span class="inv-chip" draggable="true" data-chip="mto" data-id="${x.id}" title="Arrastre a la tabla o toque para agregar">${esMyM(x) ? 'Mto.' : h(x.tipo === 'Equipo biomédico' ? 'Equipo' : 'Valor')} ${pesos(x.valor)}</span>
+        ${tieneMet(x) ? `<span class="inv-chip met" draggable="true" data-chip="met" data-id="${x.id}" title="Arrastre a la tabla o toque para agregar">Metrología ${pesos(x.valor_metrologia)}</span>` : esMyM(x) ? '<span class="inv-chip off">Metrología: no aplica</span>' : '<span></span>'}</div>`).join('') : '<div class="muted" style="padding:8px">Sin resultados.</div>';
+    };
+    pintar();
+    cont.querySelector('[data-dq]').oninput = (e) => { q = e.target.value; pintar(); };
+    const de = (el) => { const x = lista.find((y) => y.id === el.dataset.id); return x ? itemDe(x, el.dataset.chip) : null; };
+    cont.addEventListener('dragstart', (e) => { const c = e.target.closest?.('[data-chip]'); if (!c) return; const it = de(c); if (!it) return; e.dataTransfer.setData('application/x-ibcol-item', JSON.stringify(it)); e.dataTransfer.setData('text/plain', it.descripcion); e.dataTransfer.effectAllowed = 'copy'; c.classList.add('arrastrando'); });
+    cont.addEventListener('dragend', (e) => e.target.closest?.('[data-chip]')?.classList.remove('arrastrando'));
+    cont.addEventListener('click', (e) => { const c = e.target.closest('[data-chip]'); if (!c) return; const it = de(c); if (it) alAgregar(it); });
+  };
+
   // ---------------------------------------------------------------- selector para la cotización
   A.elegirDelInventario = async (alElegir) => {
     const lista = ordenar((await cargar()).filter((x) => x.activo !== false));
