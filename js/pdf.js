@@ -31,11 +31,12 @@ window.PDF = (() => {
 
   // Encabezado igual al de los formatos IBCOL (FMB-001 / FMB-002):
   // logo de la entidad | título + datos de la entidad | código, versión y fecha de aprobación
-  function encabezado(doc, { titulo, fmt = {}, ent, cons = null }) {
+  function encabezado(doc, { titulo, fmt = {}, ent, cons = null, logoIzq = null }) {
     const w = W(doc), x = M, ancho = w - 2 * M, h = 27, lw = 42, rw = 42, cx = x + lw, cw = ancho - lw - rw;
     doc.setDrawColor(...LINEA); doc.setLineWidth(0.25);
     doc.rect(x, M, ancho, h); doc.line(cx, M, cx, M + h); doc.line(cx + cw, M, cx + cw, M + h);
-    if (ent?.logo) logo(doc, ent.logo, x + 2, M + 2, lw - 4, h - 4);
+    if (logoIzq) logo(doc, logoIzq, x + 2, M + 2, lw - 4, h - 4);
+    else if (ent?.logo) logo(doc, ent.logo, x + 2, M + 2, lw - 4, h - 4);
     else { doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text(['LOGO DE LA EMPRESA', 'CONTRATANTE'], x + lw / 2, M + h / 2 - 1, { align: 'center' }); }
     doc.setFillColor(...BARRA); doc.rect(cx, M, cw, 6, 'FD');
     doc.setFont('helvetica', 'bold'); doc.setTextColor(...TEAL);
@@ -476,9 +477,21 @@ window.PDF = (() => {
 
   // ------------------------------------------------------------------ COTIZACIÓN
   // detalle = true: tabla de ítems (solo propietario). detalle = false: versión del cliente, solo el valor total (+ IVA si aplica)
+  // descuento sobre el subtotal (antes de IVA): tipo '%' o '$'
+  function descuentoCot(c, sub) {
+    const v = Number(c.descuento) || 0; if (!v) return 0;
+    return Math.min(sub, Math.round(c.descuento_tipo === '$' ? v : sub * v / 100));
+  }
+  // firma de la propuesta: Miller Albeiro Navia Daza (titular de IBCOL, misma firma de las cuentas de cobro)
+  const firmaCotizacion = (emp, firma) => ({
+    titulo: 'Atentamente', nombre: emp.cotiza_firma_nombre || emp.cobro_titular || emp.responsable, img: emp.firma_cobro || (emp.cobro_titular ? null : firma),
+    lineas: [emp.cotiza_cargo, emp.cobro_documento ? `C.C. ${emp.cobro_documento}${emp.cobro_expedicion ? ` de ${emp.cobro_expedicion}` : ''}` : '', emp.nombre || 'IBCOL Ingeniería Biomédica de Colombia'].filter(Boolean),
+  });
+
+  // detalle = true: tabla de ítems (solo propietario). detalle = false: versión del cliente, solo el valor total (+ IVA si aplica)
   function cotizacion({ c, ent, emp, fmt, firma, detalle = true }) {
     const doc = nuevo();
-    let y = encabezado(doc, { titulo: fmt.titulo, fmt, ent });
+    let y = encabezado(doc, { titulo: fmt.titulo, fmt, ent, logoIzq: window.IBCOL_LOGO });
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...TEAL);
     doc.text(`COTIZACIÓN ${c.numero}`, M, y + 4); doc.setTextColor(...TXT);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
@@ -487,24 +500,32 @@ window.PDF = (() => {
     const items = (c.items || []).filter((i) => i.descripcion || Number(i.valor));
     const subItems = items.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.valor) || 0), 0);
     const pIva = Number(c.iva) || 0;
-    const sub = detalle && items.length ? subItems : c.subtotal != null && c.subtotal !== '' ? Number(c.subtotal) || 0 : c.total != null && c.total !== '' ? (Number(c.total) || 0) / (1 + pIva / 100) : subItems;
-    const iva = sub * pIva / 100;
-    const total = detalle && items.length ? sub + iva : c.total != null && c.total !== '' ? Number(c.total) || 0 : sub + iva;
+    const usarItems = detalle && items.length;
+    const sub = usarItems ? subItems : c.subtotal != null && c.subtotal !== '' ? Number(c.subtotal) || 0 : subItems;
+    const desc = descuentoCot(c, sub);
+    const base = sub - desc;
+    const iva = Math.round(base * pIva / 100);
+    const total = usarItems || c.total == null || c.total === '' ? base + iva : Number(c.total) || 0;
     if (c.descripcion) { y = seccion(doc, y, 'Objeto de la cotización'); y = parrafo(doc, y, c.descripcion, 9); y += 1; }
     if (detalle) {
       y = tabla(doc, y, ['Ítem', 'Descripción', 'Cant.', 'Valor unitario', 'Valor total'],
         items.map((i, k) => [k + 1, i.descripcion, i.cantidad, pesos(i.valor), pesos((Number(i.cantidad) || 0) * (Number(i.valor) || 0))]),
         { cols: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 14, halign: 'center' }, 3: { cellWidth: 30, halign: 'right' }, 4: { cellWidth: 32, halign: 'right' } } });
     } else y += 2;
-    const tot = pIva ? [['Subtotal', pesos(sub)], [`IVA ${pIva}%`, pesos(iva)], ['VALOR TOTAL', pesos(total)]] : [['VALOR TOTAL', pesos(total)]];
+    const tot = [];
+    if (desc || pIva) tot.push(['Subtotal', pesos(sub)]);
+    if (desc) { tot.push([`Descuento${c.descuento_tipo === '$' ? '' : ` ${Number(c.descuento) || 0}%`}`, `- ${pesos(desc)}`]); if (pIva) tot.push(['Subtotal con descuento', pesos(base)]); }
+    if (pIva) tot.push([`IVA ${pIva}%`, pesos(iva)]);
+    tot.push(['VALOR TOTAL', pesos(total)]);
     const last = tot.length - 1;
-    doc.autoTable({ startY: y - 2, body: tot, theme: 'grid', margin: { left: W(doc) - M - (detalle ? 72 : 90), right: M }, styles: { fontSize: detalle ? 8.5 : 10, cellPadding: detalle ? 1.4 : 2.2 }, columnStyles: { 0: { fontStyle: 'bold', fillColor: GRIS }, 1: { halign: 'right' } },
-      didParseCell: (d) => { if (d.row.index === last) { d.cell.styles.fillColor = TEAL; d.cell.styles.textColor = 255; d.cell.styles.fontStyle = 'bold'; } } });
+    y = salto(doc, y, 8 + tot.length * 7);
+    doc.autoTable({ startY: y - 2, body: tot, theme: 'grid', margin: { left: W(doc) - M - (detalle ? 80 : 92), right: M }, styles: { fontSize: detalle ? 8.5 : 10, cellPadding: detalle ? 1.4 : 2.2 }, columnStyles: { 0: { fontStyle: 'bold', fillColor: GRIS }, 1: { halign: 'right' } },
+      didParseCell: (d) => { if (d.row.index === last) { d.cell.styles.fillColor = TEAL; d.cell.styles.textColor = 255; d.cell.styles.fontStyle = 'bold'; } else if (String(d.row.raw[0]).startsWith('Descuento')) { d.cell.styles.textColor = [176, 46, 38]; } } });
     y = doc.lastAutoTable.finalY + 5;
-    doc.setFontSize(8.5); doc.text(doc.splitTextToSize(`Son: ${enLetras(total)} pesos m/cte.${pIva ? ` IVA ${pIva}% incluido.` : ''}`, W(doc) - 2 * M), M, y); y += 6;
+    doc.setFontSize(8.5); doc.text(doc.splitTextToSize(`Son: ${enLetras(total)} pesos m/cte.${desc ? ' Incluye descuento.' : ''}${pIva ? ` IVA ${pIva}% incluido.` : ''}`, W(doc) - 2 * M), M, y); y += 6;
     y = seccion(doc, y, 'Condiciones comerciales');
     y = parrafo(doc, y, c.condiciones || '', 8.5);
-    firmas(doc, y + 4, [firmaIBCOL(emp, firma, 'Atentamente')]);
+    firmas(doc, y + 4, [firmaCotizacion(emp, firma)]);
     return pie(doc, emp);
   }
 
@@ -669,5 +690,5 @@ window.PDF = (() => {
     return s;
   }
 
-  return { nuevo, encabezado, documento, hojaVida, inventario, cronograma, mantenimiento, alertas, evento, acta, cotizacion, cuentaCobro, indicadores, firmarPDF, enLetras, fF, pesos };
+  return { descuentoCot, nuevo, encabezado, documento, hojaVida, inventario, cronograma, mantenimiento, alertas, evento, acta, cotizacion, cuentaCobro, indicadores, firmarPDF, enLetras, fF, pesos };
 })();
