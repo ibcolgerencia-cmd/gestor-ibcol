@@ -155,9 +155,11 @@
     const extra = (x) => (x.marca || x.modelo ? ` (${[x.marca, x.modelo].filter(Boolean).join(' ')})` : '');
     const itemDe = (x, k) => (k === 'met'
       ? { descripcion: `Metrología / calibración ${x.descripcion}${extra(x)}`, cantidad: 1, valor: Number(x.valor_metrologia) || 0 }
-      : { descripcion: esMyM(x) ? `Mantenimiento preventivo ${x.descripcion}${extra(x)}` : `${x.descripcion}${extra(x)}`, cantidad: 1, valor: Number(x.valor) || 0 });
+      : k === 'ambos'
+        ? { descripcion: `Mantenimiento preventivo y metrología / calibración ${x.descripcion}${extra(x)}`, cantidad: 1, valor: (Number(x.valor) || 0) + (Number(x.valor_metrologia) || 0) }
+        : { descripcion: esMyM(x) ? `Mantenimiento preventivo ${x.descripcion}${extra(x)}` : `${x.descripcion}${extra(x)}`, cantidad: 1, valor: Number(x.valor) || 0 });
     let abierto = true; try { abierto = localStorage.getItem('ibcol_inv_drag') !== '0'; } catch {}
-    cont.innerHTML = `<details class="inv-drag" ${abierto ? 'open' : ''}><summary><b>Inventario de precios</b> <span class="muted">— arrastre un precio a la tabla de ítems (o tóquelo para agregarlo)</span></summary>
+    cont.innerHTML = `<details class="inv-drag" ${abierto ? 'open' : ''}><summary><b>Inventario de precios</b> <span class="muted">— arrastre a la tabla de ítems (o toque): solo <b>Mto.</b>, solo <b>Metrología</b> o <b>Mto. + Metrología</b></span></summary>
       <input type="search" data-dq placeholder="Buscar equipo o servicio…" style="width:100%;margin:8px 0">
       <div class="inv-drag-lista" data-dl></div></details>`;
     cont.querySelector('details').addEventListener('toggle', (e) => { try { localStorage.setItem('ibcol_inv_drag', e.target.open ? '1' : '0'); } catch {} });
@@ -165,8 +167,9 @@
       const nq = nrm(q);
       const l = lista.filter((x) => !nq || nrm([x.codigo, x.descripcion, x.marca, x.modelo, x.tipo].join(' ')).includes(nq)).slice(0, 150);
       cont.querySelector('[data-dl]').innerHTML = l.length ? l.map((x) => `<div class="inv-drag-fila"><span class="mono muted">${h(x.codigo || '')}</span><span class="inv-drag-nom">${h(x.descripcion)}</span>
-        <span class="inv-chip" draggable="true" data-chip="mto" data-id="${x.id}" title="Arrastre a la tabla o toque para agregar">${esMyM(x) ? 'Mto.' : h(x.tipo === 'Equipo biomédico' ? 'Equipo' : 'Valor')} ${pesos(x.valor)}</span>
-        ${tieneMet(x) ? `<span class="inv-chip met" draggable="true" data-chip="met" data-id="${x.id}" title="Arrastre a la tabla o toque para agregar">Metrología ${pesos(x.valor_metrologia)}</span>` : esMyM(x) ? '<span class="inv-chip off">Metrología: no aplica</span>' : '<span></span>'}</div>`).join('') : '<div class="muted" style="padding:8px">Sin resultados.</div>';
+        <span class="inv-chip" draggable="true" data-chip="mto" data-id="${x.id}" title="${esMyM(x) ? 'Solo mantenimiento preventivo' : 'Arrastre a la tabla o toque para agregar'}">${esMyM(x) ? 'Mto.' : h(x.tipo === 'Equipo biomédico' ? 'Equipo' : 'Valor')} ${pesos(x.valor)}</span>
+        ${tieneMet(x) ? `<span class="inv-chip met" draggable="true" data-chip="met" data-id="${x.id}" title="Solo metrología / calibración">Metrología ${pesos(x.valor_metrologia)}</span>` : esMyM(x) ? '<span class="inv-chip off">Metrología: no aplica</span>' : '<span></span>'}
+        ${tieneMet(x) ? `<span class="inv-chip ambos" draggable="true" data-chip="ambos" data-id="${x.id}" title="Mantenimiento preventivo + metrología">Mto. + Metrología ${pesos((Number(x.valor) || 0) + (Number(x.valor_metrologia) || 0))}</span>` : '<span></span>'}</div>`).join('') : '<div class="muted" style="padding:8px">Sin resultados.</div>';
     };
     pintar();
     cont.querySelector('[data-dq]').oninput = (e) => { q = e.target.value; pintar(); };
@@ -188,7 +191,7 @@
       titulo: 'Agregar del inventario', size: 'wide',
       cuerpo: `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><input type="search" data-q placeholder="Buscar equipo o ítem…" style="flex:1;min-width:200px">
         <select data-t><option value="">Todos los tipos</option>${TIPOS.map((t) => `<option>${h(t)}</option>`).join('')}</select></div>
-        <p class="muted" style="margin-top:0">Marque <b>Mto. preventivo</b>, <b>Metrología</b> o ambos para cada equipo y ajuste la cantidad.</p>
+        <p class="muted" style="margin-top:0">Marque solo <b>Mto. preventivo</b>, solo <b>Metrología</b>, o ambos (quedan en una sola línea «Mantenimiento preventivo y metrología» con la suma de los dos precios). Ajuste la cantidad.</p>
         <div data-l style="max-height:52vh;overflow:auto"></div><p class="muted" data-sum style="margin-bottom:0"></p>`,
       alAbrir: (m) => {
         const pintar = () => {
@@ -217,8 +220,9 @@
         const out = [];
         sel.forEach((s, id) => {
           const x = lista.find((y) => y.id === id); const extra = x.marca || x.modelo ? ` (${[x.marca, x.modelo].filter(Boolean).join(' ')})` : '';
-          if (s.mto) out.push({ descripcion: esMyM(x) ? `Mantenimiento preventivo ${x.descripcion}${extra}` : `${x.descripcion}${extra}`, cantidad: s.cant, valor: Number(x.valor) || 0 });
-          if (s.met && tieneMet(x)) out.push({ descripcion: `Metrología / calibración ${x.descripcion}${extra}`, cantidad: s.cant, valor: Number(x.valor_metrologia) || 0 });
+          if (s.mto && s.met && tieneMet(x)) out.push({ descripcion: `Mantenimiento preventivo y metrología / calibración ${x.descripcion}${extra}`, cantidad: s.cant, valor: (Number(x.valor) || 0) + (Number(x.valor_metrologia) || 0) });
+          else if (s.mto) out.push({ descripcion: esMyM(x) ? `Mantenimiento preventivo ${x.descripcion}${extra}` : `${x.descripcion}${extra}`, cantidad: s.cant, valor: Number(x.valor) || 0 });
+          else if (s.met && tieneMet(x)) out.push({ descripcion: `Metrología / calibración ${x.descripcion}${extra}`, cantidad: s.cant, valor: Number(x.valor_metrologia) || 0 });
         });
         if (!out.length) { toast('Marque al menos un servicio', true); return false; }
         alElegir(out);
