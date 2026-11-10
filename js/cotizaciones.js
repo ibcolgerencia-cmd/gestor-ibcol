@@ -11,7 +11,7 @@
   const A = window.APP, S = A.S, st = A.st;
   const { h, I, toast, modal, confirmar, leer, f } = UI;
   const esProp = () => st.perfil?.rol === 'propietario';
-  const TIPOS = ['Equipo biomédico', 'Mantenimiento preventivo', 'Mantenimiento correctivo', 'Calibración', 'Repuesto o insumo', 'Otro servicio'];
+  const TIPOS = ['Mantenimiento y metrología', 'Mantenimiento correctivo', 'Equipo biomédico', 'Repuesto o insumo', 'Otro servicio'];
   const UNIDADES = ['Unidad', 'Equipo', 'Servicio', 'Visita', 'Hora', 'Mes', 'Global'];
   const pesos = (n) => PDF.pesos(Number(n) || 0);
   const nrm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -37,124 +37,161 @@
     catch (e) { console.warn('cotizaciones_detalle', e.message); return false; }
   };
 
+  // ---------------------------------------------------------------- precios por equipo
+  // valor = mantenimiento preventivo (o valor unitario para equipos, repuestos y otros servicios)
+  // valor_metrologia = metrología / calibración (vacío = No aplica)
+  const MYM = 'Mantenimiento y metrología';
+  const esMyM = (x) => x.tipo === MYM;
+  const tieneMet = (x) => x.valor_metrologia != null && x.valor_metrologia !== '';
+  const noAplica = '<span class="bad-t" style="color:#c0392b;font-weight:600">No aplica</span>';
+  const ordenar = (l) => [...l].sort((a, b) => String(a.codigo || '~').localeCompare(String(b.codigo || '~'), 'es', { numeric: true }) || String(a.descripcion).localeCompare(String(b.descripcion), 'es'));
+
   // ---------------------------------------------------------------- vista: inventario de precios
   A.listaCatalogo = async (el) => {
     if (!esProp()) { el.innerHTML = '<div class="empty">Solo el propietario puede ver el inventario de precios.</div>'; return; }
-    const lista = await cargar();
+    const lista = ordenar(await cargar());
     st.catTipo = st.catTipo || ''; st.catQ = st.catQ || '';
     el.innerHTML = `<section class="panel"><header><h2>Inventario para cotizaciones</h2>
         <div class="actions" style="margin:0;gap:6px;flex-wrap:wrap"><button class="btn" data-cat="plantilla">${I.excel} Plantilla Excel</button>
         <label class="btn" style="cursor:pointer">${I.subir} Importar Excel<input type="file" accept=".xlsx,.xls,.csv" data-cat-xls hidden></label>
         <button class="btn pri" data-cat="nuevo">${I.mas} Nuevo ítem</button></div></header>
       ${faltaTabla ? avisoSQL : ''}
-      <p class="muted" style="margin-top:0">Equipos biomédicos, servicios de mantenimiento, calibración, repuestos y otros servicios con su valor unitario. Desde aquí se agregan a las cotizaciones con «Agregar del inventario». Solo usted ve estos valores: el cliente final solo ve el total de la cotización.</p>
+      <p class="muted" style="margin-top:0">Precios de mantenimiento preventivo y metrología por equipo, y valores de equipos biomédicos, repuestos y otros servicios. Desde aquí se agregan a las cotizaciones con «Agregar del inventario». Solo usted ve estos valores: el cliente final solo ve el total de la cotización.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        <input type="search" data-cat-q placeholder="Buscar por descripción, código, marca o modelo…" value="${h(st.catQ)}" style="flex:1;min-width:220px">
+        <input type="search" data-cat-q placeholder="Buscar por equipo, ítem, marca o modelo…" value="${h(st.catQ)}" style="flex:1;min-width:220px">
         <select data-cat-tipo><option value="">Todos los tipos</option>${TIPOS.map((t) => `<option ${t === st.catTipo ? 'selected' : ''}>${h(t)}</option>`).join('')}</select></div>
       <div data-cat-tabla></div></section>`;
     const pintar = () => {
       const q = nrm(st.catQ);
       const l = lista.filter((x) => (!st.catTipo || x.tipo === st.catTipo) && (!q || nrm([x.codigo, x.descripcion, x.marca, x.modelo, x.tipo].join(' ')).includes(q)));
-      el.querySelector('[data-cat-tabla]').innerHTML = l.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Código</th><th>Tipo</th><th>Descripción</th><th>Marca / modelo</th><th>Unidad</th><th class="r">Valor unitario</th><th></th></tr></thead><tbody>
-        ${l.map((x) => `<tr class="${x.activo === false ? 'muted' : ''}"><td class="mono">${h(x.codigo || '')}</td><td><span class="pill">${h(x.tipo || '')}</span></td><td><b>${h(x.descripcion)}</b>${x.notas ? `<div class="muted" style="font-size:.8rem">${h(x.notas)}</div>` : ''}</td>
-          <td>${h([x.marca, x.modelo].filter(Boolean).join(' · '))}</td><td>${h(x.unidad || '')}</td><td class="r num"><b>${pesos(x.valor)}</b></td>
+      el.querySelector('[data-cat-tabla]').innerHTML = l.length ? `<div class="tbl-wrap"><table class="tbl tbl-precios"><thead><tr><th>Ítem</th><th>Equipo / descripción</th><th>Tipo</th><th class="r">$ Mto. preventivo</th><th class="r">$ Metrología</th><th></th></tr></thead><tbody>
+        ${l.map((x) => `<tr class="${x.activo === false ? 'muted' : ''}"><td class="mono">${h(x.codigo || '')}</td><td><b>${h(x.descripcion)}</b>${x.marca || x.modelo ? `<div class="muted" style="font-size:.8rem">${h([x.marca, x.modelo].filter(Boolean).join(' · '))}</div>` : ''}</td><td><span class="pill">${h(x.tipo || '')}</span></td>
+          <td class="r num"><b>${pesos(x.valor)}</b>${esMyM(x) ? '' : `<div class="muted" style="font-size:.75rem">${h(x.unidad || 'Unidad')}</div>`}</td><td class="r num">${tieneMet(x) ? `<b>${pesos(x.valor_metrologia)}</b>` : esMyM(x) ? noAplica : '<span class="muted">—</span>'}</td>
           <td><div class="row-actions"><button class="icon-btn" data-cat="editar" data-id="${x.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-cat="borrar" data-id="${x.id}" aria-label="Eliminar">${I.del}</button></div></td></tr>`).join('')}
         </tbody></table></div><p class="muted" style="font-size:.8rem">${l.length} de ${lista.length} ítems</p>` : `<div class="empty">${lista.length ? 'Ningún ítem coincide con la búsqueda.' : 'Aún no hay ítems. Cree el primero o importe su lista de precios desde Excel.'}</div>`;
     };
     pintar();
     const qi = el.querySelector('[data-cat-q]'); qi.oninput = () => { st.catQ = qi.value; pintar(); };
     el.querySelector('[data-cat-tipo]').onchange = (e) => { st.catTipo = e.target.value; pintar(); };
-    el.addEventListener('click', async (e) => {
+    el.onclick = async (e) => {
       const b = e.target.closest('[data-cat]'); if (!b) return;
       const x = lista.find((y) => y.id === b.dataset.id);
       if (b.dataset.cat === 'nuevo') return formItem(null, () => A.listaCatalogo(el));
       if (b.dataset.cat === 'editar') return formItem(x, () => A.listaCatalogo(el));
       if (b.dataset.cat === 'borrar') { if (await confirmar(`¿Eliminar «${x.descripcion}» del inventario de precios? Las cotizaciones ya hechas no cambian.`)) { await S.remove('catalogo_cotizacion', x.id); toast('Ítem eliminado'); A.listaCatalogo(el); } return; }
       if (b.dataset.cat === 'plantilla') return plantilla();
-    });
+    };
     el.querySelector('[data-cat-xls]').onchange = async (e) => { const file = e.target.files[0]; e.target.value = ''; if (file) await importar(file, lista, () => A.listaCatalogo(el)); };
   };
 
   const formItem = (x, alListo) => modal({
     titulo: x ? 'Editar ítem del inventario' : 'Nuevo ítem del inventario', size: 'sm',
     cuerpo: `<form class="form" onsubmit="return false"><div class="fields">
-      ${f.sel('tipo', 'Tipo *', TIPOS, x?.tipo || 'Mantenimiento preventivo')}${f.input('codigo', 'Código', x?.codigo || '')}
-      ${f.area('descripcion', 'Descripción * (así sale en la cotización)', x?.descripcion || '', { rows: 2 })}
+      ${f.sel('tipo', 'Tipo *', TIPOS, x?.tipo || MYM)}${f.input('codigo', 'Ítem / código', x?.codigo || '')}
+      ${f.area('descripcion', 'Equipo o descripción *', x?.descripcion || '', { rows: 2 })}
       ${f.input('marca', 'Marca', x?.marca || '')}${f.input('modelo', 'Modelo', x?.modelo || '')}
-      ${f.sel('unidad', 'Unidad', UNIDADES, x?.unidad || 'Unidad')}${f.input('valor', 'Valor unitario (COP, sin IVA) *', x?.valor ?? '', { type: 'number', attrs: 'min="0" step="100"' })}
+      ${f.input('valor', '$ Mantenimiento preventivo (o valor unitario) *', x?.valor ?? '', { type: 'number', attrs: 'min="0" step="100"' })}
+      ${f.input('valor_metrologia', '$ Metrología (vacío = No aplica)', x?.valor_metrologia ?? '', { type: 'number', attrs: 'min="0" step="100"' })}
+      ${f.sel('unidad', 'Unidad', UNIDADES, x?.unidad || 'Equipo')}
       ${f.area('notas', 'Notas internas (no salen en la cotización)', x?.notas || '', { rows: 2 })}</div></form>`,
     acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
       const v = leer(m.body);
-      if (!v.descripcion?.trim()) { toast('Escriba la descripción', true); return false; }
-      const o = { tipo: v.tipo, codigo: v.codigo?.trim() || null, descripcion: v.descripcion.trim(), marca: v.marca?.trim() || null, modelo: v.modelo?.trim() || null, unidad: v.unidad, valor: num(v.valor), notas: v.notas?.trim() || null, activo: true };
+      if (!v.descripcion?.trim()) { toast('Escriba el equipo o la descripción', true); return false; }
+      const o = { tipo: v.tipo, codigo: v.codigo?.trim() || null, descripcion: v.descripcion.trim(), marca: v.marca?.trim() || null, modelo: v.modelo?.trim() || null, unidad: v.unidad, valor: num(v.valor), valor_metrologia: String(v.valor_metrologia ?? '').trim() === '' ? null : num(v.valor_metrologia), notas: v.notas?.trim() || null, activo: true };
       try { x ? await S.update('catalogo_cotizacion', x.id, o) : await S.insert('catalogo_cotizacion', o); }
-      catch (e) { if (/catalogo_cotizacion|schema cache|does not exist|relation/i.test(e.message)) { toast('Falta ejecutar supabase/cotizaciones_inventario.sql en Supabase', true); return false; } throw e; }
+      catch (e) { if (/catalogo_cotizacion|valor_metrologia|schema cache|does not exist|relation/i.test(e.message)) { toast('Falta ejecutar supabase/cotizaciones_inventario.sql en Supabase', true); return false; } throw e; }
       toast(x ? 'Ítem actualizado' : 'Ítem agregado al inventario'); alListo?.();
     } }],
   });
 
-  const COLS = ['Tipo', 'Código', 'Descripción', 'Marca', 'Modelo', 'Unidad', 'Valor unitario'];
+  const COLS = ['Ítem', 'Tipo', 'Equipo / descripción', 'Marca', 'Modelo', 'Unidad', '$ Mto preventivo', '$ Metrología'];
   const plantilla = () => {
-    const ej = [['Mantenimiento preventivo', 'MP-001', 'Mantenimiento preventivo de tensiómetro', '', '', 'Equipo', 45000], ['Calibración', 'CAL-001', 'Calibración de báscula con certificado', '', '', 'Equipo', 60000], ['Equipo biomédico', 'EQ-001', 'Monitor de signos vitales', 'Marca', 'Modelo', 'Unidad', 3500000]];
+    const ej = [['N1', MYM, 'Tensiómetro (ejemplo)', '', '', 'Equipo', 30000, 50000], ['N2', MYM, 'Equipo de órganos (ejemplo)', '', '', 'Equipo', 30000, 'NO APLICA'], ['EQ-1', 'Equipo biomédico', 'Monitor de signos vitales (ejemplo)', 'Marca', 'Modelo', 'Unidad', 3000000, '']];
     const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet([COLS, ...ej]);
-    ws['!cols'] = [{ wch: 26 }, { wch: 10 }, { wch: 50 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 16 }];
+    ws['!cols'] = [{ wch: 8 }, { wch: 26 }, { wch: 50 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Inventario'); XLSX.writeFile(wb, 'Plantilla_inventario_cotizaciones_IBCOL.xlsx');
   };
+  // acepta la plantilla y también listas como «ITEM | EQUIPO | $ MMTO PREVENT | $METROLOGIA» (en varias hojas o tablas)
   const importar = async (file, actuales, alListo) => {
     const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array' });
-    const filas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
-    const hi = filas.findIndex((r) => r.some((c) => /descrip/i.test(String(c))));
-    if (hi < 0) return toast('No se encontró la columna «Descripción». Use la plantilla Excel.', true);
-    const cab = filas[hi].map((c) => nrm(c));
-    const col = (re) => cab.findIndex((c) => re.test(c));
-    const ci = { tipo: col(/^tipo/), codigo: col(/codigo|cod\b|ref/), descripcion: col(/descrip/), marca: col(/marca/), modelo: col(/modelo/), unidad: col(/unidad|und/), valor: col(/valor|precio|tarifa/) };
-    const tipoDe = (t) => TIPOS.find((x) => nrm(x) === nrm(t)) || (/calibr/i.test(t) ? 'Calibración' : /correct/i.test(t) ? 'Mantenimiento correctivo' : /manten/i.test(t) ? 'Mantenimiento preventivo' : /equipo/i.test(t) ? 'Equipo biomédico' : /repuest|insum/i.test(t) ? 'Repuesto o insumo' : 'Otro servicio');
-    const nuevos = filas.slice(hi + 1).map((r) => ({ tipo: tipoDe(String(r[ci.tipo] ?? '')), codigo: String(r[ci.codigo] ?? '').trim() || null, descripcion: String(r[ci.descripcion] ?? '').trim(), marca: String(r[ci.marca] ?? '').trim() || null, modelo: String(r[ci.modelo] ?? '').trim() || null, unidad: String(r[ci.unidad] ?? '').trim() || 'Unidad', valor: num(r[ci.valor]), activo: true })).filter((x) => x.descripcion);
-    if (!nuevos.length) return toast('El archivo no tiene ítems para importar', true);
+    const tipoDe = (t, met) => TIPOS.find((x) => nrm(x) === nrm(t)) || (!t || met ? MYM : /calibr|metrolog|manten/i.test(t) ? MYM : /equipo/i.test(t) ? 'Equipo biomédico' : /repuest|insum/i.test(t) ? 'Repuesto o insumo' : 'Otro servicio');
+    const nuevos = [];
+    for (const nombre of wb.SheetNames) {
+      const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, defval: '' });
+      let ci = null;
+      for (const r of filas) {
+        const cab = r.map((c) => nrm(c));
+        if (cab.some((c) => /descrip|^equipo/.test(c)) && cab.some((c) => /mmto|manten|valor|precio|tarifa|metrolog/.test(c))) {
+          const col = (re) => cab.findIndex((c) => re.test(c));
+          ci = { codigo: col(/^item|codigo|cod\b|ref/), tipo: col(/^tipo/), descripcion: col(/descrip|^equipo/), marca: col(/marca/), modelo: col(/modelo/), unidad: col(/unidad|und/), valor: col(/mmto|manten|valor unit|^valor|precio|tarifa/), met: col(/metrolog|calibr/) };
+          continue;
+        }
+        if (!ci) continue;
+        const desc = String(r[ci.descripcion] ?? '').replace(/\s+/g, ' ').trim(); if (!desc) continue;
+        const raw = (i) => (i >= 0 ? r[i] : '');
+        const val = (v) => (v === '' || v == null || (typeof v !== 'number' && !/\d/.test(String(v))) ? null : num(v));
+        const met = ci.met >= 0 ? val(raw(ci.met)) : null;
+        nuevos.push({ tipo: tipoDe(String(raw(ci.tipo)), ci.met >= 0), codigo: String(raw(ci.codigo)).trim() || null, descripcion: desc, marca: String(raw(ci.marca)).trim() || null, modelo: String(raw(ci.modelo)).trim() || null,
+          unidad: String(raw(ci.unidad)).trim() || 'Equipo', valor: val(raw(ci.valor)) ?? 0, valor_metrologia: met, activo: true });
+      }
+    }
+    if (!nuevos.length) return toast('No se encontraron ítems. El archivo debe tener columnas como «Equipo» y «$ Mto preventivo» / «$ Metrología». Use la plantilla Excel.', true);
     const clave = (x) => nrm(x.codigo || x.descripcion);
     let n = 0, u = 0;
     for (const x of nuevos) {
       const ya = actuales.find((y) => clave(y) === clave(x));
       try { if (ya) { await S.update('catalogo_cotizacion', ya.id, x); u++; } else { await S.insert('catalogo_cotizacion', x); n++; } }
-      catch (e) { toast(/catalogo_cotizacion|schema cache|relation/i.test(e.message) ? 'Falta ejecutar supabase/cotizaciones_inventario.sql en Supabase' : e.message, true); break; }
+      catch (e) { toast(/catalogo_cotizacion|valor_metrologia|schema cache|relation/i.test(e.message) ? 'Falta ejecutar supabase/cotizaciones_inventario.sql en Supabase' : e.message, true); break; }
     }
     toast(`Inventario importado: ${n} nuevos, ${u} actualizados`); alListo?.();
   };
 
   // ---------------------------------------------------------------- selector para la cotización
   A.elegirDelInventario = async (alElegir) => {
-    const lista = (await cargar()).filter((x) => x.activo !== false);
+    const lista = ordenar((await cargar()).filter((x) => x.activo !== false));
     if (faltaTabla) return toast('Falta ejecutar supabase/cotizaciones_inventario.sql en Supabase', true);
     if (!lista.length) return toast('El inventario de precios está vacío. Agregue ítems en Cotizaciones y cobros › Inventario de precios.', true);
     let tipo = '', q = '';
+    const sel = new Map(); // id → { mto, met, cant }
+    const get = (id) => sel.get(id) || { mto: false, met: false, cant: 1 };
     modal({
       titulo: 'Agregar del inventario', size: 'wide',
-      cuerpo: `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><input type="search" data-q placeholder="Buscar…" style="flex:1;min-width:200px">
+      cuerpo: `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><input type="search" data-q placeholder="Buscar equipo o ítem…" style="flex:1;min-width:200px">
         <select data-t><option value="">Todos los tipos</option>${TIPOS.map((t) => `<option>${h(t)}</option>`).join('')}</select></div>
+        <p class="muted" style="margin-top:0">Marque <b>Mto. preventivo</b>, <b>Metrología</b> o ambos para cada equipo y ajuste la cantidad.</p>
         <div data-l style="max-height:52vh;overflow:auto"></div><p class="muted" data-sum style="margin-bottom:0"></p>`,
       alAbrir: (m) => {
-        const sel = new Map();
         const pintar = () => {
           const nq = nrm(q);
           const l = lista.filter((x) => (!tipo || x.tipo === tipo) && (!nq || nrm([x.codigo, x.descripcion, x.marca, x.modelo].join(' ')).includes(nq)));
-          m.body.querySelector('[data-l]').innerHTML = l.length ? `<table class="tbl"><thead><tr><th></th><th>Descripción</th><th>Tipo</th><th class="r">Valor</th><th style="width:80px">Cant.</th></tr></thead><tbody>
-            ${l.map((x) => `<tr><td><input type="checkbox" data-id="${x.id}" ${sel.has(x.id) ? 'checked' : ''} aria-label="Elegir"></td><td><b>${h(x.descripcion)}</b>${x.marca || x.modelo ? `<div class="muted" style="font-size:.8rem">${h([x.marca, x.modelo].filter(Boolean).join(' · '))}</div>` : ''}</td>
-              <td class="muted">${h(x.tipo)}</td><td class="r num">${pesos(x.valor)}</td><td><input type="number" min="1" step="1" data-cant="${x.id}" value="${sel.get(x.id) || 1}" style="width:70px"></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Sin resultados.</div>';
+          m.body.querySelector('[data-l]').innerHTML = l.length ? `<table class="tbl"><thead><tr><th>Ítem</th><th>Equipo / descripción</th><th class="r">$ Mto. preventivo</th><th class="r">$ Metrología</th><th style="width:80px">Cant.</th></tr></thead><tbody>
+            ${l.map((x) => { const s = get(x.id); return `<tr><td class="mono">${h(x.codigo || '')}</td><td><b>${h(x.descripcion)}</b>${esMyM(x) ? '' : `<div class="muted" style="font-size:.8rem">${h([x.tipo, x.marca, x.modelo].filter(Boolean).join(' · '))}</div>`}</td>
+              <td class="r num"><label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;justify-content:flex-end"><input type="checkbox" data-sel="mto" data-id="${x.id}" ${s.mto ? 'checked' : ''}> ${pesos(x.valor)}</label></td>
+              <td class="r num">${tieneMet(x) ? `<label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;justify-content:flex-end"><input type="checkbox" data-sel="met" data-id="${x.id}" ${s.met ? 'checked' : ''}> ${pesos(x.valor_metrologia)}</label>` : esMyM(x) ? noAplica : '<span class="muted">—</span>'}</td>
+              <td><input type="number" min="1" step="1" data-cant="${x.id}" value="${s.cant}" style="width:70px"></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">Sin resultados.</div>';
         };
-        const resumen = () => { const t = [...sel].reduce((s, [id, c]) => s + c * (Number(lista.find((x) => x.id === id)?.valor) || 0), 0); m.body.querySelector('[data-sum]').textContent = sel.size ? `${sel.size} ítem(s) elegidos · ${pesos(t)} antes de IVA` : 'Marque los ítems y ajuste la cantidad.'; };
+        const resumen = () => {
+          let t = 0, n = 0; sel.forEach((s, id) => { const x = lista.find((y) => y.id === id); if (s.mto) { t += s.cant * (Number(x.valor) || 0); n++; } if (s.met) { t += s.cant * (Number(x.valor_metrologia) || 0); n++; } });
+          m.body.querySelector('[data-sum]').textContent = n ? `${n} servicio(s) elegidos · ${pesos(t)} antes de IVA` : 'Marque los servicios y ajuste la cantidad.';
+        };
         pintar(); resumen();
         m.body.querySelector('[data-q]').oninput = (e) => { q = e.target.value; pintar(); };
         m.body.querySelector('[data-t]').onchange = (e) => { tipo = e.target.value; pintar(); };
         m.body.addEventListener('change', (e) => {
-          const c = e.target.closest('[data-id]'); if (c) { const cant = Number(m.body.querySelector(`[data-cant="${c.dataset.id}"]`)?.value) || 1; c.checked ? sel.set(c.dataset.id, cant) : sel.delete(c.dataset.id); }
-          const n = e.target.closest('[data-cant]'); if (n) { const id = n.dataset.cant; const v = Math.max(1, Number(n.value) || 1); const ch = m.body.querySelector(`[data-id="${id}"]`); if (ch) ch.checked = true; sel.set(id, v); }
+          const c = e.target.closest('[data-sel]'); if (c) { const s = { ...get(c.dataset.id) }; s[c.dataset.sel] = c.checked; s.cant = Math.max(1, Number(m.body.querySelector(`[data-cant="${c.dataset.id}"]`)?.value) || 1); sel.set(c.dataset.id, s); }
+          const n = e.target.closest('[data-cant]'); if (n) { const s = { ...get(n.dataset.cant) }; s.cant = Math.max(1, Number(n.value) || 1); if (!s.mto && !s.met) s.mto = true; sel.set(n.dataset.cant, s); pintar(); }
           resumen();
         });
-        m._sel = sel;
       },
-      acciones: [{ t: 'Cancelar' }, { t: 'Agregar a la cotización', cls: 'pri', fn: (m) => {
-        const sel = m._sel; if (!sel?.size) { toast('Marque al menos un ítem', true); return false; }
-        alElegir([...sel].map(([id, c]) => { const x = lista.find((y) => y.id === id); return { descripcion: [x.descripcion, x.marca || x.modelo ? `(${[x.marca, x.modelo].filter(Boolean).join(' ')})` : ''].filter(Boolean).join(' '), cantidad: c, valor: Number(x.valor) || 0 }; }));
+      acciones: [{ t: 'Cancelar' }, { t: 'Agregar a la cotización', cls: 'pri', fn: () => {
+        const out = [];
+        sel.forEach((s, id) => {
+          const x = lista.find((y) => y.id === id); const extra = x.marca || x.modelo ? ` (${[x.marca, x.modelo].filter(Boolean).join(' ')})` : '';
+          if (s.mto) out.push({ descripcion: esMyM(x) ? `Mantenimiento preventivo ${x.descripcion}${extra}` : `${x.descripcion}${extra}`, cantidad: s.cant, valor: Number(x.valor) || 0 });
+          if (s.met && tieneMet(x)) out.push({ descripcion: `Metrología / calibración ${x.descripcion}${extra}`, cantidad: s.cant, valor: Number(x.valor_metrologia) || 0 });
+        });
+        if (!out.length) { toast('Marque al menos un servicio', true); return false; }
+        alElegir(out);
       } }],
     });
   };
