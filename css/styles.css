@@ -572,3 +572,17 @@ h1 .icon-btn { vertical-align: middle; }
 .alertas-plegables[open] > summary .chev { transform: rotate(90deg); }
 .alertas-plegables > summary:hover h2 { color: var(--pri, #0a7c99); }
 .form.ia [hidden] { display: none !important; }
+/* v98 · arrastrar precios del inventario a la cotización */
+.inv-drag { border: 1px dashed var(--line, #cfd8dc); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: var(--bg2, rgba(10,124,153,.04)); }
+.inv-drag > summary { cursor: pointer; }
+.inv-drag-lista { max-height: 230px; overflow: auto; display: grid; gap: 2px; }
+.inv-drag-fila { display: grid; grid-template-columns: 52px 1fr auto auto; gap: 8px; align-items: center; padding: 4px 2px; border-bottom: 1px solid var(--line, #eceff1); font-size: .86rem; }
+.inv-drag-nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--pri, #0a7c99); color: #fff; font-weight: 600; font-size: .8rem; cursor: grab; user-select: none; white-space: nowrap; }
+.inv-chip.met { background: #6b4fa0; }
+.inv-chip.off { background: transparent; color: #c0392b; cursor: default; font-weight: 500; }
+.inv-chip:active, .inv-chip.arrastrando { cursor: grabbing; opacity: .6; }
+.repeat.drop-on { outline: 2px dashed var(--pri, #0a7c99); outline-offset: 4px; border-radius: 8px; background: rgba(10,124,153,.06); }
+.ri.ri-nueva { animation: riNueva 1.2s ease; }
+@keyframes riNueva { from { background: rgba(10,124,153,.18); } to { background: transparent; } }
+@media (max-width: 640px) { .inv-drag-fila { grid-template-columns: 1fr auto; } .inv-drag-fila .mono { display: none; } .inv-drag-nom { grid-column: 1 / -1; white-space: normal; } }
