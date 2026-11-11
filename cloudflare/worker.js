@@ -27,7 +27,7 @@ const cors = (req) => {
 };
 const json = (req, data, status = 200) => new Response(JSON.stringify(data), { status, headers: { ...cors(req), 'Content-Type': 'application/json' } });
 const ruta = (p) => decodeURIComponent(p).replace(/^\/+/, '');
-const valida = (k) => k && k.length < 1024 && !k.includes('..') && /^[\w.\-/ ()]+$/.test(k);
+const valida = (k) => k && k.length < 1024 && !k.split('/').some((s) => s === '' || s === '.' || s === '..') && /^[\w.\-/ ()]+$/.test(k);
 
 // ---------------------------------------------------------------- sesión y permisos
 const cache = new Map(); // token → { u, t }
