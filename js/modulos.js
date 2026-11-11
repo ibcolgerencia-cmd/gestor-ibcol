@@ -283,7 +283,7 @@
       const enServ = (r) => { if (!F.serv) return true; const c = consDe(r); if (F.serv.startsWith('sede:')) return !!c && sedeC(c) === F.serv.slice(5); return c?.id === F.serv; };
       const consSel0 = F.serv && !F.serv.startsWith('sede:') ? cons.find((c) => c.id === F.serv) : F.serv ? { sede: F.serv.slice(5), nombre: '' } : null;
       // Cronogramas separados (ej. GENERAL, EXTRAMURAL, CENTRÍFUGA ALMACÉN): cada uno con los servicios elegidos
-      const grupos = (ent.config?.crono_grupos || []).filter((g) => !sedeCtx || !g.sede || g.sede === sedeCtx);
+      const grupos = (ent.config?.crono_grupos || []).filter((g) => !sedeCtx || g.sede === sedeCtx || (!g.sede && (g.cons || []).some((id) => sedeC(cons.find((c) => c.id === id)) === sedeCtx)));
       if (F.grupo && !grupos.some((g) => g.id === F.grupo)) F.grupo = '';
       const grupo = grupos.find((g) => g.id === F.grupo) || null;
       // un equipo puede estar en un cronograma distinto al de su servicio (config.crono_eq = { equipoId: grupoId })
@@ -302,7 +302,8 @@
       const posMes = F.mes ? ventana.find((v) => v.m === F.mes).p : -1;
       const vis = F.mes && !F.anio12 ? [ventana[posMes]] : ventana;
       const editar = F.editar && esProp() && !cap;
-      const optServ = `<option value="">Todos los servicios</option>${sedes.map((sd) => {
+      // dentro de una sede: solo los servicios de esa sede (no los de toda la entidad)
+      const optServ = `${sedeCtx ? '' : '<option value="">Todos los servicios</option>'}${(sedeCtx ? sedes.filter((sd) => sd === sedeCtx) : sedes).map((sd) => {
         const lista = cons.filter((c) => sedeC(c) === sd).map((c) => `<option value="${c.id}" ${F.serv === c.id ? 'selected' : ''}>${h(c.nombre)}</option>`).join('');
         return sedes.length > 1 ? `<optgroup label="${h(sd)}"><option value="sede:${h(sd)}" ${F.serv === 'sede:' + sd ? 'selected' : ''}>Toda la sede ${h(sd)}</option>${lista}</optgroup>` : lista;
       }).join('')}`;
