@@ -1347,7 +1347,7 @@
 
   // =================================================================== AUDITORÍA
   A.V.auditoria = async () => {
-    const [aud, ents] = await Promise.all([S.list('auditoria', {}, '-fecha'), S.list('entidades')]);
+    const [aud, ents] = await Promise.all([S.list('auditoria', {}, '-fecha', 3000), S.list('entidades')]);
     let fa = '', ft = '';
     A.content().innerHTML = `<div class="page-head"><div><span class="eyebrow">Trazabilidad</span><h1>Pista de auditoría</h1><span class="muted">Registro inalterable de quién ingresó, consultó, descargó, creó, modificó, firmó o eliminó información y cuándo.</span></div></div>
       <div class="actions"><div class="field"><select data-fa aria-label="Acción"><option value="">Todas las acciones</option>${['INSERT', 'UPDATE', 'DELETE', 'CONSULTA', 'DESCARGA', 'FIRMA', 'LOGIN'].map((a) => `<option>${a}</option>`).join('')}</select></div>
