@@ -36,7 +36,7 @@ window.CAT = (() => {
     { k: 'capacitaciones', n: '6. PLAN DE CAPACITACIÓN', g: G1, ia: true },
     { k: 'limpieza', n: '7. LISTA CHEQUEO LIMPIEZA Y DESINFECCIÓN', g: G1, gen: 'limpieza', ia: true },
     { k: 'indicadores', n: '8. GESTIÓN DE INDICADORES', g: G1, gen: 'indicadores', ia: true },
-    { k: 'glucometro', n: '9. CONTROL CALIDAD GLUCÓMETRO', g: G1, ia: true },
+    { k: 'glucometro', n: '9. CONTROL CALIDAD GLUCÓMETRO', g: G1, gen: 'glucometro', ia: true },
     { k: 'actas_revision', n: '10. ACTAS REVISIÓN SEDES', g: G1, ia: true },
     { k: 'hv_ingenieros', n: '11. HOJAS DE VIDA INGENIEROS BIOMÉDICOS', g: G1 },
     { k: 'tecnovigilancia', n: 'PROGRAMA DE TECNOVIGILANCIA', g: G2, gen: 'tecnovigilancia', ia: true },
