@@ -15,7 +15,11 @@
   // encabezado por defecto (tomado del formato Excel de la entidad)
   const ENC = { proceso: 'APOYO DIAGNÓSTICO Y COMPLEMENTACIÓN TERAPÉUTICA', subproceso: 'LABORATORIO CLÍNICO', nombre: 'FORMATO CONTROL DE GLUCOMETRÍA', codigo: 'MIS-ACT-LC-FOR-14', version: '1', fecha: 'MARZO DE 2025', franja: 'EQUIPO GLUCÓMETRO' };
   const CAMPOS = ['marca', 'modelo', 'serie', 'lote_tira', 'lote_solucion', 'rango_normal', 'rango_alto', 'fecha_apertura', 'tipo', 'valor', 'observaciones', 'responsable', 'cargo'];
-  const encDe = (ent, sede) => ({ ...ENC, ...((ent.config?.fmt_glucometro || {})[sede || '_'] || (ent.config?.fmt_glucometro || {})._ || {}) });
+  // encabezado: Formatos (código, versión, fecha…) y, si la entidad/sede tiene uno propio, ese
+  const fechaMes = (s) => { const m = String(s || '').match(/^(\d{4})-(\d{2})/); return m ? `${CAT.MESES[+m[2] - 1].toUpperCase()} DE ${m[1]}` : String(s || ''); };
+  const encFormatos = () => { const x = st.fmt?.glucometro || {}; return { ...ENC, ...(x.titulo ? { nombre: x.titulo } : {}), ...['codigo', 'version', 'proceso', 'subproceso', 'franja'].reduce((o, k) => (x[k] ? { ...o, [k]: x[k] } : o), {}), ...(x.fecha ? { fecha: fechaMes(x.fecha) } : {}) }; };
+  const propio = (ent, sede) => (ent.config?.fmt_glucometro || {})[sede || '_'] || (ent.config?.fmt_glucometro || {})._ || null;
+  const encDe = (ent, sede) => ({ ...encFormatos(), ...(propio(ent, sede) || {}) });
   const fechaTxt = (s) => { if (!s) return ''; const [y, m, d] = String(s).slice(0, 10).split('-'); return y && m && d ? `${+d}/${+m}/${y}` : String(s); };
   const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.').replace(/[^\d.-]/g, '')); return Number.isFinite(n) ? n : null; };
   // ¿el valor quedó dentro del rango de la solución empleada? (ej. "96 – 144 mg/dL")
@@ -62,7 +66,7 @@
             <td>${h(d.rango_normal || '')}</td><td>${h(d.rango_alto || '')}</td><td class="num">${fechaTxt(d.fecha_apertura)}</td>
             <td class="c">${d.tipo === 'NORMAL' || d.tipo === 'AMBAS' ? 'x' : ''}</td><td class="c">${d.tipo === 'ALTA' || d.tipo === 'AMBAS' ? 'x' : ''}</td>
             <td class="num"><b>${h(d.valor ?? '')}</b>${fuera ? ' <span class="pill bad" title="El valor está fuera del rango de la solución empleada">Fuera de rango</span>' : ''}</td><td>${h(d.observaciones || '')}</td><td>${h(d.responsable || '')}</td><td>${h(d.cargo || '')}</td>
-            ${esProp() ? `<td style="white-space:nowrap"><button class="icon-btn" data-act="glEditar" data-id="${r.id}" title="Corregir" aria-label="Corregir">${I.edit}</button><button class="icon-btn" data-act="glBorrar" data-id="${r.id}" title="Eliminar" aria-label="Eliminar">${I.del}</button></td>` : ''}</tr>`; }).join('') || `<tr><td colspan="${esProp() ? 16 : 15}" class="empty">Sin registros en ${h(periodo)}.${esProp() ? ' Use “Registro de hoy” o “Importar Excel” para cargar los controles que ya tiene.' : ''}</td></tr>`}</tbody></table></div></section>`;
+            ${esProp() ? `<td style="white-space:nowrap"><button class="icon-btn" data-act="glEditar" data-id="${r.id}" title="Corregir" aria-label="Corregir">${I.edit}</button><button class="icon-btn" data-act="glBorrar" data-id="${r.id}" title="Eliminar" aria-label="Eliminar">${I.del}</button></td>` : ''}</tr>`; }).join('') || `<tr><td colspan="${esProp() ? 16 : 15}" class="muted" style="text-align:center;padding:24px">Sin registros en ${h(periodo)}.${esProp() ? ' Use “Registro de hoy” o “Importar Excel” para cargar los controles que ya tiene.' : ''}</td></tr>`}</tbody></table></div></section>`;
       el.querySelectorAll('[data-gl]').forEach((s) => { s.onchange = () => { F[s.dataset.gl] = s.dataset.gl === 'serie' ? s.value : +s.value; pintar(); }; });
       const imp = el.querySelector('[data-glimp]'); if (imp) imp.onchange = async () => { const fl = imp.files[0]; imp.value = ''; if (fl) await importar(fl); };
       A.acts({
@@ -139,7 +143,7 @@
         cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('proceso', 'Proceso', e.proceso, { full: true })}${f.input('subproceso', 'Subproceso', e.subproceso, { full: true })}${f.input('nombre', 'Nombre del documento', e.nombre, { full: true })}
           ${f.input('codigo', 'Código', e.codigo)}${f.input('version', 'Versión', e.version)}${f.input('fecha', 'Fecha', e.fecha)}${f.input('franja', 'Título de la tabla', e.franja)}</div>
           <p class="muted">El logo es el de la entidad (Entidades › editar). Este encabezado sale en la pantalla, el PDF y el Excel.</p></form>`,
-        acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
+        acciones: [...(propio(ent, sede) ? [{ t: 'Usar el de Formatos', fn: async () => { const todos = { ...(ent.config?.fmt_glucometro || {}) }; delete todos[sede || '_']; if (await A.guardarConfig(ent, { ...(ent.config || {}), fmt_glucometro: todos })) { toast('Ahora usa el encabezado de Formatos'); pintar(); } } }] : []), { t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
           const v = leer(m.body); const todos = { ...(ent.config?.fmt_glucometro || {}) }; todos[sede || '_'] = v;
           if (await A.guardarConfig(ent, { ...(ent.config || {}), fmt_glucometro: todos })) { toast('Encabezado guardado'); pintar(); }
         } }] });

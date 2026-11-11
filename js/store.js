@@ -267,7 +267,7 @@ window.Store = (() => {
         if (['empresa', 'formatos'].includes(t)) return true;
         if (t === 'perfiles') return r.id === perfil.id;
         if (t === 'entidades') return r.id === perfil.entidad_id;
-        if (!['consultorios', 'equipos', 'listas_limpieza', 'reportes_dano'].includes(t) || r.entidad_id !== perfil.entidad_id) return false;
+        if (!['consultorios', 'equipos', 'listas_limpieza', 'reportes_dano', 'control_glucometro'].includes(t) || r.entidad_id !== perfil.entidad_id) return false;
         if (!perfil.sede) return true;
         const sedeDe = (cid) => { const c = tabla('consultorios').find((x) => x.id === cid); return c ? (c.sede || 'Sede principal') : null; };
         if (t === 'consultorios') return (r.sede || 'Sede principal') === perfil.sede;

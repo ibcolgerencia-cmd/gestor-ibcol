@@ -124,7 +124,7 @@ window.APP = (() => {
     const nav = esProp()
       ? [['grp', 'Operación'], ['panel', 'Panel de control', I.panel], ['entidades', 'Entidades y equipos', I.ent], ['comercial', 'Cotizaciones y cobros', I.plata], ['asistente', 'Asistente IA', I.ia],
         ['grp', 'Administración'], ['usuarios', 'Usuarios y accesos', I.users], ['formatos', 'Formatos', I.fmt], ['consecutivos', 'Consecutivos', I.cal], ['auditoria', 'Auditoría', I.audit], ['empresa', 'Mi empresa y firma', I.emp], ['politicas', 'Privacidad y seguridad', I.llave]]
-      : esCalidad() ? [['grp', 'Área de calidad'], ['calidad', 'Limpieza y reporte de daño', I.ent], ['politicas', 'Privacidad y seguridad', I.audit]]
+      : esCalidad() ? [['grp', 'Área de calidad'], ['calidad', 'Documentos de calidad', I.ent], ['politicas', 'Privacidad y seguridad', I.audit]]
       : [['grp', 'Mi entidad'], ['entidad', 'Documentación', I.ent], ['cuenta', 'Mi cuenta', I.llave], ['politicas', 'Privacidad y seguridad', I.audit]];
     root.innerHTML = `<div class="app" id="app">
       <aside class="side" aria-label="Menú principal">
