@@ -76,7 +76,7 @@
       }
       el.querySelector('[data-act=porServ]')?.classList.toggle('pri', porServ);
       const cl = carpetasL(); const vv = el.querySelector('[data-vistas]');
-      vv.innerHTML = `${cl.length ? `<span class="muted">Ver:</span><button class="chip ${!vista ? 'on' : ''}" data-act="vistaInv" data-v="">Todo el inventario</button><button class="chip ${vista === '__serv' ? 'on' : ''}" data-act="vistaInv" data-v="__serv">Servicios</button>${cl.map((x) => `<button class="chip ${vista === x ? 'on' : ''}" data-act="vistaInv" data-v="${h(x)}">${I.carpeta} ${h(x)}</button>`).join('')}` : ''}${esProp() ? `<span class="sp"></span>${vista && vista !== '__serv' ? `<button class="btn sm" data-act="carpInv" data-n="${h(vista)}">${I.edit} Carpeta ${h(vista)}</button>` : ''}<button class="btn sm" data-act="carpInv" data-n="">${I.carpeta} Nueva subcarpeta de servicios</button><button class="btn sm" data-act="nuevoServInv">${I.mas} Servicio${vista && vista !== '__serv' ? ' en ' + h(vista) : ''}</button>` : ''}`;
+      vv.innerHTML = `${cl.length ? `<span class="muted">Ver:</span><button class="chip ${!vista ? 'on' : ''}" data-act="vistaInv" data-v="">Todo el inventario</button><button class="chip ${vista === '__serv' ? 'on' : ''}" data-act="vistaInv" data-v="__serv">Servicios</button>${cl.map((x) => `<button class="chip ${vista === x ? 'on' : ''}" data-act="vistaInv" data-v="${h(x)}">${I.carpeta} ${h(x)}</button>`).join('')}` : ''}${esProp() ? `<span class="sp"></span>${vista && vista !== '__serv' ? `<button class="btn sm" data-act="carpInv" data-n="${h(vista)}">${I.edit} Carpeta ${h(vista)}</button><button class="btn sm danger" data-act="carpQuitarInv" data-n="${h(vista)}" title="Quitar la carpeta (los servicios y equipos no se borran)">${I.del} Quitar carpeta ${h(vista)}</button>` : ''}<button class="btn sm" data-act="carpInv" data-n="">${I.carpeta} Nueva subcarpeta de servicios</button><button class="btn sm" data-act="nuevoServInv">${I.mas} Servicio${vista && vista !== '__serv' ? ' en ' + h(vista) : ''}</button>` : ''}`;
       el.querySelector('[data-act=modoBorrar]')?.classList.toggle('danger', borrar && modoSel === 'borrar');
       el.querySelector('[data-act=modoMover]')?.classList.toggle('pri', borrar && modoSel === 'mover');
       if (borrar) {
@@ -110,6 +110,15 @@
       llenarNR: () => A.completarNR(visibles(), pintar),
       porServ: () => { porServ = !porServ; pintar(); },
       vistaInv: (d) => { vista = d.v; pintar(); },
+      // quitar una carpeta de servicios (ej. 1. INVENTARIO GENERAL): los servicios y equipos no se borran, vuelven a la lista de servicios
+      carpQuitarInv: async (d) => {
+        const nombre = d.n; const enC = cons.filter((c) => carpDe(c) === nombre && (!sedeF || sedeC(c) === sedeF));
+        if (!(await confirmar(`¿Quitar la carpeta “${nombre}”? Sus ${enC.length} servicio${enC.length === 1 ? '' : 's'} y equipos NO se borran: vuelven a verse en la lista de servicios.`, 'Quitar carpeta'))) return;
+        const ids = new Set(cons.map((c) => c.id)); const nm = {};
+        // se quitan las de esa carpeta y, de paso, las de servicios que ya no existen
+        Object.entries(ent.config?.carpetas_serv || {}).forEach(([k, v]) => { if (!ids.has(k)) return; if (v === nombre && (!sedeF || sedeC(cons.find((c) => c.id === k)) === sedeF)) return; nm[k] = v; });
+        if (await A.guardarConfig(ent, { ...(ent.config || {}), carpetas_serv: nm })) { vista = ''; toast(`Carpeta ${nombre} quitada`); pintar(); }
+      },
       nuevoEqServ: (d) => A.formEquipo({ entidad_id: ent.id, consultorio_id: d.c, orden: eqs.filter((e) => e.consultorio_id === d.c).reduce((m, e) => Math.max(m, e.orden || 0), 0) + 1 }, cons),
       // crear o editar una subcarpeta de servicios (ej. EXTRAMURAL, CENTRÍFUGA ALMACÉN) y elegir qué servicios quedan dentro
       carpInv: (d) => {
