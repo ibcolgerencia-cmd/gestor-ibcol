@@ -349,7 +349,7 @@
           <span class="muted">${visibles.length} de ${filas.length}</span>
           ${esProp() && !cap ? `<span class="sp"></span><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
         ${resumen}
-        <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span>${esProp() ? `<span>Toque una semana para cambiar su estado${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses'}.</span>` : ''}</div>
+        <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span><span><i style="background:#b9a3e3"></i>G · En garantía</span><span><i style="background:#7cc4e8"></i>C · Comodato</span>${esProp() ? `<span>Toque una semana para cambiar su estado (P → E → N → G → C)${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses · botón de anotaciones de cada fila para escribir, por mes, notas como “Equipo en garantía, mantenimiento a cargo del proveedor”'}.</span>` : ''}</div>
         ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
         ${A.datalistNR}
         ${visibles.length ? `<div class="crono-wrap"><table class="crono ${esProp() ? 'edit' : ''} ${editar ? 'editando' : ''}"><thead>
@@ -425,12 +425,12 @@
         llenarNR: () => A.completarNR([...new Set(visibles.map((r) => eqd(r.equipo_id)).filter((e) => e.id))], pintar),
         llenarArch: () => A.llenarDesdeArchivos(ent, { sede: sedeCtx || null, tipo: cap ? null : tipo, anio, alTerminar: () => { st.cronoAnio = anio; A.recargar(); } }),
         celda: async (d, b) => {
-          const r = filas[+d.r]; const y = +d.y; const orden = ['', 'P', 'E', 'N'];
+          const r = filas[+d.r]; const y = +d.y; const orden = ['', 'P', 'E', 'N', 'G', 'C'];
           const actual = r.cr[y]?.plan?.[d.k] || '';
-          const nv = orden[(orden.indexOf(actual) + 1) % 4];
+          const nv = orden[(orden.indexOf(actual) + 1) % orden.length];
           const c = await cronoDe(r, y);
           const plan = { ...(c.plan || {}) }; if (nv) plan[d.k] = nv; else delete plan[d.k];
-          c.plan = plan; b.classList.remove('P', 'E', 'N'); if (nv) b.classList.add(nv); b.textContent = nv;
+          c.plan = plan; b.classList.remove('P', 'E', 'N', 'G', 'C'); if (nv) b.classList.add(nv); b.textContent = nv;
           await S.update('cronogramas', c.id, { plan });
         },
         notas: async (d) => {
@@ -653,7 +653,7 @@
     const meses = (p) => new Set(Object.entries(p || {}).filter(([k, v]) => v && k !== 'notas').map(([k]) => +k.split('-')[0]));
     const act = meses(c.plan);
     const perAct = tipo === 'metrologia' ? e.periodicidad_metro : e.periodicidad_mto;
-    const estadoMes = (m) => { const x = Object.entries(c.plan || {}).find(([k, v]) => v && +k.split('-')[0] === m); return x ? { P: 'Programado', E: 'Ejecutado', N: 'No ejecutado' }[x[1]] + ` · sem ${x[0].split('-')[1]}` : ''; };
+    const estadoMes = (m) => { const x = Object.entries(c.plan || {}).find(([k, v]) => v && +k.split('-')[0] === m); return x ? { P: 'Programado', E: 'Ejecutado', N: 'No ejecutado', G: 'En garantía', C: 'Comodato' }[x[1]] + ` · sem ${x[0].split('-')[1]}` : ''; };
     modal({
       titulo: `Cambiar meses${y ? ' ' + y : ''} · ${e.codigo_inv || ''} ${e.nombre || ''}`, size: 'sm',
       cuerpo: `<div class="form"><p class="muted">Marque los meses en que se hará ${tipo === 'metrologia' ? 'la calibración' : 'el mantenimiento'}. Los meses ya ejecutados conservan su estado.</p>
