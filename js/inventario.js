@@ -143,6 +143,70 @@
     return { nS: Math.max(0, nS), nE, nA };
   };
 
+  // ---------------------------------------------------------------- ordenar según el inventario anexado
+  // Solo cambia el ORDEN (equipos.orden y consultorios.orden) de una sede según el orden de las filas del
+  // inventario (Excel o PDF FMB-001). No crea, no borra ni cambia otros datos de los equipos.
+  A.planOrdenInventario = async (ent, sede, filas) => {
+    const [consT, eqsT] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id })]);
+    const sedeC = (c) => c?.sede || 'Sede principal';
+    const cons = consT.filter((c) => !sede || norm(sedeC(c)) === norm(sede));
+    const ids = new Set(cons.map((c) => c.id)); const eqs = eqsT.filter((e) => ids.has(e.consultorio_id));
+    const usados = new Set(), orden = [];
+    const sinSuf = (t) => comp(String(t || '').replace(/(-B)+$/i, ''));
+    for (const r of filas) {
+      const libre = (x) => !usados.has(x.id);
+      let e = r.codigo ? eqs.find((x) => libre(x) && sinSuf(x.codigo_inv) === sinSuf(r.codigo)) : null;
+      if (!e && r.af && comp(r.af)) e = eqs.find((x) => libre(x) && comp(x.activo_fijo) === comp(r.af) && comp(x.nombre).slice(0, 4) === comp(r.nombre).slice(0, 4));
+      if (!e && r.serie && comp(r.serie).length >= 4 && !/^NR$/.test(comp(r.serie))) e = eqs.find((x) => libre(x) && comp(x.serie) === comp(r.serie));
+      if (!e) e = eqs.find((x) => libre(x) && comp(x.nombre) === comp(r.nombre) && (!r.serie || !x.serie || comp(x.serie) === comp(r.serie)));
+      if (e) { usados.add(e.id); orden.push(e); }
+    }
+    const sobran = A.ordenar(eqs.filter((e) => !usados.has(e.id)));
+    const eqOrden = [...orden, ...sobran].map((e, i) => ({ e, n: i + 1 }));
+    // servicios: en el orden en que aparece su primer equipo del inventario; los demás al final
+    const cOrden = []; eqOrden.forEach(({ e }) => { const c = cons.find((k) => k.id === e.consultorio_id); if (c && !cOrden.includes(c)) cOrden.push(c); });
+    A.ordenar(cons).forEach((c) => { if (!cOrden.includes(c)) cOrden.push(c); });
+    return { eqOrden, cOrden, coinciden: orden.length, total: eqs.length, filas: filas.length, sinInv: sobran };
+  };
+  A.aplicarOrdenInventario = async (plan, prog = () => {}) => {
+    let n = 0;
+    for (const [i, c] of plan.cOrden.entries()) if (c.orden !== i + 1) { await S.update('consultorios', c.id, { orden: i + 1 }); n++; }
+    for (const [i, { e, n: o }] of plan.eqOrden.entries()) { prog(`Equipo ${i + 1} de ${plan.eqOrden.length}`); if (e.orden !== o) { await S.update('equipos', e.id, { orden: o }); n++; } }
+    return n;
+  };
+  A.formOrdenInventario = async (ent, sedeIni = '') => {
+    const [cons, docs] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('documentos', { entidad_id: ent.id })]);
+    const sedes = A.sedesDe(cons, ent);
+    const invs = docs.filter((d) => d.carpeta === 'inventarios' && /\.(xlsx|xls|csv|pdf)$/i.test(d.nombre)).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    const deSede = (sd) => invs.filter((d) => !sd || sedes.length < 2 || norm(String(d.subcarpeta || '').split('/')[0]) === norm(sd));
+    const opts = (sd) => [...deSede(sd).map((d) => `<option value="${d.id}">${h(d.nombre)}${d.subcarpeta ? ' · ' + h(d.subcarpeta) : ''}</option>`), '<option value="__subir">Subir otro archivo (Excel o PDF)…</option>'].join('');
+    const s0 = sedeIni || sedes[0] || '';
+    modal({ titulo: 'Ordenar según el inventario anexado', size: 'wide',
+      cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Los equipos y servicios de la sede quedan en el mismo orden del inventario (Excel o PDF). Ese orden se usa en el Inventario, en 3. Información del equipo y en los cronogramas. Solo cambia el orden: no se crean, borran ni modifican equipos.</p>
+        <div class="fields">${sedes.length > 1 ? f.sel('sede', 'Sede', sedes, s0, { full: true }) : ''}
+        <div class="field full"><label for="f_invdoc">Inventario</label><select id="f_invdoc" name="doc">${opts(s0)}</select></div>
+        <div class="field full" data-subir hidden><input type="file" accept=".xlsx,.xls,.csv,.pdf" data-invfile></div></div>
+        <div data-prev class="muted"></div></form>`,
+      alAbrir: (m) => {
+        const ss = m.body.querySelector('[name=sede]'), ds = m.body.querySelector('[name=doc]'), sb = m.body.querySelector('[data-subir]');
+        const ver = () => { sb.hidden = ds.value !== '__subir'; }; ds.onchange = ver; if (ss) ss.onchange = () => { ds.innerHTML = opts(ss.value); ver(); }; ver();
+      },
+      acciones: [{ t: 'Cancelar' }, { t: 'Revisar y ordenar', cls: 'pri', fn: async (m) => {
+        const v = leer(m.body); const sede = v.sede || s0 || null; let file = null;
+        if (v.doc === '__subir') { file = m.body.querySelector('[data-invfile]').files[0]; if (!file) { toast('Elija el archivo', true); return false; } }
+        else { const d = invs.find((x) => x.id === v.doc); if (!d) { toast('Elija el inventario', true); return false; } file = new File([await S.fileBlob(d.archivo)], d.nombre); }
+        const prev = m.body.querySelector('[data-prev]'); prev.textContent = 'Leyendo el inventario…';
+        let filas; try { filas = await A.parsearInventario(file); } catch (er) { prev.textContent = er.message; return false; }
+        const plan = await A.planOrdenInventario(ent, sede, filas);
+        if (!plan.coinciden) { prev.innerHTML = `<span class="pill bad">Ningún equipo de ${h(sede || 'la sede')} coincide con ese inventario</span> Revise que el archivo sea de esta sede.`; return false; }
+        const ok = await UI.confirmar(`Inventario: ${plan.filas} filas. Coinciden ${plan.coinciden} de los ${plan.total} equipos de ${sede || 'la entidad'}.${plan.sinInv.length ? `\n\nNo están en el archivo (quedan al final): ${plan.sinInv.slice(0, 10).map((e) => e.codigo_inv).join(', ')}${plan.sinInv.length > 10 ? '…' : ''}` : ''}\n\n¿Ordenar los equipos y servicios en ese orden?`, 'Ordenar');
+        if (!ok) return false;
+        const n = await A.aplicarOrdenInventario(plan, (t) => { prev.textContent = t; });
+        S.log('EDITAR', 'equipos', ent.id, `Orden según inventario ${file.name}${sede ? ' · ' + sede : ''}: ${plan.coinciden}/${plan.total} equipos`);
+        toast(`Listo: ${plan.coinciden} equipos en el orden del inventario (${n} cambios)`); A.recargar();
+      } }] });
+  };
+
   // ¿El nombre corresponde a una carpeta de documentos de un equipo (hoja de vida, mantenimientos…)?
   A.esCarpetaDoc = (nombre) => /HOJA.*VIDA|MANTENIMIENTO|MTTO|METROLOG|REGISTRO SANITARIO|MANUAL|FICHA TEC|FACTURA|IMPORTACION|CERTIFICADO|ACTA/.test(norm(nombre));
   A.carpetaDeDoc = (carpetaNombre, archivo) => {
