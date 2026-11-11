@@ -31,6 +31,21 @@
     for (const [ref, obj] of pdf.context.enumerateIndirectObjects()) {
       if (!(obj instanceof PDFRawStream)) continue;
       const d = obj.dict;
+      // 1) sin pérdida: fuentes, dibujos e imágenes guardados SIN comprimir se comprimen con Flate (como un ZIP)
+      if (!d.get(N('Filter')) && ![N('Metadata'), N('XRef'), N('ObjStm')].includes(d.get(N('Type')))) {
+        const raw = obj.getContents();
+        if (raw.length > 4096) {
+          try {
+            const z = pdf.context.flateStream(raw, {});
+            if (z.getContents().length < raw.length * 0.9) {
+              for (const [k, v] of d.entries()) if (![N('Length'), N('Filter'), N('DecodeParms')].includes(k)) z.dict.set(k, v);
+              pdf.context.assign(ref, z); cambios++;
+            }
+          } catch { /* se deja igual */ }
+        }
+        continue;
+      }
+      // 2) imágenes escaneadas JPEG: se reducen a ~2000 px y calidad media
       if (d.get(N('Subtype')) !== N('Image')) continue;
       let filt = d.get(N('Filter')); if (filt instanceof PDFArray) filt = filt.size() === 1 ? filt.get(0) : null;
       if (filt !== N('DCTDecode')) continue;
