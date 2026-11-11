@@ -1229,7 +1229,7 @@
       <div class="page-head"><div><span class="eyebrow">Perfiles de acceso</span><h1>Usuarios y accesos</h1><span class="muted">Cada entidad tiene su propio usuario y contraseña y solo ve su carpeta, en modo consulta. Solo el propietario crea, modifica o elimina información.</span></div>
         <div class="actions"><button class="btn pri" data-act="nuevoU">${I.mas} Nuevo usuario de cliente</button></div></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Entidad</th><th>Estado</th><th></th></tr></thead><tbody>
-        ${lista.map((p) => `<tr><td class="mono"><b>${h(p.usuario || p.email)}</b></td><td>${h(p.nombre || '')}</td><td><span class="pill ${p.rol === 'propietario' ? 'acc' : p.rol === 'calidad' ? 'warn' : ''}">${p.rol === 'propietario' ? 'Propietario' : p.rol === 'calidad' ? 'Calidad · limpieza y reporte de daño' + (p.sede ? ' · ' + h(p.sede) : '') : 'Cliente · consulta'}</span></td><td>${p.rol === 'propietario' ? 'Todas' : h(en(p.entidad_id))}</td>
+        ${lista.map((p) => `<tr><td class="mono"><b>${h(p.usuario || p.email)}</b></td><td>${h(p.nombre || '')}</td><td><span class="pill ${p.rol === 'propietario' ? 'acc' : p.rol === 'calidad' ? 'warn' : ''}">${p.rol === 'propietario' ? 'Propietario' : p.rol === 'calidad' ? 'Calidad / auxiliar · ' + h(A.docsCalidadTxt(ents.find((e) => e.id === p.entidad_id), p)) + (p.sede ? ' · ' + h(p.sede) : '') : 'Cliente · consulta'}</span></td><td>${p.rol === 'propietario' ? 'Todas' : h(en(p.entidad_id))}</td>
           <td>${p.activo ? '<span class="pill ok">Activo</span>' : '<span class="pill bad">Desactivado</span>'}</td>
           <td><div class="row-actions">${p.rol !== 'propietario' ? `<button class="btn sm" data-act="clave" data-id="${p.id}">${I.llave} Contraseña</button><button class="btn sm" data-act="activo" data-id="${p.id}">${p.activo ? 'Desactivar' : 'Activar'}</button><button class="icon-btn" data-act="editU" data-id="${p.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn danger" data-act="borrarU" data-id="${p.id}" aria-label="Eliminar usuario" title="Eliminar usuario">${I.del}</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin usuarios.</td></tr>'}
       </tbody></table></div>
@@ -1239,15 +1239,20 @@
       nuevoU: () => modal({
         titulo: 'Nuevo usuario de cliente',
         cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.sel('entidad_id', 'Entidad *', [['', '— Seleccione —'], ...ents.map((e) => [e.id, e.razon_social])], filtroEnt || '')}${f.input('nombre', 'Nombre de la persona o cargo', '')}
-          ${f.sel('rol', 'Tipo de acceso *', [['cliente', 'Cliente · consulta de toda la carpeta'], ['calidad', 'Calidad · solo lista de limpieza y reporte de daño']], 'cliente')}
+          ${f.sel('rol', 'Tipo de acceso *', [['cliente', 'Cliente · consulta de toda la carpeta'], ['calidad', 'Calidad / auxiliar · solo diligencia los documentos que se marquen']], 'cliente')}
+          <div data-docscal hidden style="grid-column:1/-1">${A.checksDocsCalidad(null)}</div>
           ${f.input('usuario', 'Usuario *', '', { attrs: 'autocapitalize="none" placeholder="ej: clinica.sanjose"' })}${f.input('clave', 'Contraseña * (mínimo 8, con letras y números)', '', { attrs: 'autocomplete="new-password"' })}</div>
-          <p class="muted">Entregue estos datos al cliente. El acceso <b>Cliente</b> ve y descarga en PDF toda la documentación de su entidad; el acceso <b>Calidad</b> entra por el enlace del portal de calidad y solo diligencia la lista de chequeo de limpieza y reporta daños.</p></form>`,
+          <p class="muted">Entregue estos datos al cliente. El acceso <b>Cliente</b> ve y descarga en PDF toda la documentación de su entidad; el acceso <b>Calidad / auxiliar</b> entra por el enlace del portal de calidad y solo diligencia los documentos marcados (limpieza y desinfección, reporte de daño, control de glucometría).</p></form>`,
+        alAbrir: (m) => { const r = m.body.querySelector('[name=rol]'), dv = m.body.querySelector('[data-docscal]'); const ver = () => { dv.hidden = r.value !== 'calidad'; }; r.onchange = ver; ver(); },
         acciones: [{ t: 'Cancelar' }, { t: 'Crear usuario', cls: 'pri', fn: async (m) => {
           const d = leer(m.body); d.usuario = d.usuario.toLowerCase().replace(/\s+/g, '.');
           if (!d.entidad_id || !d.usuario) { toast('Complete la entidad y el usuario', true); return false; }
           const debil = S.claveDebil?.(d.clave); if (debil) { toast(debil, true); return false; }
           if (!/^[a-z0-9._-]+$/.test(d.usuario)) { toast('El usuario solo puede tener letras, números, punto, guion', true); return false; }
+          const docsC = A.leerDocsCalidad(m.body); delete d.doc_cal;
+          if (d.rol === 'calidad' && !docsC.length) { toast('Marque al menos un documento que diligenciará', true); return false; }
           await S.crearUsuarioCliente(d); toast(`Usuario ${d.usuario} creado`);
+          if (d.rol === 'calidad') await A.guardarDocsCalidad(ents.find((x) => x.id === d.entidad_id), d.usuario, docsC);
           if (d.rol === 'calidad') { const e = ents.find((x) => x.id === d.entidad_id); if (e) toast(`Enlace del portal de calidad: ${A.linkCalidad?.(e) || ''}`); }
           A.recargar();
         } }],
@@ -1265,16 +1270,17 @@
         const sedesDe = async (entId) => (entId ? A.sedesDe(await S.list('consultorios', { entidad_id: entId }), ents.find((e) => e.id === entId)) : []);
         const sedes = esCal ? await sedesDe(u.entidad_id) : [];
         modal({ titulo: `Editar usuario · ${u.usuario}`, size: 'sm', cuerpo: `<div class="form">${f.input('nombre', 'Nombre', u.nombre)}${f.sel('entidad_id', 'Entidad', ents.map((e) => [e.id, e.razon_social]), u.entidad_id)}
+            ${esCal ? A.checksDocsCalidad(A.docsCalidad(ents.find((e) => e.id === u.entidad_id), u)) : ''}
             ${esCal ? `<div class="field"><label for="f_usede">Sede (solo verá y diligenciará los servicios de esta sede) *</label><select id="f_usede" name="sede">${sedes.map((x) => `<option ${x === u.sede ? 'selected' : ''}>${h(x)}</option>`).join('')}</select></div>` : ''}</div>`,
           alAbrir: (m) => { if (!esCal) return; const se = m.body.querySelector('[name=entidad_id]'); se.onchange = async () => { const l = await sedesDe(se.value); m.body.querySelector('[name=sede]').innerHTML = l.map((x) => `<option>${h(x)}</option>`).join(''); }; },
-          acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { const v = leer(m.body); if (esCal && !v.sede) { toast('Seleccione la sede', true); return false; } await S.update('perfiles', d.id, esCal ? v : { nombre: v.nombre, entidad_id: v.entidad_id }); toast('Usuario actualizado'); A.recargar(); } }] });
+          acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { const v = leer(m.body); const docsC = A.leerDocsCalidad(m.body); delete v.doc_cal; if (esCal && !v.sede && sedes.length > 1) { toast('Seleccione la sede', true); return false; } if (esCal && !docsC.length) { toast('Marque al menos un documento que diligenciará', true); return false; } await S.update('perfiles', d.id, esCal ? { nombre: v.nombre, entidad_id: v.entidad_id, ...(v.sede ? { sede: v.sede } : {}) } : { nombre: v.nombre, entidad_id: v.entidad_id }); if (esCal) await A.guardarDocsCalidad(ents.find((e) => e.id === v.entidad_id), u.usuario, docsC); toast('Usuario actualizado'); A.recargar(); } }] });
       },
     });
   };
 
   // =================================================================== FORMATOS
   A.V.formatos = async () => {
-    const nombres = { mediciones: 'Recomendaciones para mediciones (9.5)', hoja_vida: 'Hoja de vida', inventario: 'Inventario', cronograma: 'Cronogramas', mto_preventivo: 'Mantenimiento preventivo', mto_correctivo: 'Mantenimiento correctivo', metrologia: 'Metrología', alertas: 'Bitácora alertas sanitarias', evento: 'Reporte tecnovigilancia', acta_baja: 'Acta de baja', acta_entrega: 'Acta de entrega', cotizacion: 'Cotización', cuenta_cobro: 'Cuenta de cobro' };
+    const nombres = { mediciones: 'Recomendaciones para mediciones (9.5)', hoja_vida: 'Hoja de vida', inventario: 'Inventario', cronograma: 'Cronogramas', mto_preventivo: 'Mantenimiento preventivo', mto_correctivo: 'Mantenimiento correctivo', metrologia: 'Metrología', alertas: 'Bitácora alertas sanitarias', evento: 'Reporte tecnovigilancia', acta_baja: 'Acta de baja', acta_entrega: 'Acta de entrega', cotizacion: 'Cotización', cuenta_cobro: 'Cuenta de cobro', glucometro: 'Control calidad glucómetro' };
     A.content().innerHTML = `<div class="page-head"><div><span class="eyebrow">Control documental</span><h1>Formatos</h1><span class="muted">Los cambios aplican a todos los PDF que se generen desde ahora. Solo el propietario puede modificarlos.</span></div></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Formato</th><th>Título impreso</th><th>Código</th><th>Versión</th><th>Fecha aprobación</th><th></th></tr></thead><tbody>
       ${Object.keys(CAT.FORMATOS).map((k) => { const x = st.fmt[k]; return `<tr><td><b>${nombres[k] || k}</b></td><td>${h(x.titulo)}</td><td class="mono">${h(x.codigo)}</td><td class="mono">${h(x.version)}</td><td class="num">${UI.fecha(x.fecha)}</td><td class="r"><button class="btn sm" data-act="editF" data-k="${k}">${I.edit} Modificar</button></td></tr>`; }).join('')}
@@ -1288,6 +1294,7 @@
           titulo: `Formato · ${nombres[d.k]}`,
           cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('titulo', 'Título impreso', x.titulo, { full: true })}${f.input('codigo', 'Código', x.codigo)}${f.input('version', 'Versión', x.version)}${f.input('fecha', 'Fecha de aprobación', x.fecha, { type: 'date' })}
             ${d.k === 'mto_preventivo' ? `${f.area('pruebas', 'Pruebas cualitativas por defecto (una por línea)', lista(x.pruebas), { rows: 6 })}${f.area('actividades', 'Actividades de mantenimiento (una por línea)', lista(x.actividades), { rows: 6 })}${f.area('herramientas', 'Herramientas e insumos (una por línea)', lista(x.herramientas), { rows: 5 })}` : ''}
+            ${d.k === 'glucometro' ? `${f.input('proceso', 'Proceso', x.proceso, { full: true })}${f.input('subproceso', 'Subproceso', x.subproceso, { full: true })}${f.input('franja', 'Título de la tabla', x.franja, { full: true })}<p class="muted" style="grid-column:1/-1">La fecha sale en el formato como mes y año (ej. MARZO DE 2025). Cada entidad o sede puede tener su propio encabezado desde la carpeta 9. Control calidad glucómetro › Encabezado.</p>` : ''}
             ${d.k === 'cotizacion' ? `${f.area('objeto', 'Objeto de la cotización por defecto ({ENTIDAD} se reemplaza por el nombre de la entidad)', x.objeto ?? CAT.FORMATOS.cotizacion.objeto, { rows: 10 })}${f.area('condiciones', 'Condiciones comerciales por defecto', x.condiciones, { rows: 5 })}` : ''}</div></form>`,
           acciones: [{ t: 'Restablecer original', fn: async () => { await S.upsert('formatos', { clave: d.k, datos: CAT.FORMATOS[d.k] }); await A.cargarConfig(); A.recargar(); } }, { t: 'Cancelar' }, { t: 'Guardar formato', cls: 'pri', fn: async (m) => {
             const v = leer(m.body); ['pruebas', 'actividades', 'herramientas'].forEach((k) => { if (k in v) v[k] = v[k].split('\n').map((s) => s.trim()).filter(Boolean); });
