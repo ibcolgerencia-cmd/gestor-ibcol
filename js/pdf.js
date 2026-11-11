@@ -359,13 +359,15 @@ window.PDF = (() => {
           if (val === 'P') d.cell.styles.fillColor = [255, 214, 102];
           if (val === 'E') d.cell.styles.fillColor = [95, 190, 120];
           if (val === 'N') d.cell.styles.fillColor = [235, 110, 100];
-          d.cell.text = [''];
+          if (val === 'G') d.cell.styles.fillColor = [185, 163, 227];
+          if (val === 'C') d.cell.styles.fillColor = [124, 196, 232];
+          d.cell.text = val === 'G' || val === 'C' ? [val] : [''];
         }
       },
     });
     y = doc.lastAutoTable.finalY + 4;
-    const ley = [['P', [255, 214, 102], 'Programado'], ['E', [95, 190, 120], 'Ejecutado'], ['N', [235, 110, 100], 'No ejecutado / reprogramado']];
-    doc.setFontSize(7.5); ley.forEach(([, col, t], i) => { doc.setFillColor(...col); doc.rect(M + i * 55, y, 4, 4, 'F'); doc.text(t, M + 6 + i * 55, y + 3.2); });
+    const ley = [['P', [255, 214, 102], 'Programado'], ['E', [95, 190, 120], 'Ejecutado'], ['N', [235, 110, 100], 'No ejecutado / reprogramado'], ['G', [185, 163, 227], 'G · En garantía'], ['C', [124, 196, 232], 'C · Comodato']];
+    doc.setFontSize(7.5); ley.forEach(([, col, t], i) => { doc.setFillColor(...col); doc.rect(M + i * 50, y, 4, 4, 'F'); doc.text(t, M + 6 + i * 50, y + 3.2); });
     firmas(doc, y + 10, [firmaIBCOL(emp, null), { titulo: 'Aprobó', nombre: ent?.representante || 'Nombre:', lineas: ['Representante legal / coordinador'] }]);
     return pie(doc, emp);
   }

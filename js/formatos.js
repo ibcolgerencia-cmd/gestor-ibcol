@@ -15,7 +15,7 @@ window.FMT = (() => {
   ]).catch((e) => { delete cache[k]; throw e; }));
 
   const hex = (c) => { const n = parseInt(c, 16); return PDFLib.rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
-  const COLORES = { P: 'FFD666', E: '5FBE78', N: 'EB6E64' };
+  const COLORES = { P: 'FFD666', E: '5FBE78', N: 'EB6E64', G: 'B9A3E3', C: '7CC4E8' };
 
   // Solo caracteres que la fuente estándar puede escribir
   const limpiar = (t, font) => {
@@ -99,7 +99,7 @@ window.FMT = (() => {
         const pg = pags[c.p];
         if (c.img) { if (typeof v === 'string' && v.startsWith('data:')) await imagen(out, pg, c, v); else if (typeof v === 'string') escribir(pg, c, v, fN, fB); continue; }
         if (v === '✓') { chulo(pg, c); continue; }
-        if (typeof v === 'object' && v.fill) { const m = 0.6; pg.drawRectangle({ x: c.x + m, y: c.y + m, width: c.w - 2 * m, height: c.h - 2 * m, color: hex(COLORES[v.fill] || v.fill) }); continue; }
+        if (typeof v === 'object' && v.fill) { const m = 0.6; pg.drawRectangle({ x: c.x + m, y: c.y + m, width: c.w - 2 * m, height: c.h - 2 * m, color: hex(COLORES[v.fill] || v.fill) }); if (v.fill === 'G' || v.fill === 'C') { const sz = Math.max(3, Math.min(c.h * 0.7, 6)); try { pg.drawText(v.fill, { x: c.x + c.w / 2 - fB.widthOfTextAtSize(v.fill, sz) / 2, y: c.y + (c.h - sz * 0.7) / 2, size: sz, font: fB }); } catch {} } continue; }
         escribir(pg, c, v, fN, fB);
       }
       // Filas sin datos: se dejan en blanco (sin cuadrícula) en la última hoja de los formatos con tabla
