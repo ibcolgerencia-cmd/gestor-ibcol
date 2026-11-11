@@ -588,3 +588,9 @@ h1 .icon-btn { vertical-align: middle; }
 .ri.ri-nueva { animation: riNueva 1.2s ease; }
 @keyframes riNueva { from { background: rgba(10,124,153,.18); } to { background: transparent; } }
 @media (max-width: 640px) { .inv-drag-fila { grid-template-columns: auto auto; justify-content: start; } .inv-drag-fila .mono { display: none; } .inv-drag-nom { grid-column: 1 / -1; white-space: normal; } }
+
+/* Formato control de glucometría */
+.gl-tbl { font-size: .8rem; }
+.gl-tbl thead th { text-align: center; vertical-align: middle; font-size: .72rem; text-transform: uppercase; letter-spacing: .02em; }
+.gl-tbl td.c { text-align: center; font-weight: 700; }
+.gl-tbl tr.gl-fuera td { background: var(--bad-soft); }
