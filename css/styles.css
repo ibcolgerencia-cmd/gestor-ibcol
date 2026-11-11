@@ -717,3 +717,5 @@ h1 .icon-btn { vertical-align: middle; }
 }
 
 .crono td.w.G { background: #b9a3e3; color: #2c1a55; } .crono td.w.C { background: #7cc4e8; color: #0b3550; }
+
+.folder-nueva b svg { width: 16px; height: 16px; vertical-align: -3px; flex: none; }
