@@ -89,6 +89,7 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 ## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
 
+- **Importar carpeta en el equipo (v123):** en la carpeta de cada equipo, junto a «Nueva carpeta», está la tarjeta «Importar carpeta»: se elige la carpeta del equipo en el computador y cada subcarpeta (hoja de vida, mantenimientos, metrología, facturas…) va a su carpeta. Se corrigió el tamaño del ícono «+» de la tarjeta Nueva carpeta.
 - **Metrología paralela al mantenimiento (v122):** en Cronogramas › Metrología, botón «⇆ Igual al de mantenimiento»: programa la metrología en los mismos meses y semanas del cronograma de mantenimiento del periodo, cronograma por servicios y sede que se están viendo. Opciones: solo equipos que requieren metrología y solo una vez al año. No borra lo que ya hay; solo llena meses vacíos.
 - **Garantía y comodato en cronogramas (v121):** al tocar una semana el estado pasa P → E → N → G (En garantía, morado) → C (Comodato, azul) → vacío. Sale en pantalla, en la leyenda y en el PDF con la letra G o C. Para explicar el caso se usa el botón de anotaciones de cada fila (la nota pasa al reporte).
 - **Carpetas nuevas en «Otros módulos» (v120):** la tarjeta «+ Nueva carpeta» aparece también en Otros módulos (además de Estructura documental); la carpeta queda en la sección donde se creó.
