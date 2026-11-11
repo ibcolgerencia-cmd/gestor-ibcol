@@ -44,7 +44,9 @@
     // solo las carpetas de la sede que se está viendo (cada sede tiene las suyas)
     const carpetasL = () => [...new Set(cons.filter((c) => !sedeF || sedeC(c) === sedeF).map(carpDe).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
     const consIdx = (id) => cons.findIndex((k) => k.id === id);
-    const claveEq = (e) => { const c = cons.find((k) => k.id === e.consultorio_id); return [sedeC(c), carpDe(c) ? 1 : 0, carpDe(c), consIdx(e.consultorio_id), e.orden ?? 9999, String(e.codigo_inv || '')]; };
+    // orden del inventario: cada carpeta va en la posición de su primer servicio; dentro, servicio y orden del equipo
+    const posCarp = (c) => { const cp = carpDe(c); if (!cp) return consIdx(c?.id); return Math.min(...cons.filter((k) => carpDe(k) === cp && sedeC(k) === sedeC(c)).map((k) => consIdx(k.id))); };
+    const claveEq = (e) => { const c = cons.find((k) => k.id === e.consultorio_id); return [sedeC(c), posCarp(c), consIdx(e.consultorio_id), e.orden ?? 9999, String(e.codigo_inv || '')]; };
     const cmpEq = (a, b) => { const x = claveEq(a), y = claveEq(b); for (let i = 0; i < x.length; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; } return 0; };
     const cn = (id) => cons.find((c) => c.id === id)?.nombre || '—';
     const sedeC = (c) => c?.sede || 'Sede principal';
@@ -93,7 +95,7 @@
       <div class="tbl-tools">${sedesL.length > 1 ? `<div class="field" style="min-width:170px"><select aria-label="Filtrar por sede" data-sedef><option value="">Todas las sedes</option>${sedesL.map((x) => `<option value="${h(x)}" ${sedeF === x ? 'selected' : ''}>${h(x)}</option>`).join('')}</select></div>` : ''}<div class="field" style="min-width:180px"><select aria-label="Filtrar por consultorio" data-filtro><option value="">Todos los consultorios</option>${cons.map((c) => `<option value="${c.id}">${h(c.nombre)}${sedesL.length > 1 ? ' · ' + h(sedeC(c)) : ''}</option>`).join('')}</select></div>
         <input type="search" data-q placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar en el inventario">
         <span class="muted" data-cuenta></span>
-        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}<button class="btn pri" data-act="porServ" title="Agrupar el inventario por servicio">${I.carpeta} Por servicios</button>${esProp() ? `<button class="btn" data-act="pasarInv" title="Marcar varios equipos y pasarlos a otro servicio, carpeta o sede">⇄ Pasar equipos a otro servicio</button><button class="btn" data-act="modoBorrar">${I.del} Borrar equipos</button>` : ''}</div>
+        ${esProp() ? `<span class="sp"></span><button class="btn" data-act="googleInv">${I.ia} Buscar con Google</button><button class="btn" data-act="editTabla" data-edit>${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}<button class="btn pri" data-act="porServ" title="Agrupar el inventario por servicio">${I.carpeta} Por servicios</button>${esProp() ? `<button class="btn" data-act="pasarInv" title="Marcar varios equipos y pasarlos a otro servicio, carpeta o sede">⇄ Pasar equipos a otro servicio</button><button class="btn" data-act="ordenInv" title="Dejar los equipos en el mismo orden del inventario anexado (Excel o PDF)">⇅ Ordenar según el inventario</button><button class="btn" data-act="modoBorrar">${I.del} Borrar equipos</button>` : ''}</div>
       ${esProp() ? `<div class="borrar-bar" data-borrarbar hidden><span data-seltxt></span> · <b data-nsel>0</b> seleccionados<span class="sp"></span><button class="btn sm" data-act="selTodosB">Seleccionar los visibles</button><button class="btn sm" data-act="selNingunoB">Quitar selección</button><button class="btn sm pri" data-act="moverSel" data-solo="mover">${I.carpeta} Mover a otro servicio…</button><button class="btn sm pri danger" data-act="borrarSel" data-solo="borrar">${I.del} Eliminar seleccionados</button></div>` : ''}
       <div class="inv-vistas" data-vistas></div>
       ${esProp() ? '<p class="muted edit-hint" data-hint hidden>Modo edición: cambie cualquier dato y presione Enter o salga de la casilla para guardar. Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
@@ -165,6 +167,7 @@
       modoBorrar: () => { if (borrar && modoSel !== 'borrar') { modoSel = 'borrar'; return pintar(); } borrar = !borrar; modoSel = 'borrar'; if (!borrar) selB.clear(); if (borrar) editar = false; pintar(); },
       modoMover: () => { if (borrar && modoSel !== 'mover') { modoSel = 'mover'; return pintar(); } borrar = !borrar; modoSel = 'mover'; if (!borrar) selB.clear(); if (borrar) editar = false; pintar(); },
       // marcar en una lista los equipos (de lo que se está viendo) y pasarlos a otro servicio
+      ordenInv: () => A.formOrdenInventario(ent, sedeF || ''),
       pasarInv: () => {
         const items = visibles(); if (!items.length) return toast('No hay equipos en esta vista', true);
         const servDe = (e) => cons.find((c) => c.id === e.consultorio_id);
