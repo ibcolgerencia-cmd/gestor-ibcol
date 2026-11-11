@@ -658,3 +658,9 @@ h1 .icon-btn { vertical-align: middle; }
   .login-hero .lh-btn { padding: 10px 22px; }
 }
 @media (prefers-reduced-motion: reduce) { .login-hero *, .login-hero *::before { animation: none !important; } .login-hero .lh-ecg { stroke-dashoffset: 0; } }
+/* logo en círculo (v116) */
+.login-hero .logo-card { width: clamp(120px, 13vw, 168px); aspect-ratio: 1; padding: 0; border-radius: 50%; display: grid; place-items: center; position: relative;
+  background: #fff; border: 3px solid #fff; box-shadow: 0 0 0 3px #d6e3f7, 0 12px 30px rgba(13, 79, 194, .18); animation: lhEntra .8s cubic-bezier(.2, .7, .2, 1) both; }
+.login-hero .logo-card img { width: 88%; height: auto; object-fit: contain; }
+.login-hero .logo-card::before { content: ""; position: absolute; inset: -10px; border-radius: 50%; border: 2px dashed #1b6fe0; opacity: .45; animation: lhGira 24s linear infinite; }
+@media (max-width: 820px) { .login-hero .logo-card { width: 110px; } }
