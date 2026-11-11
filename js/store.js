@@ -103,9 +103,13 @@ window.Store = (() => {
       claveDebil: IBCOL_SEG.claveDebil,
       async upload(path, blob) {
         await IBCOL_SEG.validarArchivo(path, blob);
+        // PDF grandes: se comprimen las imágenes escaneadas antes de subir (js/almacenamiento.js)
+        try { if (window.IBCOL_COMPRIMIR) blob = await window.IBCOL_COMPRIMIR(path, blob); } catch {}
         chk(await sb.storage.from('documentos').upload(path, blob, { upsert: true, contentType: blob.type || 'application/octet-stream' }));
         return path;
       },
+      async reemplazarArchivo(path, blob) { chk(await sb.storage.from('documentos').upload(path, blob, { upsert: true, contentType: blob.type || 'application/octet-stream' })); return path; },
+      async removeFiles(paths) { if (paths?.length) chk(await sb.storage.from('documentos').remove(paths)); },
       async fileBlob(path) { return chk(await sb.storage.from('documentos').download(path)); },
       // enlace seguro y temporal para enviar un documento por WhatsApp o correo
       async enlace(path, segundos = 604800, nombre) { const r = chk(await sb.storage.from('documentos').createSignedUrl(path, segundos)); return r.signedUrl; },
@@ -305,6 +309,8 @@ window.Store = (() => {
         return memFiles.get(path) || (await idbOp('readonly', (s) => s.get(path))) || null;
       },
       async removeFile(path) { if (!esProp()) noPermiso(); memFiles.delete(path); await idbOp('readwrite', (s) => s.delete(path)); },
+      async removeFiles(paths) { for (const p of paths || []) await this.removeFile(p); },
+      async reemplazarArchivo(path, blob) { if (!esProp()) noPermiso(); memFiles.set(path, blob); await idbOp('readwrite', (s) => s.put(blob, path)); return path; },
       async log(accion, t, reg, detalle) { auditar(accion, t, reg, null, null, detalle); guardar(); },
       async crearUsuarioCliente({ usuario, clave, nombre, entidad_id, rol = 'cliente', sede = null }) {
         if (!esProp()) noPermiso();
