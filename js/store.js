@@ -103,15 +103,16 @@ window.Store = (() => {
       },
       async logout() { try { await this.log('LOGOUT', 'perfiles', perfil?.id, 'Salida'); } catch {} perfil = null; await sb.auth.signOut(); },
       // Supabase entrega máximo 1000 filas por consulta: se pide por páginas hasta traer todo
-      async list(t, filtros, orden) {
+      async list(t, filtros, orden, limite = 100000) {
         const out = [], key = KEYS[t] || 'id';
-        for (let desde = 0; desde < 100000; desde += 1000) {
+        for (let desde = 0; desde < limite; desde += 1000) {
           let q = aplicar(sb.from(t).select('*'), filtros);
           if (orden) q = q.order(orden.replace('-', ''), { ascending: !orden.startsWith('-') });
           if (!orden || orden.replace('-', '') !== key) q = q.order(key, { ascending: true });
-          const r = chk(await q.range(desde, desde + 999));
+          const hasta = Math.min(desde + 999, limite - 1);
+          const r = chk(await q.range(desde, hasta));
           out.push(...r);
-          if (r.length < 1000) break;
+          if (r.length < hasta - desde + 1) break;
         }
         return out;
       },
@@ -307,14 +308,14 @@ window.Store = (() => {
         return p;
       },
       async logout() { auditar('LOGOUT', 'perfiles', perfil?.id, null, null, 'Salida'); guardar(); perfil = null; try { sessionStorage.removeItem(SS); } catch {} },
-      async list(t, filtros, orden) {
+      async list(t, filtros, orden, limite = 100000) {
         let r = tabla(t).filter((x) => visible(t, x));
         Object.entries(filtros || {}).forEach(([k, v]) => { r = r.filter((x) => (v === null ? x[k] == null : x[k] === v)); });
         if (orden) {
           const c = orden.replace('-', ''), d = orden.startsWith('-') ? -1 : 1;
           r = [...r].sort((a, b) => (a[c] > b[c] ? d : a[c] < b[c] ? -d : 0));
         }
-        return JSON.parse(JSON.stringify(r));
+        return JSON.parse(JSON.stringify(r.slice(0, limite)));
       },
       async get(t, id) { const r = tabla(t).find((x) => x[key(t)] === id); return r && visible(t, r) ? JSON.parse(JSON.stringify(r)) : null; },
       async insert(t, o) {

@@ -282,7 +282,7 @@ window.APP = (() => {
   // ---------------------------------------------------------------- Panel
   V.panel = async () => {
     const anio = new Date().getFullYear();
-    const [ents, eqs, docs, cronos, mtos, evs, als, aud] = await Promise.all([S.list('entidades', {}, 'razon_social'), S.list('equipos'), S.list('documentos'), S.list('cronogramas', { anio }), S.list('mantenimientos'), S.list('eventos'), S.list('alertas'), S.list('auditoria', {}, '-fecha')]);
+    const [ents, eqs, docs, cronos, mtos, evs, als, aud] = await Promise.all([S.list('entidades', {}, 'razon_social'), S.list('equipos'), S.list('documentos'), S.list('cronogramas', { anio }), S.list('mantenimientos'), S.list('eventos'), S.list('alertas'), S.list('auditoria', {}, '-fecha', 8)]);
     const venc = A.vencimientos(eqs, docs.filter((d) => d.fecha_vencimiento), ents);
     const k = A.kpis({ equipos: eqs, cronos, mtos, eventos: evs, alertas: als, anio });
     const mes = new Date().getMonth() + 1; let progMes = 0, ejeMes = 0;
