@@ -437,7 +437,7 @@ window.APP = (() => {
       <section class="panel" data-reportes></section>
       ${A.kpiTiles(k, ['mp', 'mm', 'mv', 'disp'])}
       ${A.alertasPlegables(venc, 'Mantenimientos, calibraciones, garantías y documentos', 'entidad')}
-      ${porSedes && !sede ? '<h2 class="sede-tit" style="margin-top:8px">TODA LA ENTIDAD (TODAS LAS SEDES)</h2>' : ''}${grupos.map((g) => `<section class="folder-group"><span class="eyebrow">${h(g)}</span><div class="folders">${visiblesE.filter((c) => c.g === g).map((c) => A.tarjetaCarpeta(c, etiqueta(c), 'ent', ent)).join('')}${esProp() && g === grupos[0] ? `<div class="folder-w"><button class="folder folder-nueva" data-act="nuevaCarpeta" style="border-style:dashed"><span class="ic"></span><b>${I.mas} Nueva carpeta</b><small>Crear carpeta en esta entidad</small></button></div>` : ''}</div></section>`).join('')}`;
+      ${porSedes && !sede ? '<h2 class="sede-tit" style="margin-top:8px">TODA LA ENTIDAD (TODAS LAS SEDES)</h2>' : ''}${grupos.map((g) => `<section class="folder-group"><span class="eyebrow">${h(g)}</span><div class="folders">${visiblesE.filter((c) => c.g === g).map((c) => A.tarjetaCarpeta(c, etiqueta(c), 'ent', ent)).join('')}${esProp() ? `<div class="folder-w"><button class="folder folder-nueva" data-act="nuevaCarpeta" data-g="${h(g)}" style="border-style:dashed"><span class="ic"></span><b>${I.mas} Nueva carpeta</b><small>Crear carpeta en esta entidad</small></button></div>` : ''}</div></section>`).join('')}`;
     A.panelReportes?.(content().querySelector('[data-reportes]'), { entidadId: id });
     A.acts({
       abrirEq: (d) => go('equipo', { id: d.id }),
@@ -462,7 +462,7 @@ window.APP = (() => {
       importarDrive: () => A.importarEntidad(ent),
       configCarp: () => A.configCarpetas(ent),
       quitarCarp: (d) => A.quitarCarpeta(ent, d.tipo, d.k, d.tipo === 'ent' ? nDocs(A.carpetasEnt(ent).find((c) => c.k === d.k)) : null),
-      nuevaCarpeta: () => A.nuevaCarpeta(ent),
+      nuevaCarpeta: (d) => A.nuevaCarpeta(ent, null, d.g),
       renCarp: (d) => A.renombrarCarpeta(ent, d.tipo, d.k),
     });
   };
@@ -1127,14 +1127,14 @@ window.APP = (() => {
   // carpetas creadas por el propietario: de la entidad (config.carpetas_ent_extra), de todos los equipos (config.carpetas_eq_extra) y de un solo equipo (hv.carpetas_extra)
   A.carpetasEnt = (ent) => [...CAT.CARPETAS_ENTIDAD, ...((ent?.config || {}).carpetas_ent_extra || []).map((c) => ({ g: 'Estructura documental', ...c, extra: 'ent' }))];
   A.carpetasEq = (ent, eq = null) => [...CAT.CARPETAS_EQUIPO, ...((ent?.config || {}).carpetas_eq_extra || []).map((c) => ({ ...c, extra: 'todos' })), ...((eq?.hv || {}).carpetas_extra || []).map((c) => ({ ...c, extra: 'equipo' }))];
-  A.nuevaCarpeta = (ent, eq = null) => modal({
+  A.nuevaCarpeta = (ent, eq = null, grupo = null) => modal({
     titulo: eq ? `Nueva carpeta · ${eq.codigo_inv || eq.nombre}` : `Nueva carpeta · ${ent.razon_social}`, size: 'sm',
     cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('nombre', 'Nombre y número de la carpeta *', '', { full: true, attrs: `placeholder="${eq ? 'Ej: 11. GUÍA RÁPIDA DE USO' : 'Ej: 18. PLAN DE CONTINGENCIA'}"` })}</div>
       ${eq ? '<label class="checks"><input type="checkbox" name="todos" data-single> <span>Crear esta carpeta en <b>todos los equipos</b> de la entidad (si no la marca, solo se crea en este equipo)</span></label>' : '<p class="muted" style="font-size:.85rem">La carpeta se crea en la carpeta digital de esta entidad. Puede subir archivos y crear subcarpetas dentro.</p>'}</form>`,
     acciones: [{ t: 'Cancelar' }, { t: 'Crear carpeta', cls: 'pri', fn: async (m) => {
       const d = leer(m.body); const n = String(d.nombre || '').replace(/\s+/g, ' ').trim().toUpperCase();
       if (!n) { toast('Escriba el nombre de la carpeta', true); return false; }
-      const nueva = { k: 'x_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), n };
+      const nueva = { k: 'x_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), n, ...(!eq && grupo ? { g: grupo } : {}) };
       if (eq && !d.todos) {
         const act = await S.get('equipos', eq.id);
         await S.update('equipos', eq.id, { hv: { ...(act.hv || {}), carpetas_extra: [...((act.hv || {}).carpetas_extra || []), nueva] } });
