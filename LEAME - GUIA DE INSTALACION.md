@@ -89,6 +89,7 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 ## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
 
+- **Carpetas nuevas en «Otros módulos» (v120):** la tarjeta «+ Nueva carpeta» aparece también en Otros módulos (además de Estructura documental); la carpeta queda en la sección donde se creó.
 - **Orden del inventario anexado (v119):** botón «⇅ Ordenar según el inventario» en el Inventario: lee el inventario de la sede (Excel o PDF de la carpeta 1. Inventarios, o uno que se suba) y deja los servicios y equipos en ese mismo orden en el Inventario, en 3. Información del equipo y en los cronogramas. Solo cambia el orden. Las carpetas de servicios ahora van en la posición de su primer servicio.
 - **Pasar equipos en el inventario (v118):** botón «⇄ Pasar equipos a otro servicio» (y «Pasar equipos de [carpeta]…» al abrir una carpeta): lista con buscador para marcar varios equipos y luego elegir el servicio, carpeta o sede de destino (o crear uno nuevo).
 - **Panel interno animado (v117):** con los colores del logo (cian, azul petróleo y gris): menú lateral con ondas en movimiento y logo en círculo, franja superior con degradado que se desplaza, pantallas que entran suavemente, títulos en degradado, indicadores que se llenan, tarjetas que se elevan y botones con brillo. Respeta «reducir animaciones».
