@@ -41,7 +41,8 @@
     let filtro = '', q = '', editar = false, sedeF = sedeCtx || '', porServ = true, borrar = false, modoSel = 'borrar', vista = ''; const selB = new Set();
     // carpetas de servicios (ej. EXTRAMURAL con KIT 1…5): van aparte, después de los servicios
     const carpDe = (c) => (ent.config?.carpetas_serv || {})[c?.id] || '';
-    const carpetasL = () => [...new Set(cons.map(carpDe).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+    // solo las carpetas de la sede que se está viendo (cada sede tiene las suyas)
+    const carpetasL = () => [...new Set(cons.filter((c) => !sedeF || sedeC(c) === sedeF).map(carpDe).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
     const consIdx = (id) => cons.findIndex((k) => k.id === id);
     const claveEq = (e) => { const c = cons.find((k) => k.id === e.consultorio_id); return [sedeC(c), carpDe(c) ? 1 : 0, carpDe(c), consIdx(e.consultorio_id), e.orden ?? 9999, String(e.codigo_inv || '')]; };
     const cmpEq = (a, b) => { const x = claveEq(a), y = claveEq(b); for (let i = 0; i < x.length; i++) { if (x[i] < y[i]) return -1; if (x[i] > y[i]) return 1; } return 0; };
@@ -75,8 +76,8 @@
         bb.querySelectorAll('[data-solo]').forEach((x) => { x.hidden = x.dataset.solo !== modoSel; });
       }
       el.querySelector('[data-act=porServ]')?.classList.toggle('pri', porServ);
-      const cl = carpetasL(); const vv = el.querySelector('[data-vistas]');
-      vv.innerHTML = `${cl.length ? `<span class="muted">Ver:</span><button class="chip ${!vista ? 'on' : ''}" data-act="vistaInv" data-v="">Todo el inventario</button><button class="chip ${vista === '__serv' ? 'on' : ''}" data-act="vistaInv" data-v="__serv">Servicios</button>${cl.map((x) => `<button class="chip ${vista === x ? 'on' : ''}" data-act="vistaInv" data-v="${h(x)}">${I.carpeta} ${h(x)}</button>`).join('')}` : ''}${esProp() ? `<span class="sp"></span>${vista && vista !== '__serv' ? `<button class="btn sm" data-act="carpInv" data-n="${h(vista)}">${I.edit} Carpeta ${h(vista)}</button><button class="btn sm danger" data-act="carpQuitarInv" data-n="${h(vista)}" title="Quitar la carpeta (los servicios y equipos no se borran)">${I.del} Quitar carpeta ${h(vista)}</button>` : ''}<button class="btn sm" data-act="carpInv" data-n="">${I.carpeta} Nueva subcarpeta de servicios</button><button class="btn sm" data-act="nuevoServInv">${I.mas} Servicio${vista && vista !== '__serv' ? ' en ' + h(vista) : ''}</button>` : ''}`;
+      const cl = carpetasL(); if (vista && vista !== '__serv' && !cl.includes(vista)) vista = ''; const vv = el.querySelector('[data-vistas]');
+      vv.innerHTML = `${cl.length ? `<span class="muted">Ver:</span><button class="chip ${!vista ? 'on' : ''}" data-act="vistaInv" data-v="">Todo el inventario</button><button class="chip ${vista === '__serv' ? 'on' : ''}" data-act="vistaInv" data-v="__serv">Servicios</button>${cl.map((x) => { const sds = [...new Set(cons.filter((c) => carpDe(c) === x).map(sedeC))]; return `<button class="chip ${vista === x ? 'on' : ''}" data-act="vistaInv" data-v="${h(x)}">${I.carpeta} ${h(x)}${!sedeF && sedesL.length > 1 ? ` <small class="muted">· ${h(sds.join(', '))}</small>` : ''}</button>`; }).join('')}` : ''}${esProp() ? `<span class="sp"></span>${vista && vista !== '__serv' ? `<button class="btn sm" data-act="carpInv" data-n="${h(vista)}">${I.edit} Carpeta ${h(vista)}</button><button class="btn sm danger" data-act="carpQuitarInv" data-n="${h(vista)}" title="Quitar la carpeta (los servicios y equipos no se borran)">${I.del} Quitar carpeta ${h(vista)}</button>` : ''}<button class="btn sm" data-act="carpInv" data-n="">${I.carpeta} Nueva subcarpeta de servicios</button><button class="btn sm" data-act="nuevoServInv">${I.mas} Servicio${vista && vista !== '__serv' ? ' en ' + h(vista) : ''}</button>` : ''}`;
       el.querySelector('[data-act=modoBorrar]')?.classList.toggle('danger', borrar && modoSel === 'borrar');
       el.querySelector('[data-act=modoMover]')?.classList.toggle('pri', borrar && modoSel === 'mover');
       if (borrar) {
@@ -102,7 +103,7 @@
     el.querySelector('[data-filtro]').onchange = (e) => { filtro = e.target.value; pintar(); };
     const sf = el.querySelector('[data-sedef]');
     const ocultarCons = () => { const fs = el.querySelector('[data-filtro]'); [...fs.options].forEach((o) => { if (o.value) o.hidden = !!sedeF && sedeC(cons.find((c) => c.id === o.value)) !== sedeF; }); };
-    if (sf) sf.onchange = (e) => { sedeF = e.target.value; filtro = ''; el.querySelector('[data-filtro]').value = ''; ocultarCons(); pintar(); };
+    if (sf) sf.onchange = (e) => { sedeF = e.target.value; filtro = ''; if (vista && vista !== '__serv' && !carpetasL().includes(vista)) vista = ''; el.querySelector('[data-filtro]').value = ''; ocultarCons(); pintar(); };
     ocultarCons();
     let tq; el.querySelector('[data-q]').oninput = (e) => { clearTimeout(tq); tq = setTimeout(() => { q = nrmQ(e.target.value); pintar(); }, 150); };
     A.acts({
