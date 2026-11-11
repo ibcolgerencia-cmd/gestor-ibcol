@@ -715,3 +715,5 @@ h1 .icon-btn { vertical-align: middle; }
   .side::before, .side .brand::before, .main::before, .content::before, .content > *, .kpi::after, .kpi .meter i, .nav button.on svg { animation: none !important; }
   .kpi::after { transform: none; }
 }
+
+.crono td.w.G { background: #b9a3e3; color: #2c1a55; } .crono td.w.C { background: #7cc4e8; color: #0b3550; }
