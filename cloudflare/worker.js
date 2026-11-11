@@ -66,11 +66,12 @@ async function firma(env, texto) {
   const s = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(texto)));
   return btoa(String.fromCharCode(...s)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-const entregar = (req, obj, nombre) => {
+const entregar = (req, obj, nombre, publico = false) => {
   const h = new Headers(cors(req));
   obj.writeHttpMetadata(h);
   h.set('etag', obj.httpEtag);
-  h.set('Cache-Control', 'private, max-age=300');
+  // archivos con sesión: sin caché (cada vez se verifica el permiso); enlaces firmados: 5 minutos
+  h.set('Cache-Control', publico ? 'private, max-age=300' : 'private, no-store');
   if (nombre) h.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(nombre)}`);
   return new Response(obj.body, { headers: h });
 };
@@ -83,10 +84,10 @@ export default {
       // enlace público firmado: /s/<ruta>?e=<vence>&f=<firma>&n=<nombre>
       if (url.pathname.startsWith('/s/') && req.method === 'GET') {
         const k = ruta(url.pathname.slice(3)); const e = Number(url.searchParams.get('e') || 0);
-        if (!valida(k) || !e || e < Date.now() / 1000) return new Response('Enlace vencido o no válido', { status: 403 });
-        if ((await firma(env, `${k}|${e}`)) !== url.searchParams.get('f')) return new Response('Enlace no válido', { status: 403 });
-        const obj = await env.BUCKET.get(k); if (!obj) return new Response('Archivo no encontrado', { status: 404 });
-        return entregar(req, obj, url.searchParams.get('n'));
+        if (!valida(k) || !e || e < Date.now() / 1000) return new Response('Enlace vencido o no válido', { status: 403, headers: cors(req) });
+        if ((await firma(env, `${k}|${e}`)) !== url.searchParams.get('f')) return new Response('Enlace no válido', { status: 403, headers: cors(req) });
+        const obj = await env.BUCKET.get(k); if (!obj) return new Response('Archivo no encontrado', { status: 404, headers: cors(req) });
+        return entregar(req, obj, url.searchParams.get('n'), true);
       }
       if (url.pathname === '/' || url.pathname === '/salud') return json(req, { ok: true, servicio: 'archivos IBCOL' });
 
