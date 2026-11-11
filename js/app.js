@@ -44,22 +44,43 @@ window.APP = (() => {
   // ---------------------------------------------------------------- login
   function login(msg = '') {
     const demo = S.modo === 'demo';
-    root.innerHTML = `<div class="login">
+    // ondas animadas del fondo (líneas que fluyen) y figura biomédica original: anillos que giran + pulso cardiaco
+    const ondas = Array.from({ length: 14 }, (_, k) => `<path d="M-200 ${300 + k * 14} C 200 ${120 + k * 22}, 520 ${520 - k * 10}, 900 ${300 + k * 8} S 1500 ${140 + k * 18}, 1800 ${330 + k * 6}" />`).join('');
+    root.innerHTML = `<div class="login login-hero">
+      <svg class="lh-ondas" viewBox="0 0 1600 760" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g class="lh-o1">${ondas}</g><g class="lh-o2">${ondas}</g></svg>
+      <div class="lh-puntos" aria-hidden="true"></div>
       <section class="login-brand">
         <div class="logo-card"><img src="${window.IBCOL_LOGO}" alt="IBCOL Ingeniería Biomédica de Colombia"></div>
-        <div style="display:grid;gap:18px;position:relative;z-index:1">
-          <h1>Gestión documental de tecnología biomédica</h1>
-          <ul>
-            <li>Hojas de vida, inventarios y cronogramas de mantenimiento, metrología y capacitación.</li>
-            <li>Carpeta digital por entidad, consultorio y equipo, lista para la visita de habilitación (Res. 3100 de 2019).</li>
-            <li>Tecnovigilancia, alertas sanitarias INVIMA e indicadores de gestión.</li>
-          </ul>
+        <div class="lh-texto">
+          <h1 class="lh-bienvenido">Bienvenido</h1>
+          <p class="lh-sub">Al ecosistema digital de<br>gestión de tecnología biomédica</p>
+          <p class="lh-lema">Hojas de vida, cronogramas, metrología, tecnovigilancia e indicadores en un solo lugar.</p>
+          <ul class="lh-chips"><li>Res. 3100 de 2019</li><li>Programa de tecnovigilancia</li><li>Firma digital</li><li>Carpeta por equipo</li></ul>
+          <a class="lh-btn" href="mailto:${h(CAT.EMPRESA.email)}?subject=${encodeURIComponent('Solicitud de información · Gestor biomédico IBCOL')}">Solicitar información</a>
         </div>
-        <div class="contacto">${h(CAT.EMPRESA.nombre)}<br>${h(CAT.EMPRESA.direccion)} · ${h(CAT.EMPRESA.ciudad)}<br>Contacto: ${h(CAT.EMPRESA.telefono)} · ${h(CAT.EMPRESA.email)}</div>
+        <div class="contacto">${h(CAT.EMPRESA.nombre)} · ${h(CAT.EMPRESA.direccion)} · ${h(CAT.EMPRESA.ciudad)}<br>Contacto: ${h(CAT.EMPRESA.telefono)} · ${h(CAT.EMPRESA.email)}</div>
       </section>
+      <div class="lh-figura" aria-hidden="true">
+        <svg viewBox="0 0 520 520">
+          <defs>
+            <linearGradient id="lhG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1b6fe0"/><stop offset="1" stop-color="#0a2f8f"/></linearGradient>
+            <radialGradient id="lhR" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffffff"/><stop offset=".7" stop-color="#eef3fb"/><stop offset="1" stop-color="#d9e3f2"/></radialGradient>
+          </defs>
+          <circle cx="260" cy="260" r="236" fill="url(#lhR)" />
+          <g class="lh-r1"><circle cx="260" cy="260" r="214" fill="none" stroke="url(#lhG)" stroke-width="3" stroke-dasharray="2 10" /></g>
+          <g class="lh-r2"><circle cx="260" cy="260" r="186" fill="none" stroke="#1b6fe0" stroke-opacity=".55" stroke-width="10" stroke-dasharray="70 22 12 22" /></g>
+          <g class="lh-r3"><circle cx="260" cy="260" r="150" fill="none" stroke="url(#lhG)" stroke-width="2" /><circle cx="260" cy="110" r="7" fill="#1b6fe0"/><circle cx="410" cy="260" r="5" fill="#0a2f8f"/><circle cx="154" cy="366" r="6" fill="#17b3d6"/></g>
+          <g class="lh-r4"><circle cx="260" cy="260" r="118" fill="none" stroke="#0a2f8f" stroke-opacity=".35" stroke-width="18" stroke-dasharray="4 8" /></g>
+          <circle cx="260" cy="260" r="96" fill="url(#lhG)" />
+          <circle cx="260" cy="260" r="96" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" />
+          <path class="lh-ecg" d="M178 262 H218 L230 236 L244 300 L258 206 L272 286 L282 262 H342" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+          <g class="lh-orb"><g transform="translate(260 260)"><g class="lh-sat"><rect x="-17" y="-236" width="34" height="42" rx="6" fill="#fff" stroke="#1b6fe0" stroke-width="2"/><path d="M-9 -224 H9 M-9 -216 H9 M-9 -208 H3" stroke="#1b6fe0" stroke-width="2.4" stroke-linecap="round"/></g></g></g>
+          <g class="lh-orb lh-orb2"><g transform="translate(260 260)"><g class="lh-sat"><circle cx="0" cy="-214" r="19" fill="#fff" stroke="#0a2f8f" stroke-width="2"/><path d="M-8 -214 L-2 -208 L9 -220" stroke="#0a2f8f" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g></g></g>
+        </svg>
+      </div>
       <section class="login-form">
         <form id="fLogin" novalidate>
-          ${portal ? `<div style="display:grid;gap:4px"><span class="eyebrow">Portal del área de calidad${portal.nombre ? ' · ' + h(portal.nombre) : ''}</span><h2>Limpieza y reporte de daño</h2><span class="muted" style="font-size:.88rem">Ingrese con el usuario y la contraseña del encargado de calidad. Este acceso solo permite diligenciar la lista de chequeo de limpieza y desinfección y reportar daños de equipos.</span></div>` : '<div style="display:grid;gap:4px"><span class="eyebrow">Acceso seguro</span><h2>Ingresar al gestor</h2></div>'}
+          ${portal ? `<div style="display:grid;gap:4px"><span class="eyebrow">Portal del área de calidad${portal.nombre ? ' · ' + h(portal.nombre) : ''}</span><h2>Documentos de calidad</h2><span class="muted" style="font-size:.88rem">Ingrese con el usuario y la contraseña de calidad o auxiliar. Este acceso solo permite diligenciar los documentos asignados (limpieza y desinfección, reporte de daño, control de glucometría).</span></div>` : '<div class="lh-tit"><span class="eyebrow">Acceso seguro</span><h2>Ingresar al gestor</h2></div>'}
           ${f.input('usuario', 'Usuario o correo', '', { req: true, attrs: 'autocomplete="username" autocapitalize="none"' })}
           ${f.input('clave', 'Contraseña', '', { type: 'password', req: true, attrs: 'autocomplete="current-password"' })}
           <div class="err" id="lErr">${h(msg)}</div>
