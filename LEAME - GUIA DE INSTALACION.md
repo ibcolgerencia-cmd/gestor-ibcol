@@ -89,6 +89,7 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 ## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
 
+- **Pasar equipos en el inventario (v118):** botón «⇄ Pasar equipos a otro servicio» (y «Pasar equipos de [carpeta]…» al abrir una carpeta): lista con buscador para marcar varios equipos y luego elegir el servicio, carpeta o sede de destino (o crear uno nuevo).
 - **Panel interno animado (v117):** con los colores del logo (cian, azul petróleo y gris): menú lateral con ondas en movimiento y logo en círculo, franja superior con degradado que se desplaza, pantallas que entran suavemente, títulos en degradado, indicadores que se llenan, tarjetas que se elevan y botones con brillo. Respeta «reducir animaciones».
 - **Logo en círculo (v116):** en la pantalla de ingreso el logo de IBCOL va dentro de un círculo blanco con un anillo punteado que gira.
 - **Pantalla de ingreso dinámica (v115):** fondo claro con ondas en movimiento, «Bienvenido» grande, figura biomédica animada (anillos que giran y pulso cardiaco), botón «Solicitar información» (correo de IBCOL) y tarjeta de ingreso tipo vidrio. Respeta la opción del sistema de reducir animaciones.
