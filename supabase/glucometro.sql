@@ -3,8 +3,9 @@
 --  Cada fila es un control de calidad del glucómetro (fecha, glucómetro,
 --  lotes, rangos, solución empleada, valor obtenido, responsable).
 --  · Propietario (IBCOL): crea, corrige y borra.
---  · Usuario de la entidad y usuario de calidad: ven y AGREGAN registros de
---    su propia entidad (no pueden modificar ni borrar).
+--  · Usuario de la entidad: ve y AGREGA registros de su entidad.
+--  · Usuario de calidad / auxiliar: ve y AGREGA registros de su entidad y sede.
+--    Ninguno de los dos puede modificar ni borrar.
 --  Ejecutar una vez en Supabase > SQL Editor (se puede volver a ejecutar).
 -- =====================================================================
 create table if not exists public.control_glucometro (
@@ -27,9 +28,9 @@ create policy p_leer on public.control_glucometro for select to authenticated us
 drop policy if exists p_cliente_crear on public.control_glucometro;
 create policy p_cliente_crear on public.control_glucometro for insert to authenticated with check (entidad_id is not null and entidad_id = mi_entidad());
 drop policy if exists p_calidad_leer on public.control_glucometro;
-create policy p_calidad_leer on public.control_glucometro for select to authenticated using (entidad_id = mi_entidad_calidad());
+create policy p_calidad_leer on public.control_glucometro for select to authenticated using (entidad_id = mi_entidad_calidad() and (mi_sede_calidad() is null or coalesce(nullif(trim(sede), ''), 'Sede principal') = mi_sede_calidad()));
 drop policy if exists p_calidad_crear on public.control_glucometro;
-create policy p_calidad_crear on public.control_glucometro for insert to authenticated with check (entidad_id = mi_entidad_calidad());
+create policy p_calidad_crear on public.control_glucometro for insert to authenticated with check (entidad_id = mi_entidad_calidad() and (mi_sede_calidad() is null or coalesce(nullif(trim(sede), ''), 'Sede principal') = mi_sede_calidad()));
 
 drop trigger if exists trg_audit on public.control_glucometro;
 create trigger trg_audit after insert or delete or update on public.control_glucometro for each row execute function fn_auditoria();
