@@ -316,7 +316,7 @@
           <button role="tab" class="ctab ${dosAnios ? 'on' : ''}" data-act="periodo" data-v="${dosAnios ? F.mesIni : (new Date().getMonth() + 1 > 1 ? new Date().getMonth() + 1 : 7)}">Entre dos años${dosAnios ? `: ${periodoTxt}` : ''}</button>
           ${dosAnios ? `<label class="ctab-sel">Desde <select data-ini aria-label="Mes de inicio del periodo">${CAT.MESES.map((m, i) => (i ? `<option value="${i + 1}" ${F.mesIni === i + 1 ? 'selected' : ''}>${m} ${anio}</option>` : '')).join('')}</select></label>` : ''}
         </div>
-        ${grupos.length || esProp() ? `<div class="crono-grupos" role="tablist" aria-label="Cronogramas"><span class="muted">Cronograma:</span><button class="chip ${!grupo ? 'on' : ''}" data-act="grupoSel" data-g="">Todos los equipos</button>${grupos.map((g) => `<button class="chip ${grupo?.id === g.id ? 'on' : ''}" data-act="grupoSel" data-g="${g.id}">${I.carpeta} ${h(g.nombre)} <small>${filas.filter((r) => r.equipo_id && enG(eqd(r.equipo_id), g)).length}</small></button>`).join('')}${esProp() ? `${grupo ? `<button class="btn sm" data-act="grupoEdit">${I.edit} Servicios de “${h(grupo.nombre)}”</button>` : ''}<button class="btn sm" data-act="grupoNuevo">${I.mas} Cronograma por servicios</button>` : ''}</div>` : ''}
+        ${grupos.length || esProp() ? `<div class="crono-grupos" role="tablist" aria-label="Cronogramas"><span class="muted">Cronograma:</span><button class="chip ${!grupo ? 'on' : ''}" data-act="grupoSel" data-g="">Todos los equipos</button>${grupos.map((g) => `<button class="chip ${grupo?.id === g.id ? 'on' : ''}" data-act="grupoSel" data-g="${g.id}">${I.carpeta} ${h(g.nombre)} <small>${filas.filter((r) => r.equipo_id && enG(eqd(r.equipo_id), g)).length}</small></button>`).join('')}${esProp() ? `${grupo ? `<button class="btn sm" data-act="grupoEdit">${I.edit} Servicios de “${h(grupo.nombre)}”</button>${!cap ? `<button class="btn sm" data-act="grupoEqAgregar">${I.mas} Agregar equipos a “${h(grupo.nombre)}”</button><button class="btn sm" data-act="grupoEqPasar">${I.flecha || '⇄'} Pasar equipos a otro cronograma</button>` : ''}` : ''}<button class="btn sm" data-act="grupoNuevo">${I.mas} Cronograma por servicios</button>` : ''}</div>` : ''}
         <div class="tbl-tools">
           <div class="field" style="min-width:190px"><select data-serv aria-label="Consultar por servicio">${optServ}</select></div>
           <div class="field"><select data-mes aria-label="Buscar por mes"><option value="0">Buscar por mes: todos</option>${ventana.map((v) => `<option value="${v.m}" ${F.mes === v.m ? 'selected' : ''}>${CAT.MESES[v.m - 1]}${dosAnios ? ' ' + v.y : ''}</option>`).join('')}</select></div>
@@ -348,6 +348,49 @@
         if (r.cr[y]) return r.cr[y];
         const nv = await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: r.equipo_id || null, tipo, anio: y, tema: r.tema || null, plan: {} });
         r.cr[y] = nv; return nv;
+      };
+      const equiposGrupo = (modo) => {
+        if (!grupo) return;
+        const vistos = new Set(); const lista = filas.filter((r) => r.equipo_id && enServ(r) && !vistos.has(r.equipo_id) && vistos.add(r.equipo_id)).map((r) => eqd(r.equipo_id)).filter((e) => e.id);
+        const deG = (e) => grupos.find((g) => enG(e, g));
+        const items = (modo === 'pasar' ? lista.filter((e) => enG(e, grupo)) : lista).sort((a, b) => String(a.codigo_inv || '').localeCompare(String(b.codigo_inv || ''), 'es', { numeric: true }));
+        if (!items.length) return toast(modo === 'pasar' ? `“${grupo.nombre}” no tiene equipos` : 'No hay equipos en este cronograma de la sede', true);
+        const otros = grupos.filter((g) => g.id !== grupo.id);
+        if (modo === 'pasar' && !otros.length) return toast('Primero cree otro cronograma por servicios', true);
+        modal({ titulo: modo === 'pasar' ? `Pasar equipos de “${grupo.nombre}” a otro cronograma` : `Equipos del cronograma “${grupo.nombre}”`, size: 'wide',
+          cuerpo: `<form class="form" onsubmit="return false"><p class="muted">${modo === 'pasar' ? 'Marque los equipos y elija el cronograma de destino.' : 'Marque los equipos que deben quedar en este cronograma (desmarque los que deben salir).'} El equipo queda solo en un cronograma, en mantenimiento y en metrología; no cambia de servicio en el inventario.</p>
+            ${modo === 'pasar' ? `<div class="fields">${f.sel('destino', 'Cronograma de destino *', otros.map((g) => [g.id, g.nombre]), otros[0].id, { full: true })}</div>` : ''}
+            <div class="field full"><input type="search" data-eqbus placeholder="Buscar código, equipo, serie, servicio…" aria-label="Buscar equipo"></div>
+            <div style="display:flex;gap:8px;margin:6px 0"><button type="button" class="btn sm" data-eqtodos="1">Marcar todos los visibles</button><button type="button" class="btn sm" data-eqtodos="0">Desmarcar visibles</button><span class="muted" data-eqn></span></div>
+            <div style="max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:8px">${items.map((e) => { const g = deG(e); const c = cons.find((x) => x.id === e.consultorio_id); return `<label class="eq-li" data-txt="${h(nrmQ([e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, c?.nombre].join(' ')))}" style="display:flex;gap:10px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line)"><input type="checkbox" data-eq="${e.id}" ${modo === 'agregar' && g?.id === grupo.id ? 'checked' : ''}><span class="mono" style="min-width:150px">${h(e.codigo_inv || '')}</span><b>${h(e.nombre || '')}</b><span class="muted">${h([e.marca, e.serie].filter(Boolean).join(' · '))}</span><span class="sp"></span><span class="muted">${h(c?.nombre || '')}</span><span class="pill ${g?.id === grupo.id ? 'acc' : ''}">${g ? h(g.nombre) : 'Sin cronograma'}</span></label>`; }).join('')}</div></form>`,
+          alAbrir: (m) => {
+            const cuenta = () => { m.body.querySelector('[data-eqn]').textContent = `${m.body.querySelectorAll('[data-eq]:checked').length} marcados`; };
+            m.body.querySelector('[data-eqbus]').oninput = (ev) => { const q = nrmQ(ev.target.value); m.body.querySelectorAll('.eq-li').forEach((l) => { l.style.display = !q || l.dataset.txt.includes(q) ? '' : 'none'; }); };
+            m.body.querySelectorAll('[data-eqtodos]').forEach((b) => (b.onclick = () => { m.body.querySelectorAll('.eq-li').forEach((l) => { if (l.style.display !== 'none') l.querySelector('[data-eq]').checked = b.dataset.eqtodos === '1'; }); cuenta(); }));
+            m.body.querySelectorAll('[data-eq]').forEach((c) => (c.onchange = cuenta)); cuenta();
+          },
+          acciones: [{ t: 'Cancelar' }, { t: modo === 'pasar' ? 'Pasar equipos' : 'Guardar', cls: 'pri', fn: async (m) => {
+            const marc = new Set([...m.body.querySelectorAll('[data-eq]:checked')].map((c) => c.dataset.eq));
+            const nm = { ...(ent.config?.crono_eq || {}) }; let n = 0;
+            // poner un equipo en el cronograma g (si su servicio ya lo pone ahí, no hace falta guardar nada)
+            const poner = (e, gid) => { const porServ = grupos.filter((x) => (x.cons || []).includes(e.consultorio_id)); if (porServ.length === 1 && porServ[0].id === gid) delete nm[e.id]; else nm[e.id] = gid; };
+            if (modo === 'pasar') {
+              const dest = leer(m.body).destino; if (!marc.size) { toast('Marque al menos un equipo', true); return false; }
+              items.filter((e) => marc.has(e.id)).forEach((e) => { poner(e, dest); n++; });
+            } else {
+              items.forEach((e) => {
+                const ya = enG(e, grupo);
+                if (marc.has(e.id) && !ya) { poner(e, grupo.id); n++; }
+                if (!marc.has(e.id) && ya) { if ((grupo.cons || []).includes(e.consultorio_id)) nm[e.id] = '__ninguno'; else delete nm[e.id]; n++; }
+              });
+            }
+            if (!n) { toast('Sin cambios'); return; }
+            if (await A.guardarConfig(ent, { ...(ent.config || {}), crono_eq: nm })) {
+              const dg = modo === 'pasar' ? grupos.find((g) => g.id === leer(m.body).destino) : grupo;
+              S.log('EDITAR', 'cronogramas', ent.id, `${n} equipos ${modo === 'pasar' ? 'pasados a' : 'actualizados en'} el cronograma ${dg?.nombre || ''}`);
+              toast(modo === 'pasar' ? `${n} equipo${n === 1 ? '' : 's'} pasado${n === 1 ? '' : 's'} a ${dg?.nombre}` : `Cronograma ${grupo.nombre} actualizado (${n} cambio${n === 1 ? '' : 's'})`); pintar();
+            }
+          } }] });
       };
       A.acts({
         anio: (d) => { anio += +d.d; pintar(); },
@@ -443,6 +486,9 @@
         },
         grupoSel: (d) => { F.grupo = d.g; pintar(); },
         grupoNuevo: () => A.formGrupoCrono(ent, null, { cons, sedeCtx, tipo, alGuardar: (g) => { F.grupo = g?.id || ''; pintar(); } }),
+        // agregar equipos a este cronograma por servicios, o pasar varios a otro (config.crono_eq = { equipoId: grupoId })
+        grupoEqAgregar: () => equiposGrupo('agregar'),
+        grupoEqPasar: () => equiposGrupo('pasar'),
         grupoEdit: () => A.formGrupoCrono(ent, grupo, { cons, sedeCtx, tipo, alGuardar: (g) => { F.grupo = g?.id || ''; pintar(); } }),
         cronoGuardar: async () => {
           const subTipo = CAT.SUBS_CRONO[{ mantenimiento: 0, metrologia: 1, capacitacion: 2 }[tipo]];
