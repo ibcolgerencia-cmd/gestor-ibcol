@@ -85,7 +85,7 @@ window.Store = (() => {
     const enc = (p) => String(p).split('/').map(encodeURIComponent).join('/');
     // si devolver404 es true, un archivo que no está en R2 devuelve null (se busca en Supabase)
     async function r2(method, path, blob = null, devolver404 = false) {
-      const r = await fetch(`${R2}/o/${enc(path)}`, { method, headers: { Authorization: `Bearer ${await token()}`, ...(blob ? { 'Content-Type': blob.type || 'application/octet-stream' } : {}) }, body: blob || undefined });
+      const r = await fetch(`${R2}/o/${enc(path)}`, { method, cache: 'no-store', headers: { Authorization: `Bearer ${await token()}`, ...(blob ? { 'Content-Type': blob.type || 'application/octet-stream' } : {}) }, body: blob || undefined });
       if (method === 'GET') { if (r.ok) return await r.blob(); if (r.status === 404 && devolver404) return null; }
       else if (r.ok || (method === 'DELETE' && r.status === 404)) return true;
       const j = await r.json().catch(() => ({}));

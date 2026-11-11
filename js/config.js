@@ -16,7 +16,7 @@ window.IBCOL_CONFIG = {
 
   // Archivos en Cloudflare R2 (10 GB gratis) a través del guardián cloudflare/worker.js.
   // Vacío = los archivos se guardan en Supabase Storage.
-  R2_URL: '',
+  R2_URL: 'https://gestor-ibcol-archivos.ibcolgerencia.workers.dev',
 
   // Cierre automático de sesión por inactividad (minutos)
   MINUTOS_INACTIVIDAD: 30,
