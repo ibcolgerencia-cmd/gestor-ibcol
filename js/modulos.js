@@ -334,7 +334,7 @@
       el.innerHTML = `<section class="panel"><header><h2>${titulo}</h2><div class="actions">
           <button class="btn sm" data-act="anio" data-d="-1" aria-label="Periodo anterior">‹</button><b class="num" style="align-self:center">${periodoTxt}</b><button class="btn sm" data-act="anio" data-d="1" aria-label="Periodo siguiente">›</button>
           <button class="btn" data-act="cronoPDF">${I.pdf} PDF${grupo ? ' ' + h(grupo.nombre) : F.mes || F.q || F.serv ? ' (filtrado)' : ''}</button>${esProp() && grupo ? `<button class="btn" data-act="cronoGuardar" title="Guarda el PDF en la subcarpeta “${h(grupo.nombre)}”">${I.subir} Guardar en su subcarpeta</button>` : ''}
-          ${esProp() ? `${cap ? '' : `<button class="btn" data-act="generar">${I.cal} Generar desde periodicidad</button>`}<button class="btn pri" data-act="agregar">${I.mas} ${cap ? 'Capacitación' : 'Equipo'}</button>` : ''}</div></header>
+          ${esProp() ? `${tipo === 'metrologia' ? `<button class="btn" data-act="copiarMto" title="Programar la metrología en los mismos meses del cronograma de mantenimiento">⇆ Igual al de mantenimiento</button>` : ''}${cap ? '' : `<button class="btn" data-act="generar">${I.cal} Generar desde periodicidad</button>`}<button class="btn pri" data-act="agregar">${I.mas} ${cap ? 'Capacitación' : 'Equipo'}</button>` : ''}</div></header>
         <div class="crono-tabs" role="tablist" aria-label="Periodo">
           <button role="tab" class="ctab ${!dosAnios ? 'on' : ''}" data-act="periodo" data-v="1">Año ${anio} (ene – dic)</button>
           <button role="tab" class="ctab ${dosAnios ? 'on' : ''}" data-act="periodo" data-v="${dosAnios ? F.mesIni : (new Date().getMonth() + 1 > 1 ? new Date().getMonth() + 1 : 7)}">Entre dos años${dosAnios ? `: ${periodoTxt}` : ''}</button>
@@ -534,6 +534,36 @@
           S.log('CONSULTA', 'cronogramas', ent.id, etiqueta);
           UI.verPDF({ titulo: etiqueta, blob, nombre: `Cronograma_${tipo}_${periodoTxt.replace(/\s+/g, '')}${F.mes ? '_' + CAT.MESES[F.mes - 1] : ''}${consSel ? '_' + (consSel.nombre || consSel.sede).replace(/\s+/g, '_') : ''}.pdf` });
         },
+        // metrología paralela al mantenimiento: los meses programados del cronograma de mantenimiento pasan como "P" a metrología
+        copiarMto: () => modal({
+          titulo: 'Cronograma de metrología igual al de mantenimiento', size: 'sm',
+          cuerpo: `<div class="form"><p class="muted">Programa la metrología en los <b>mismos meses y semanas</b> del cronograma de mantenimiento preventivo (${h(periodoTxt)}${grupo ? ' · ' + h(grupo.nombre) : ''}${sedeCtx ? ' · ' + h(sedeCtx) : ''}). No borra ni cambia lo que ya está en metrología: solo llena los meses vacíos.</p>
+            <label class="checks"><input type="checkbox" name="soloMetro" data-single checked> Solo equipos que requieren metrología (periodicidad de metrología distinta de «No aplica»)</label>
+            <label class="checks"><input type="checkbox" name="unaVez" data-single> Solo una vez al año (el primer mantenimiento de cada año)</label></div>`,
+          acciones: [{ t: 'Cancelar' }, { t: 'Copiar', cls: 'pri', fn: async (m) => {
+            const d = leer(m.body); let nNuevo = 0, nAct = 0, nSin = 0;
+            for (const y of anios) {
+              const [mto, met] = await Promise.all([S.list('cronogramas', { entidad_id: ent.id, tipo: 'mantenimiento', anio: y }), S.list('cronogramas', { entidad_id: ent.id, tipo: 'metrologia', anio: y })]);
+              const mesesV = new Set(ventana.filter((v) => v.y === y).map((v) => v.m));
+              for (const cm of mto.filter((x) => x.equipo_id)) {
+                const e = eqd(cm.equipo_id); if (!e.id || e.estado === 'Dado de baja') continue;
+                if (grupo && !enG(e, grupo)) continue;
+                if (sedeCtx && sedeC(cons.find((c) => c.id === e.consultorio_id)) !== sedeCtx) continue;
+                if (d.soloMetro && (!e.periodicidad_metro || /no aplica/i.test(e.periodicidad_metro))) { nSin++; continue; }
+                let llaves = Object.entries(cm.plan || {}).filter(([k, v]) => k !== 'notas' && v && ['P', 'E', 'N'].includes(v) && mesesV.has(+k.split('-')[0])).map(([k]) => k).sort((a, b) => +a.split('-')[0] - +b.split('-')[0]);
+                if (d.unaVez) llaves = llaves.slice(0, 1);
+                if (!llaves.length) continue;
+                const c = met.find((x) => x.equipo_id === e.id); const plan = { ...(c?.plan || {}) }; let cambio = false;
+                llaves.forEach((k) => { const mm = +k.split('-')[0]; if (Object.entries(plan).some(([kk, v]) => kk !== 'notas' && v && +kk.split('-')[0] === mm)) return; plan[k] = 'P'; cambio = true; });
+                if (!cambio) continue;
+                if (c) { await S.update('cronogramas', c.id, { plan }); nAct++; } else { const nv = await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: e.id, tipo: 'metrologia', anio: y, plan }); met.push(nv); nNuevo++; }
+              }
+            }
+            S.log('EDITAR', 'cronogramas', ent.id, `Metrología igual al mantenimiento ${periodoTxt}: ${nNuevo} nuevos, ${nAct} actualizados`);
+            toast(nNuevo || nAct ? `Metrología programada: ${nNuevo} equipos nuevos, ${nAct} actualizados${nSin ? ` · ${nSin} sin metrología (No aplica) no se incluyeron` : ''}` : `No había meses nuevos para copiar${nSin ? ` (${nSin} equipos tienen metrología «No aplica»)` : ''}`);
+            pintar();
+          } }],
+        }),
         generar: () => modal({
           titulo: 'Generar cronograma automáticamente', size: 'sm',
           cuerpo: `<div class="form"><p class="muted">Programa cada equipo activo según su periodicidad de ${tipo === 'metrologia' ? 'metrología' : 'mantenimiento'}. El ciclo puede pasar al año siguiente: por ejemplo, un equipo <b>semestral</b> que empieza en <b>octubre de ${anio}</b> queda programado también en <b>abril de ${anio + 1}</b>.</p>
