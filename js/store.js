@@ -90,10 +90,18 @@ window.Store = (() => {
         return p;
       },
       async logout() { try { await this.log('LOGOUT', 'perfiles', perfil?.id, 'Salida'); } catch {} perfil = null; await sb.auth.signOut(); },
+      // Supabase entrega máximo 1000 filas por consulta: se pide por páginas hasta traer todo
       async list(t, filtros, orden) {
-        let q = aplicar(sb.from(t).select('*'), filtros);
-        if (orden) q = q.order(orden.replace('-', ''), { ascending: !orden.startsWith('-') });
-        return chk(await q.limit(5000));
+        const out = [], key = KEYS[t] || 'id';
+        for (let desde = 0; desde < 100000; desde += 1000) {
+          let q = aplicar(sb.from(t).select('*'), filtros);
+          if (orden) q = q.order(orden.replace('-', ''), { ascending: !orden.startsWith('-') });
+          if (!orden || orden.replace('-', '') !== key) q = q.order(key, { ascending: true });
+          const r = chk(await q.range(desde, desde + 999));
+          out.push(...r);
+          if (r.length < 1000) break;
+        }
+        return out;
       },
       async get(t, id) { return chk(await sb.from(t).select('*').eq(KEYS[t] || 'id', id).maybeSingle()); },
       async insert(t, o) { return chk(await sb.from(t).insert(sinExcel(t, o)).select().single()); },
