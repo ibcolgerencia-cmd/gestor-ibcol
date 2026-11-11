@@ -89,6 +89,7 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 ## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
 
+- **Carpetas por sede en el inventario (v110):** las carpetas de servicios (ej. 1. INVENTARIO GENERAL, 2. ALMACÉN, 2. EXTRAMURAL) solo aparecen en la sede a la que pertenecen; al elegir otra sede se ven solo las de esa sede.
 - **Quitar carpetas del inventario (v109):** en Inventario, al tocar una carpeta de servicios (ej. «1. INVENTARIO GENERAL», «2. EXTRAMURAL») aparece el botón rojo «Quitar carpeta». Los servicios y equipos no se borran: vuelven a la lista de servicios.
 - **Archivos pasados a Cloudflare R2 (10/11/2026):** los 2.712 archivos (1,77 GB) quedaron en R2 y se liberó Supabase Storage (0 MB). El guardián acepta nombres con «..» dentro del nombre (p. ej. «ULTRASONIDO..pdf») y sigue bloqueando «..» como carpeta.
 - **Panel más rápido (v108):** el panel de control ya no descarga toda la pista de auditoría (más de 22.000 registros), solo las 8 últimas acciones; la vista Auditoría trae las 3.000 más recientes.
