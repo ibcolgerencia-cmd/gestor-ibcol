@@ -89,6 +89,7 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 ## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
 
+- **Metrología paralela al mantenimiento (v122):** en Cronogramas › Metrología, botón «⇆ Igual al de mantenimiento»: programa la metrología en los mismos meses y semanas del cronograma de mantenimiento del periodo, cronograma por servicios y sede que se están viendo. Opciones: solo equipos que requieren metrología y solo una vez al año. No borra lo que ya hay; solo llena meses vacíos.
 - **Garantía y comodato en cronogramas (v121):** al tocar una semana el estado pasa P → E → N → G (En garantía, morado) → C (Comodato, azul) → vacío. Sale en pantalla, en la leyenda y en el PDF con la letra G o C. Para explicar el caso se usa el botón de anotaciones de cada fila (la nota pasa al reporte).
 - **Carpetas nuevas en «Otros módulos» (v120):** la tarjeta «+ Nueva carpeta» aparece también en Otros módulos (además de Estructura documental); la carpeta queda en la sección donde se creó.
 - **Orden del inventario anexado (v119):** botón «⇅ Ordenar según el inventario» en el Inventario: lee el inventario de la sede (Excel o PDF de la carpeta 1. Inventarios, o uno que se suba) y deja los servicios y equipos en ese mismo orden en el Inventario, en 3. Información del equipo y en los cronogramas. Solo cambia el orden. Las carpetas de servicios ahora van en la posición de su primer servicio.
