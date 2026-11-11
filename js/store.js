@@ -79,6 +79,18 @@ window.Store = (() => {
       Object.entries(filtros || {}).forEach(([k, v]) => { q = v === null ? q.is(k, null) : q.eq(k, v); });
       return q;
     }
+    // ---- Cloudflare R2 (guardián de archivos)
+    const R2 = String(C.R2_URL || '').replace(/\/+$/, '');
+    const token = async () => (await sb.auth.getSession()).data.session?.access_token || '';
+    const enc = (p) => String(p).split('/').map(encodeURIComponent).join('/');
+    // si devolver404 es true, un archivo que no está en R2 devuelve null (se busca en Supabase)
+    async function r2(method, path, blob = null, devolver404 = false) {
+      const r = await fetch(`${R2}/o/${enc(path)}`, { method, headers: { Authorization: `Bearer ${await token()}`, ...(blob ? { 'Content-Type': blob.type || 'application/octet-stream' } : {}) }, body: blob || undefined });
+      if (method === 'GET') { if (r.ok) return await r.blob(); if (r.status === 404 && devolver404) return null; }
+      else if (r.ok || (method === 'DELETE' && r.status === 404)) return true;
+      const j = await r.json().catch(() => ({}));
+      throw new Error(j.error === 'Sin permiso' ? 'Su usuario no tiene permiso para este archivo' : j.error || `Error de almacenamiento (${r.status})`);
+    }
     return {
       modo: 'nube',
       get perfil() { return perfil; },
@@ -109,19 +121,46 @@ window.Store = (() => {
       async upsert(t, o) { return chk(await sb.from(t).upsert(o).select().single()); },
       async remove(t, id) { chk(await sb.from(t).delete().eq(KEYS[t] || 'id', id)); },
       claveDebil: IBCOL_SEG.claveDebil,
+      // ---- ARCHIVOS: Cloudflare R2 (guardián en cloudflare/worker.js); Supabase Storage solo como respaldo
+      //      mientras se pasan los archivos antiguos (lectura: primero R2, si no está, Supabase).
+      r2: R2,
       async upload(path, blob) {
         await IBCOL_SEG.validarArchivo(path, blob);
         // PDF grandes: se comprimen las imágenes escaneadas antes de subir (js/almacenamiento.js)
         try { if (window.IBCOL_COMPRIMIR) blob = await window.IBCOL_COMPRIMIR(path, blob); } catch {}
+        if (R2) { await r2('PUT', path, blob); return path; }
         chk(await sb.storage.from('documentos').upload(path, blob, { upsert: true, contentType: blob.type || 'application/octet-stream' }));
         return path;
       },
-      async reemplazarArchivo(path, blob) { chk(await sb.storage.from('documentos').upload(path, blob, { upsert: true, contentType: blob.type || 'application/octet-stream' })); return path; },
-      async removeFiles(paths) { if (paths?.length) chk(await sb.storage.from('documentos').remove(paths)); },
-      async fileBlob(path) { return chk(await sb.storage.from('documentos').download(path)); },
+      async reemplazarArchivo(path, blob) {
+        if (R2) { await r2('PUT', path, blob); try { await sb.storage.from('documentos').remove([path]); } catch {} return path; }
+        chk(await sb.storage.from('documentos').upload(path, blob, { upsert: true, contentType: blob.type || 'application/octet-stream' })); return path;
+      },
+      async removeFiles(paths) {
+        if (!paths?.length) return;
+        if (R2) for (let i = 0; i < paths.length; i += 8) await Promise.all(paths.slice(i, i + 8).map((p) => r2('DELETE', p).catch(() => {})));
+        const r = await sb.storage.from('documentos').remove(paths); if (!R2) chk(r);
+      },
+      async removeFile(path) { if (path) await this.removeFiles([path]); },
+      async fileBlob(path) {
+        if (R2) { const r = await r2('GET', path, null, true); if (r) return r; }
+        return chk(await sb.storage.from('documentos').download(path));
+      },
       // enlace seguro y temporal para enviar un documento por WhatsApp o correo
-      async enlace(path, segundos = 604800, nombre) { const r = chk(await sb.storage.from('documentos').createSignedUrl(path, segundos)); return r.signedUrl; },
-      async removeFile(path) { if (path) chk(await sb.storage.from('documentos').remove([path])); },
+      async enlace(path, segundos = 604800, nombre) {
+        if (R2) {
+          const r = await fetch(`${R2}/firmar`, { method: 'POST', headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ruta: path, segundos, nombre: nombre || '' }) });
+          if (r.ok) return (await r.json()).url;
+          if (r.status !== 404) throw new Error((await r.json().catch(() => ({}))).error || 'No se pudo crear el enlace');
+        }
+        const r = chk(await sb.storage.from('documentos').createSignedUrl(path, segundos)); return r.signedUrl;
+      },
+      // paso de archivos de Supabase a R2 (propietario)
+      async r2Existe(path) { const r = await fetch(`${R2}/existe/${enc(path)}`, { headers: { Authorization: `Bearer ${await token()}` } }); if (!r.ok) throw new Error('Guardián R2 no disponible'); return (await r.json()).existe; },
+      async r2Lista() { const out = []; let cursor = ''; do { const r = await fetch(`${R2}/lista${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: { Authorization: `Bearer ${await token()}` } }); if (!r.ok) throw new Error('Guardián R2 no disponible'); const j = await r.json(); out.push(...j.objetos); cursor = j.cursor; } while (cursor); return out; },
+      async r2Subir(path, blob) { await r2('PUT', path, blob); },
+      async supaBlob(path) { return chk(await sb.storage.from('documentos').download(path)); },
+      async supaBorrar(paths) { if (paths?.length) chk(await sb.storage.from('documentos').remove(paths)); },
       async log(accion, tabla, registro, detalle) {
         try { await sb.rpc('registrar_evento', { p_accion: accion, p_tabla: tabla, p_registro: String(registro || ''), p_detalle: detalle || '' }); } catch {}
       },

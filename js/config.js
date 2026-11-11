@@ -14,6 +14,10 @@ window.IBCOL_CONFIG = {
   // El cliente entra con "clinica.sanjose" y el sistema usa "clinica.sanjose@ibcol.app"
   DOMINIO_USUARIOS: 'ibcol.app',
 
+  // Archivos en Cloudflare R2 (10 GB gratis) a través del guardián cloudflare/worker.js.
+  // Vacío = los archivos se guardan en Supabase Storage.
+  R2_URL: '',
+
   // Cierre automático de sesión por inactividad (minutos)
   MINUTOS_INACTIVIDAD: 30,
 };

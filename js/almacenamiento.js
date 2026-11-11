@@ -87,9 +87,12 @@
     const revisar = async () => {
       res.textContent = 'Revisando el almacenamiento…';
       let r; try { r = (await S.rpc('almacenamiento_resumen', {}))?.[0]; } catch (e) { res.innerHTML = faltaSQL(e) ? 'Falta activar la revisión en la base de datos: ejecute <b class="mono">supabase/limpieza_almacenamiento.sql</b> en Supabase.' : h(e.message); return; }
-      res.innerHTML = `<p style="margin:8px 0">Archivos en la nube: <b>${Number(r.archivos).toLocaleString('es-CO')}</b> · <b>${tam(r.bytes)}</b><br>
+      let r2 = null; if (S.r2) { try { const l = await S.r2Lista(); r2 = { n: l.length, b: l.reduce((x, o) => x + Number(o.tamano || 0), 0) }; } catch (e) { r2 = { error: e.message }; } }
+      res.innerHTML = `<p style="margin:8px 0">${S.r2 ? `<b>Cloudflare R2</b> (10 GB gratis): ${r2?.error ? `<span style="color:#b02e26">${h(r2.error)}</span>` : `<b>${r2.n.toLocaleString('es-CO')}</b> archivos · <b>${tam(r2.b)}</b>`}<br>` : ''}
+        ${S.r2 ? '<b>Supabase</b> (archivos antiguos por pasar): ' : 'Archivos en la nube: '}<b>${Number(r.archivos).toLocaleString('es-CO')}</b> · <b>${tam(r.bytes)}</b><br>
         Archivos huérfanos (no los usa ningún documento): <b>${Number(r.huerfanos).toLocaleString('es-CO')}</b> · <b>${tam(r.bytes_huerfanos)}</b></p>
         <div class="actions" style="flex-wrap:wrap;gap:6px">${Number(r.huerfanos) ? `<button class="btn sm danger" data-alm="huerfanos">Borrar ${Number(r.huerfanos).toLocaleString('es-CO')} archivos huérfanos (${tam(r.bytes_huerfanos)})</button>` : '<span class="pill ok">Sin archivos huérfanos</span>'}
+        ${S.r2 && Number(r.archivos) ? `<button class="btn sm pri" data-alm="r2">Pasar ${Number(r.archivos).toLocaleString('es-CO')} archivos a Cloudflare R2</button>` : ''}
         <button class="btn sm" data-alm="comprimir">Comprimir PDF guardados</button></div>`;
     };
     cont.onclick = async (e) => {
@@ -97,6 +100,7 @@
       if (b.dataset.alm === 'revisar') return revisar();
       if (b.dataset.alm === 'huerfanos') return borrarHuerfanos(res, revisar);
       if (b.dataset.alm === 'comprimir') return comprimirGuardados(res, revisar);
+      if (b.dataset.alm === 'r2') return pasarAR2(revisar);
     };
   };
 
@@ -116,6 +120,48 @@
     }
     S.log('ELIMINAR', 'storage', '', `Limpieza de huérfanos: ${total} archivos, ${tam(bytes)}`).catch?.(() => {});
     toast(`Listo: ${total.toLocaleString('es-CO')} archivos huérfanos borrados (${tam(bytes)} liberados)`, fallos > 3);
+    await alFinal();
+  }
+
+  // ---------------------------------------------------------------- paso de Supabase Storage a Cloudflare R2
+  async function pasarAR2(alFinal) {
+    if (!(await confirmar('Se copiarán todos los archivos del gestor a Cloudflare R2 (10 GB gratis). Cuando estén todos copiados y verificados, se borran de Supabase para liberar el espacio. Los documentos siguen viéndose igual. Puede tardar varios minutos: no cierre la página. ¿Continuar?', 'Pasar a R2'))) return;
+    const m = modal({ titulo: 'Pasando archivos a Cloudflare R2', size: 'sm', cuerpo: '<p data-cp>Preparando la lista de archivos…</p><p class="muted" style="font-size:.85rem">No cierre esta página.</p>', acciones: [{ t: 'Detener', fn: () => { parar = true; return false; } }] });
+    const prog = (t) => { const p = m.body.querySelector('[data-cp]'); if (p) p.textContent = t; };
+    let parar = false;
+    try {
+      const [docs, cobros, actas] = await Promise.all([S.list('documentos'), S.list('cobros').catch(() => []), S.list('actas_comite').catch(() => [])]);
+      const rutas = new Set();
+      [...docs, ...cobros].forEach((d) => d.archivo && rutas.add(d.archivo));
+      actas.forEach((a) => { if (a.archivo) rutas.add(a.archivo); [...(a.fotos || []), ...(a.anexos || [])].forEach((x) => x?.archivo && rutas.add(x.archivo)); });
+      const enR2 = new Set((await S.r2Lista()).map((o) => o.ruta));
+      const pend = [...rutas].filter((p) => !enR2.has(p));
+      let ok = 0, bytes = 0; const faltan = [], fallos = [];
+      const t0 = Date.now();
+      let i = 0;
+      const trabajador = async () => {
+        while (i < pend.length && !parar) {
+          const p = pend[i++];
+          try { const b = await S.supaBlob(p); await S.r2Subir(p, b); ok++; bytes += b.size; }
+          catch (e) { (/not.?found|no existe|404/i.test(e.message || '') ? faltan : fallos).push(p); }
+          prog(`${(ok + faltan.length + fallos.length).toLocaleString('es-CO')} de ${pend.length.toLocaleString('es-CO')} · ${tam(bytes)} copiados${fallos.length ? ` · ${fallos.length} con error` : ''}`);
+        }
+      };
+      await Promise.all([trabajador(), trabajador(), trabajador(), trabajador()]);
+      if (parar) { m.cerrar?.(); toast(`Detenido: ${ok} archivos copiados a R2. Puede continuar después.`); return alFinal(); }
+      // reintento de los que fallaron
+      for (const p of fallos.splice(0)) { try { const b = await S.supaBlob(p); await S.r2Subir(p, b); ok++; bytes += b.size; } catch { fallos.push(p); } }
+      // verificación: todo lo referenciado debe estar en R2
+      prog('Verificando que todos los archivos estén en R2…');
+      const ya = new Set((await S.r2Lista()).map((o) => o.ruta));
+      const sinCopia = [...rutas].filter((p) => !ya.has(p) && !faltan.includes(p));
+      if (sinCopia.length) { m.cerrar?.(); toast(`${sinCopia.length} archivos no se pudieron copiar. No se borró nada de Supabase; vuelva a intentarlo.`, true); console.warn('sin copia', sinCopia); return alFinal(); }
+      // liberar Supabase: borrar las copias que ya están en R2
+      const borrar = [...rutas].filter((p) => ya.has(p));
+      for (let k = 0; k < borrar.length; k += 100) { prog(`Liberando espacio en Supabase… ${Math.min(k + 100, borrar.length).toLocaleString('es-CO')} de ${borrar.length.toLocaleString('es-CO')}`); try { await S.supaBorrar(borrar.slice(k, k + 100)); } catch (e) { console.warn('supabase', e); } }
+      m.cerrar?.();
+      toast(`Listo: ${ok.toLocaleString('es-CO')} archivos pasados a Cloudflare R2 (${tam(bytes)}) en ${Math.max(1, Math.round((Date.now() - t0) / 60000))} min${faltan.length ? ` · ${faltan.length} ya no existían` : ''}`);
+    } catch (e) { m.cerrar?.(); toast(e.message, true); }
     await alFinal();
   }
 
