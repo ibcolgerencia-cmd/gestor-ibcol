@@ -89,6 +89,7 @@ Si el modelo de Gemini está saturado, la función `asistente-ia` prueba sola co
 
 ## Versión 33-37 (29-30/10/2026): sedes · menú en celular · cambio de usuario · cronograma entre años · quitar carpetas
 
+- **Quitar carpetas del inventario (v109):** en Inventario, al tocar una carpeta de servicios (ej. «1. INVENTARIO GENERAL», «2. EXTRAMURAL») aparece el botón rojo «Quitar carpeta». Los servicios y equipos no se borran: vuelven a la lista de servicios.
 - **Archivos pasados a Cloudflare R2 (10/11/2026):** los 2.712 archivos (1,77 GB) quedaron en R2 y se liberó Supabase Storage (0 MB). El guardián acepta nombres con «..» dentro del nombre (p. ej. «ULTRASONIDO..pdf») y sigue bloqueando «..» como carpeta.
 - **Panel más rápido (v108):** el panel de control ya no descarga toda la pista de auditoría (más de 22.000 registros), solo las 8 últimas acciones; la vista Auditoría trae las 3.000 más recientes.
 - **Archivos en Cloudflare R2 (v106–v107):** los archivos del gestor se guardan en el depósito privado R2 «gestor-ibcol» (10 GB gratis, descargas gratis) a través del guardián cloudflare/worker.js (Worker «gestor-ibcol-archivos»), que verifica la sesión de Supabase y los permisos de cada usuario; los enlaces para compartir son firmados y vencen. Los datos siguen en Supabase. Mientras se pasan los archivos antiguos, la app lee primero de R2 y si no está, de Supabase. En Mi empresa › Almacenamiento: «Pasar archivos a Cloudflare R2» copia todo, verifica y libera Supabase. Configuración del Worker: binding R2 BUCKET = gestor-ibcol y secreto FIRMA.
