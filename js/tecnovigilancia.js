@@ -290,7 +290,7 @@
 
   // ================================================================== 2. EVENTOS / INCIDENTES · FORMULARIO FT-PGTV-016
   const consecuenciaDe = (des) => (des === 'Muerte' ? 'Muerte' : ['Enfermedad o daño que amenace la vida', 'Requiere intervención médica o quirúrgica', 'Daño de una función o estructura corporal', 'Hospitalización inicial o prolongada'].includes(des) ? 'Deterioro grave' : des === 'No hubo daño' ? 'Sin consecuencias' : 'Lesión temporal');
-  TV.formEvento = async (ent, ev = null, { serio = null } = {}) => {
+  TV.formEvento = async (ent, ev = null, { serio = null, sede: sedeFija = null } = {}) => {
     const [eqs, cons] = await Promise.all([S.list('equipos', { entidad_id: ent.id }), S.list('consultorios', { entidad_id: ent.id })]);
     const cfg = TV.cfg(ent), d = ev?.datos || {}, sedes = A.sedesDe(cons, ent);
     const x = (k) => `d_${k}`, D = (k, def = '') => d[k] ?? def;
@@ -300,7 +300,7 @@
     modal({ titulo: ev ? `Reporte ${d.codigo || ''} · FT-PGTV-016` : 'Reporte voluntario de evento / incidente adverso (FT-PGTV-016)', size: 'wide', cuerpo: `<form class="form" onsubmit="return false">
       <fieldset><legend>Clasificación</legend><div class="fields">${f.sel('clasificacion', 'Clasificación (Res. 4816 de 2008, art. 5) *', [['', '— Seleccione —'], ...TV.CLASIF], clasDef)}${f.input(x('codigo'), 'Código interno del reporte', D('codigo'))}
         <p class="muted full" style="font-size:.82rem;margin:0">Serio: muerte o deterioro serio de la salud (o pudo causarlo, si es incidente) → reporte al INVIMA dentro de 72 horas. No serio → consolidado trimestral RETEIM-002.</p></div></fieldset>
-      <fieldset><legend>A. Lugar de ocurrencia</legend><div class="fields">${f.input(x('institucion'), 'Nombre de la institución', D('institucion', ent.razon_social))}${f.sel(x('sede'), 'Sede', sedes, D('sede', sedes[0]))}${f.input(x('nit'), 'NIT', D('nit', ent.nit))}${f.input(x('departamento'), 'Departamento', D('departamento', cfg.departamento || ''))}${f.input(x('ciudad'), 'Ciudad', D('ciudad', ent.ciudad))}</div></fieldset>
+      <fieldset><legend>A. Lugar de ocurrencia</legend><div class="fields">${f.input(x('institucion'), 'Nombre de la institución', D('institucion', ent.razon_social))}${f.sel(x('sede'), 'Sede', sedeFija ? [sedeFija] : sedes, D('sede', sedeFija || sedes[0]))}${f.input(x('nit'), 'NIT', D('nit', ent.nit))}${f.input(x('departamento'), 'Departamento', D('departamento', cfg.departamento || ''))}${f.input(x('ciudad'), 'Ciudad', D('ciudad', ent.ciudad))}</div></fieldset>
       <fieldset><legend>B. Información del paciente</legend><div class="fields">${f.input(x('pac_nombre'), 'Nombre', D('pac_nombre'))}${f.sel(x('pac_tipo_id'), 'Tipo de identificación', ['CC', 'TI', 'RC', 'CE', 'PA', 'MS', 'AS', 'NU'], D('pac_tipo_id', 'CC'))}${f.input(x('pac_id'), 'Número de identificación', D('pac_id'))}
         ${f.sel(x('pac_sexo'), 'Sexo', [['', '—'], 'Femenino', 'Masculino'], D('pac_sexo'))}${f.input(x('pac_edad'), 'Edad', D('pac_edad'), { type: 'number' })}${f.sel(x('pac_edad_en'), 'Edad en', ['Años', 'Meses', 'Semanas', 'Días'], D('pac_edad_en', 'Años'))}${f.input(x('area'), 'Área o servicio', D('area', ev?.servicio || ''))}${f.area(x('pac_diagnostico'), 'Diagnóstico inicial del paciente', D('pac_diagnostico'), { rows: 2 })}</div></fieldset>
       <fieldset><legend>C. Dispositivo médico sospechoso</legend><div class="fields">${f.sel('equipo_id', 'Equipo del inventario (opcional: completa los datos)', [['', '— Dispositivo que no está en el inventario —'], ...eqs.map((e) => [e.id, `${e.codigo_inv} · ${e.nombre} · ${e.marca || ''} ${e.modelo || ''}`])], ev?.equipo_id, { full: true })}
@@ -337,6 +337,21 @@
         if (!ev && o.equipo_id && (serioN || o.retiro_equipo)) { try { await S.update('equipos', o.equipo_id, { estado: 'Fuera de servicio' }); } catch {} }
         toast(serioN && !datos.fecha_notificacion ? 'Reporte guardado. Evento SERIO: notifique al INVIMA dentro de las 72 horas.' : 'Reporte guardado', serioN && !datos.fecha_notificacion); A.recargar();
       } }] });
+  };
+
+  // ------------------------------------------------------------------ portal de calidad: reportar eventos / incidentes adversos (FT-PGTV-016)
+  A.G.eventosCalidad = async (el, { ent, sede = null }) => {
+    let evs = [], eqs = [];
+    try { [evs, eqs] = await Promise.all([S.list('eventos', { entidad_id: ent.id }, '-fecha_evento'), S.list('equipos', { entidad_id: ent.id })]); } catch (er) { evs = []; }
+    if (sede) evs = evs.filter((e) => !e.datos?.sede || e.datos.sede === sede);
+    el.innerHTML = `<section class="panel"><header><div><h2>Reporte de eventos e incidentes adversos con dispositivos médicos</h2><span class="muted" style="font-size:.85rem">Formato FT-PGTV-016. Todo evento o incidente adverso <b>serio</b> (muerte o deterioro serio de la salud, o que pudo causarlo) debe reportarse de inmediato: IBCOL y el referente lo notifican al INVIMA dentro de las 72 horas. Los <b>no serios</b> se consolidan cada trimestre.</span></div>
+      <div class="actions"><button class="btn" data-act="cqBlanco">${I.pdf} Formato en blanco</button><button class="btn pri" data-act="cqNuevo">${I.alerta} Reportar evento / incidente</button></div></header>
+      ${evs.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Código</th><th>Fecha</th><th>Clasificación</th><th>Dispositivo</th><th>Servicio</th><th>Estado</th><th></th></tr></thead><tbody>${evs.map((ev) => { const d = ev.datos || {}; return `<tr><td class="mono">${h(d.codigo || '')}</td><td class="num">${UI.fechaHora(ev.fecha_evento)}</td><td>${pill(ev.clasificacion || 'Sin clasificar', TV.esSerio(ev) ? 'bad' : 'warn')}</td><td>${h(d.dm_generico || eqs.find((e) => e.id === ev.equipo_id)?.nombre || '')}</td><td>${h(d.area || ev.servicio || '')}</td><td>${h(ev.estado || '')}</td><td><button class="icon-btn" data-act="cqVer" data-id="${ev.id}" aria-label="Ver FT-PGTV-016">${I.pdf}</button></td></tr>`; }).join('')}</tbody></table></div>` : '<div class="empty">No hay reportes registrados.</div>'}</section>`;
+    A.acts({
+      cqNuevo: () => TV.formEvento(ent, null, { serio: true, sede }),
+      cqBlanco: () => UI.verPDF({ titulo: 'FT-PGTV-016 en blanco', blob: TV.pdf016(ent, { datos: {}, descripcion: '' }).output('blob'), nombre: 'FT-PGTV-016_en_blanco.pdf' }),
+      cqVer: (d) => { const ev = evs.find((x) => x.id === d.id); UI.verPDF({ titulo: `FT-PGTV-016 · ${ev.datos?.codigo || ''}`, blob: TV.pdf016(ent, ev, eqs.find((e) => e.id === ev.equipo_id)).output('blob'), nombre: `FT-PGTV-016_${slug(ev.datos?.codigo || 'reporte')}.pdf` }); },
+    });
   };
   const plazo72 = (ev) => {
     const d = ev.datos || {}, ini = new Date(ev.fecha_evento).getTime();
