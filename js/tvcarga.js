@@ -61,7 +61,7 @@
     if (mF) fecha = fechas(mF[1])[0] || null;
     if (!fecha && fs.length) fecha = [...fs].sort().pop();
     // sin trimestre detectado: el trimestre anterior a la fecha del reporte
-    if (!tri && fecha) { const mo = +fecha.slice(5, 7), yy = +fecha.slice(0, 4); const tq = Math.ceil(mo / 3) - 1; tri = tq || 4; if (!anio) anio = tq ? yy : yy - 1; fuente.push('fecha'); }
+    if (!tri && fecha) { const mo = +fecha.slice(5, 7), yy = +fecha.slice(0, 4); const tq = Math.ceil(mo / 3) - 1; tri = tq || 4; anio = tq ? yy : yy - 1; fuente.push('fecha'); }
     if (!anio && fecha) anio = +fecha.slice(0, 4);
     const cero = /en cero|reporte cero|reportes? en 0|cero \(0\)|sin (eventos|incidentes|reportes)|no se presentaron|no se reportaron|ningun (evento|incidente)|0 eventos/.test(todo);
     const rad = (texto.match(/c[oó]digo\s+asignado\s*[:#]?\s*([0-9][0-9\-]{6,})/i) || [])[1] || (texto.match(/radicad[oa]\s*(?:n[°o.º]*|numero|no\.?)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-\/]{4,})/i) || [])[1] || '';
@@ -117,7 +117,7 @@
     items.sort((a, b) => (a.det.anio * 10 + (a.det.t || 0)) - (b.det.anio * 10 + (b.det.t || 0)));
     const fila = (it, i) => `<tr data-i="${i}"><td style="max-width:240px;word-break:break-word">${h(it.nombre)}<div class="muted" style="font-size:.75rem">Detectado por: ${h(it.det.fuente)}</div></td>
       <td><select data-k="anio" aria-label="Año">${opt(anios(), it.det.anio)}</select></td>
-      <td><select data-k="t" aria-label="Trimestre">${opt([['', '— Elija —'], ...ROM.map((r, k) => [k + 1, `${r} trimestre`])], it.det.t || '')}</select></td>
+      <td><select data-k="t" aria-label="Trimestre">${opt([['', '— Elija —'], ...ROM.map((r, k) => [k + 1, `${r} trimestre`]), ['x', 'Omitir (no es un reporte)']], it.det.t || '')}</select></td>
       <td><select data-k="cero" aria-label="Tipo">${opt([['0', 'Con eventos (RETEIM-002)'], ['1', 'Reporte en cero']], it.det.cero ? '1' : '0')}</select></td>
       <td><input type="date" data-k="fecha" value="${h(it.det.fecha)}" aria-label="Fecha de reporte"></td><td><input data-k="radicado" value="${h(it.det.radicado)}" aria-label="Radicado" style="width:120px"></td>
       <td>${it.det.seguro ? '<span class="pill ok">Detectado</span>' : it.det.t ? '<span class="pill">Por fecha: revisar</span>' : '<span class="pill warn">Revisar</span>'}</td></tr>`;
@@ -125,10 +125,11 @@
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Archivo</th><th>Año</th><th>Trimestre</th><th>Tipo</th><th>Fecha de reporte</th><th>Radicado</th><th></th></tr></thead><tbody>${items.map(fila).join('')}</tbody></table></div>`,
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar y organizar', cls: 'pri', fn: async (m) => {
         const vals = [...m.body.querySelectorAll('tr[data-i]')].map((tr) => { const o = {}; tr.querySelectorAll('[data-k]').forEach((x) => { o[x.dataset.k] = x.value; }); return { it: items[+tr.dataset.i], ...o }; });
-        if (vals.some((v) => !v.t)) { toast('Elija el trimestre de todos los archivos', true); return false; }
+        if (vals.some((v) => !v.t)) { toast('Elija el trimestre de todos los archivos (o «Omitir»)', true); return false; }
         const regs = await S.list(TB, { entidad_id: ent.id });
         let n = 0;
         for (const v of vals) {
+          if (v.t === 'x') continue;
           const anio = +v.anio, t = +v.t, subcarpeta = `${sub4}/${anio}/${ROM[t - 1]} TRIMESTRE`;
           let doc = v.it.doc;
           if (doc) { if (doc.subcarpeta !== subcarpeta) await S.update('documentos', doc.id, { subcarpeta }); }
@@ -146,7 +147,7 @@
   TV.cargarAlertas = async (ent, { existentes = false } = {}) => {
     let items = [];
     if (existentes) {
-      const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => /\.pdf$/i.test(d.nombre || '') && (d.carpeta === 'alertas' || (d.carpeta === 'tecnovigilancia' && /alerta|pgtv-015/i.test((d.subcarpeta || '') + d.nombre))));
+      const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => /\.pdf$/i.test(d.nombre || '') && (d.carpeta === 'alertas' || (d.carpeta === 'tecnovigilancia' && !/ANEXOS/i.test(d.subcarpeta || '') && /alerta|pgtv-015/i.test((d.subcarpeta || '') + d.nombre))));
       if (!docs.length) { toast('No hay PDF de alertas cargados', true); return; }
       items = docs.map((d) => ({ doc: d, nombre: d.nombre }));
     } else {
@@ -160,7 +161,7 @@
     }
     pg.cerrar();
     const fila = (it, i) => `<tr data-i="${i}"><td style="max-width:260px;word-break:break-word">${h(it.nombre)}<div class="muted" style="font-size:.75rem">Detectado por: ${h(it.det.fuente)}</div></td>
-      <td><select data-k="mes" aria-label="Mes">${opt([['', '— Elija —'], ...MES.map((m, k) => [k + 1, CAT.MESES[k]])], it.det.mes || '')}</select></td><td><select data-k="anio" aria-label="Año">${opt(anios(), it.det.anio)}</select></td>
+      <td><select data-k="mes" aria-label="Mes">${opt([['', '— Elija —'], ...MES.map((m, k) => [k + 1, CAT.MESES[k]]), ['x', 'Omitir']], it.det.mes || '')}</select></td><td><select data-k="anio" aria-label="Año">${opt(anios(), it.det.anio)}</select></td>
       <td><select data-k="aplica" aria-label="Aplicabilidad">${opt([['No aplica', 'No aplica'], ['Aplica - verificado', 'Aplica - verificado'], ['Aplica - en gestión', 'Aplica - en gestión']], 'No aplica')}</select></td>
       <td>${it.det.seguro ? '<span class="pill ok">Detectado</span>' : '<span class="pill warn">Revisar</span>'}</td></tr>`;
     modal({ titulo: `Consultas de alertas cargadas (${items.length})`, size: 'wide', cuerpo: `<p class="muted" style="font-size:.85rem">Revise el mes de cada soporte. Al guardar, cada PDF queda en la carpeta de alertas en "AÑO/MES" y la consulta de ese mes queda registrada en la bitácora (si ya existe, se le agrega el soporte).</p>
@@ -170,6 +171,7 @@
         if (vals.some((v) => !v.mes)) { toast('Elija el mes de todos los archivos', true); return false; }
         const als = await S.list('alertas', { entidad_id: ent.id }); let n = 0;
         for (const v of vals) {
+          if (v.mes === 'x') continue;
           const mes = +v.mes, anio = +v.anio, nomMes = CAT.MESES[mes - 1], subcarpeta = `${anio}/${String(mes).padStart(2, '0')}. ${nomMes.toUpperCase()}`;
           let doc = v.it.doc;
           if (doc) { if (doc.carpeta === 'alertas' && doc.subcarpeta !== subcarpeta) await S.update('documentos', doc.id, { subcarpeta }); }
