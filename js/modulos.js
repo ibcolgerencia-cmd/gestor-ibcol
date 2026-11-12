@@ -347,7 +347,7 @@
           ${F.mes ? `<div class="field"><select data-estado aria-label="Estado en el mes"><option value="">Cualquier estado</option><option value="P" ${F.estado === 'P' ? 'selected' : ''}>Programado</option><option value="E" ${F.estado === 'E' ? 'selected' : ''}>Ejecutado</option><option value="N" ${F.estado === 'N' ? 'selected' : ''}>No ejecutado</option></select></div>` : ''}
           <input type="search" data-q value="${h(F.qRaw || '')}" placeholder="Buscar código, equipo, serie…" aria-label="Buscar en el cronograma">
           <span class="muted">${visibles.length} de ${filas.length}</span>
-          ${esProp() && !cap ? `<span class="sp"></span><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
+          ${esProp() && !cap ? `<span class="sp"></span><button class="btn" data-act="limpiarCrono" title="Quitar de una vez las marcas (P, E, N, G, C) de los equipos que se están viendo">✕ Desmarcar todo</button><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
         ${resumen}
         <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span><span><i style="background:#b9a3e3"></i>G · En garantía</span><span><i style="background:#7cc4e8"></i>C · Comodato</span>${esProp() ? `<span>Toque una semana para cambiar su estado (P → E → N → G → C)${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses · botón de anotaciones de cada fila para escribir, por mes, notas como “Equipo en garantía, mantenimiento a cargo del proveedor”'}.</span>` : ''}</div>
         ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
@@ -536,6 +536,32 @@
         },
         // metrología paralela al mantenimiento: los meses programados del cronograma de mantenimiento pasan como "P" a metrología
         metroDatos: () => A.formMetroDatos(visibles, eqs, pintar),
+        // quitar de una vez las marcas de las semanas (de los equipos visibles, en el periodo o en el mes elegido)
+        limpiarCrono: () => {
+          if (!visibles.length) return toast('No hay equipos en la vista', true);
+          const ESTS = [['P', 'Programado'], ['E', 'Ejecutado'], ['N', 'No ejecutado'], ['G', 'Garantía'], ['C', 'Comodato']];
+          modal({ titulo: 'Desmarcar el cronograma', size: 'sm',
+            cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Quita las marcas de las semanas de los <b>${visibles.length} equipos que se están viendo</b> (${h(periodoTxt)}${grupo ? ' · ' + h(grupo.nombre) : ''}${F.q ? ' · búsqueda «' + h(F.q) + '»' : ''}). Los equipos siguen en el cronograma; no se borran reportes ni documentos.</p>
+              <div class="fields">${f.sel('mes', 'Meses', [['0', 'Todo el periodo'], ...ventana.map((v) => [`${v.y}-${v.m}`, `${CAT.MESES[v.m - 1]} ${v.y}`])], F.mes ? `${yDe(F.mes)}-${F.mes}` : '0', { full: true })}</div>
+              <fieldset class="field full" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><legend style="font-size:.85rem;font-weight:600;padding:0 4px">Quitar estas marcas</legend>
+              ${ESTS.map(([k, t]) => `<label style="display:inline-flex;gap:6px;align-items:center;margin:4px 12px 4px 0"><input type="checkbox" data-est="${k}" ${k === 'E' ? '' : 'checked'}> ${k} · ${t}</label>`).join('')}</fieldset>
+              <label class="checks"><input type="checkbox" name="notas" data-single> Quitar también las anotaciones de esos meses</label></form>`,
+            acciones: [{ t: 'Cancelar' }, { t: 'Desmarcar', cls: 'pri', fn: async (m) => {
+              const d = leer(m.body); const ests = new Set([...m.body.querySelectorAll('[data-est]:checked')].map((c) => c.dataset.est));
+              if (!ests.size) { toast('Marque al menos un tipo de marca', true); return false; }
+              const objetivo = d.mes === '0' ? ventana : ventana.filter((v) => `${v.y}-${v.m}` === d.mes);
+              const porAnio = {}; objetivo.forEach((v) => { (porAnio[v.y] = porAnio[v.y] || new Set()).add(v.m); });
+              let n = 0, celdas = 0;
+              for (const r of visibles) for (const [yS, ms] of Object.entries(porAnio)) {
+                const c = r.cr[+yS]; if (!c) continue; const plan = { ...(c.plan || {}) }; let cambio = false;
+                Object.entries(plan).forEach(([k, v]) => { if (k === 'notas') return; if (ms.has(+k.split('-')[0]) && ests.has(v)) { delete plan[k]; cambio = true; celdas++; } });
+                if (d.notas && plan.notas) { const nt = { ...plan.notas }; ms.forEach((mm) => { if (nt[mm]) { delete nt[mm]; cambio = true; } }); if (Object.keys(nt).length) plan.notas = nt; else delete plan.notas; }
+                if (!cambio) continue; await S.update('cronogramas', c.id, { plan }); c.plan = plan; n++;
+              }
+              S.log('EDITAR', 'cronogramas', ent.id, `Desmarcar ${tipo} ${periodoTxt}${d.mes !== '0' ? ' · ' + d.mes : ''}: ${celdas} semanas (${[...ests].join(',')}) en ${n} equipos`);
+              toast(celdas ? `${celdas} semanas desmarcadas en ${n} equipos` : 'No había marcas de ese tipo en la vista'); pintar();
+            } }] });
+        },
         copiarMto: () => modal({
           titulo: 'Cronograma de metrología igual al de mantenimiento', size: 'sm',
           cuerpo: `<div class="form"><p class="muted">Programa la metrología en los <b>mismos meses y semanas</b> del cronograma de mantenimiento preventivo (${h(periodoTxt)}${grupo ? ' · ' + h(grupo.nombre) : ''}${sedeCtx ? ' · ' + h(sedeCtx) : ''}). No borra ni cambia lo que ya está en metrología: solo llena los meses vacíos.</p>
