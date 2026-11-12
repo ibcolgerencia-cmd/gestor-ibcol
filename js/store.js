@@ -267,7 +267,7 @@ window.Store = (() => {
         if (['empresa', 'formatos'].includes(t)) return true;
         if (t === 'perfiles') return r.id === perfil.id;
         if (t === 'entidades') return r.id === perfil.entidad_id;
-        if (!['consultorios', 'equipos', 'listas_limpieza', 'reportes_dano', 'control_glucometro'].includes(t) || r.entidad_id !== perfil.entidad_id) return false;
+        if (!['consultorios', 'equipos', 'listas_limpieza', 'reportes_dano', 'control_glucometro', 'temp_humedad', 'eventos'].includes(t) || r.entidad_id !== perfil.entidad_id) return false;
         if (!perfil.sede) return true;
         const sedeDe = (cid) => { const c = tabla('consultorios').find((x) => x.id === cid); return c ? (c.sede || 'Sede principal') : null; };
         if (t === 'consultorios') return (r.sede || 'Sede principal') === perfil.sede;
@@ -319,7 +319,7 @@ window.Store = (() => {
       },
       async get(t, id) { const r = tabla(t).find((x) => x[key(t)] === id); return r && visible(t, r) ? JSON.parse(JSON.stringify(r)) : null; },
       async insert(t, o) {
-        if (!esProp() && !(['listas_limpieza', 'reportes_dano', 'control_glucometro'].includes(t) && o.entidad_id === perfil?.entidad_id)) noPermiso();
+        if (!esProp() && !(['listas_limpieza', 'reportes_dano', 'control_glucometro', 'temp_humedad', 'eventos'].includes(t) && o.entidad_id === perfil?.entidad_id)) noPermiso();
         if (t === 'equipos' && tabla(t).some((x) => x.entidad_id === o.entidad_id && x.codigo_inv === o.codigo_inv)) throw new Error('Ya existe un equipo con ese código de inventario en esta entidad');
         const r = { id: uid(), created_at: ahora(), updated_at: ahora(), ...sinExcel(t, o) };
         tabla(t).push(r); auditar('INSERT', t, r[key(t)], null, r);
