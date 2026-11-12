@@ -43,7 +43,7 @@
     }
     const actas = lista.sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.numero || '').localeCompare(String(a.numero || '')));
     el.innerHTML = `<section class="panel"><header><div><h2>Comité de tecnovigilancia · Actas ${h(fmtFAR().codigo)}</h2><span class="muted" style="font-size:.85rem">Formato acta de reunión ${h(fmtFAR().codigo)} para comités, reuniones y capacitaciones. Cada acta genera su PDF en la subcarpeta de comités de esta carpeta.</span></div>
-        ${esProp() ? `<div class="actions"><button class="btn pri" data-act="nuevaActa">${I.mas} Nueva acta de comité (${h(fmtFAR().codigo)})</button></div>` : ''}</header>
+        ${esProp() ? `<div class="actions">${A.TV?.cargarActas ? `<button class="btn" data-act="cargaActas">${I.subir} Cargar actas realizadas (PDF)</button>` : ''}<button class="btn pri" data-act="nuevaActa">${I.mas} Nueva acta de comité (${h(fmtFAR().codigo)})</button></div>` : ''}</header>
       ${actas.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Acta No.</th><th>Fecha</th><th>Tipo</th><th>Tema</th><th>Compromisos</th><th>Firmas</th><th>Próxima reunión</th><th></th></tr></thead><tbody>
         ${actas.map((a) => { const d = a.datos || {}; const as = (d.asistentes || []).filter((x) => x.nombre); const fir = as.filter((x) => x.firma).length; return `<tr class="clic" data-act="verActa" data-id="${a.id}">
           <td class="mono">${h(a.numero || '')}</td><td class="num">${UI.fecha(a.fecha)}</td><td>${h(d.tipo || '')}</td><td>${h(a.tema || '')}</td>
@@ -54,6 +54,7 @@
     const reg = (id) => actas.find((x) => x.id === id);
     A.acts({
       nuevaActa: () => A.formActa(ent, null, actas),
+      cargaActas: () => A.TV.cargarActas(ent),
       editActa: (d) => A.formActa(ent, reg(d.id), actas),
       copiaActa: (d) => { const b = reg(d.id); A.formActa(ent, { datos: { ...b.datos, asistentes: (b.datos.asistentes || []).map((x) => ({ ...x, firma: null })), compromisos: b.datos.compromisos, fotos: [], anexos: [], desarrollo: '', conclusiones: '' }, tema: b.tema, _copia: true }, actas); },
       verActa: async (d) => {

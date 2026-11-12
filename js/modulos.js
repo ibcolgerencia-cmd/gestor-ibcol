@@ -858,7 +858,7 @@
   // ------------------------------------------------------------ Alertas sanitarias
   A.G.alertas = async (el, { ent }) => {
     const als = await S.list('alertas', { entidad_id: ent.id }, 'created_at');
-    el.innerHTML = `<section class="panel"><header><h2>Bitácora de consulta de alertas sanitarias</h2><div class="actions"><button class="btn" data-act="alPDF">${I.pdf} PDF (${h(st.fmt.alertas.codigo)})</button>${esProp() ? `<button class="btn pri" data-act="nuevaAl">${I.mas} Registrar consulta</button>` : ''}</div></header>
+    el.innerHTML = `<section class="panel"><header><h2>Bitácora de consulta de alertas sanitarias</h2><div class="actions">${esProp() && A.TV?.cargarAlertas ? `<button class="btn" data-act="alCarga">${I.subir} Cargar consultas realizadas (PDF)</button><button class="btn" data-act="alLeer" title="Lee los PDF que ya están en la carpeta de alertas">Organizar los PDF de la carpeta</button>` : ''}<button class="btn" data-act="alPDF">${I.pdf} PDF (${h(st.fmt.alertas.codigo)})</button>${esProp() ? `<button class="btn pri" data-act="nuevaAl">${I.mas} Registrar consulta</button>` : ''}</div></header>
       <p class="muted">Registre cada mes la consulta de alertas, retiros de producto (recall) e informes de seguridad publicados por el INVIMA y agencias internacionales, y analice si aplican a los dispositivos del inventario.</p>
       ${als.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>No.</th><th>Mes de consulta</th><th>Registro sanitario</th><th>Dispositivo</th><th>Tipo de notificación</th><th>Agencia</th><th>Publicación</th><th>Responsable</th><th>Análisis</th><th>Aplicabilidad</th><th></th></tr></thead><tbody>
         ${[...als].reverse().map((a) => `<tr><td class="num">${als.indexOf(a) + 1}</td><td>${h(a.mes_consulta || '')}</td><td class="mono">${h(a.registro_sanitario || '')}</td><td>${h(a.dispositivo || '')}</td><td>${h(a.tipo_notificacion || '')}</td><td>${h(a.agencia || '')}</td><td class="num">${UI.fecha(a.fecha_publicacion)}</td><td>${h(a.responsable || '')}</td><td style="min-width:200px">${h(a.analisis || '')}</td><td><span class="pill ${/^aplica/i.test(a.aplicabilidad || '') ? 'warn' : ''}">${h(a.aplicabilidad || '')}</span></td>
@@ -873,6 +873,7 @@
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { const d = leer(m.body); d.fecha_publicacion = d.fecha_publicacion || null; a ? await S.update('alertas', a.id, d) : await S.insert('alertas', { ...d, entidad_id: ent.id }); toast('Consulta guardada'); A.recargar(); } }],
     });
     A.acts({
+      alCarga: () => A.TV.cargarAlertas(ent), alLeer: () => A.TV.cargarAlertas(ent, { existentes: true }),
       nuevaAl: () => form(), editAl: (d) => form(als.find((x) => x.id === d.id)),
       delAl: async (d) => { if (await confirmar('¿Eliminar este registro?')) { await S.remove('alertas', d.id); A.recargar(); } },
       alPDF: async () => { const blob = await FMT.alertas({ ent, alertas: als, fmt: st.fmt.alertas }); UI.verPDF({ titulo: 'Bitácora de alertas sanitarias', blob, nombre: `Bitacora_alertas_${ent.razon_social}.pdf` }); },
