@@ -692,7 +692,7 @@ window.APP = (() => {
     content().innerHTML = `${migas(ruta)}
       <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : sede ? `Sede ${h(sede)}` : 'Carpeta de la entidad'}</span><h1>${h(nomDef)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq && k === 'hoja_vida' ? `<button class="btn pri" data-act="iaHV" title="La IA lee manual, ficha técnica, inventario, registro sanitario y factura del equipo y propone los datos">${I.ia} Actualizar hoja de vida con IA</button>` : ''}${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
       ${def.gen ? '<div id="gen" style="display:grid;gap:18px"></div>' : ''}
-      <section class="panel" id="archivos"></section>`;
+      ${def.gen ? `<details class="plegable" id="archWrap"${(() => { try { return localStorage.getItem('ibcol.plegable.' + k) === '1' ? ' open' : ''; } catch { return ''; } })()}><summary><span>Archivos y subcarpetas</span><span class="muted" data-arch-n></span></summary><section class="panel" id="archivos"></section></details>` : '<section class="panel" id="archivos"></section>'}`;
     const ctx = { ent, eq, k, def, sede };
     A.acts({ ia: () => A.asistenteIA({ ent, eq, carpeta: k }), iaHV: () => A.asistenteIA({ ent, eq, auto: 'hv' }), google: () => A.buscarGoogleEquipo(eq, ent) });
     if (def.gen) {
@@ -705,6 +705,13 @@ window.APP = (() => {
       entidad_id: entId, equipo_id: def.rel ? null : (eqId || null), carpeta: def.carpetaReal || k, titulo: k === 'inventarios' ? 'Archivos del inventario' : 'Archivos y subcarpetas',
       subs, subsFlex: !!def.subsFlex, todos: !!def.todos, relEquipo: def.rel ? eqId : null, sede, sedes: sedesE,
     });
+    const wrap = document.getElementById('archWrap');
+    if (wrap) {
+      wrap.addEventListener('toggle', () => { try { localStorage.setItem('ibcol.plegable.' + k, wrap.open ? '1' : '0'); } catch {} });
+      const nDocs = (await S.list('documentos', { entidad_id: entId }).catch(() => [])).filter((d) => d.carpeta === (def.carpetaReal || k) && (!eqId || def.rel || d.equipo_id === eqId)).length;
+      const nEl = wrap.querySelector('[data-arch-n]'); if (nEl) nEl.textContent = `${nDocs} documento${nDocs === 1 ? '' : 's'} · ${wrap.open ? 'ocultar' : 'ver'}`;
+      wrap.addEventListener('toggle', () => { if (nEl) nEl.textContent = `${nDocs} documento${nDocs === 1 ? '' : 's'} · ${wrap.open ? 'ocultar' : 'ver'}`; });
+    }
   };
 
   // ---------------------------------------------------------------- fecha real de un documento
