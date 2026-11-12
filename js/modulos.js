@@ -334,7 +334,7 @@
       el.innerHTML = `<section class="panel"><header><h2>${titulo}</h2><div class="actions">
           <button class="btn sm" data-act="anio" data-d="-1" aria-label="Periodo anterior">‹</button><b class="num" style="align-self:center">${periodoTxt}</b><button class="btn sm" data-act="anio" data-d="1" aria-label="Periodo siguiente">›</button>
           <button class="btn" data-act="cronoPDF">${I.pdf} PDF${grupo ? ' ' + h(grupo.nombre) : F.mes || F.q || F.serv ? ' (filtrado)' : ''}</button>${esProp() && grupo ? `<button class="btn" data-act="cronoGuardar" title="Guarda el PDF en la subcarpeta “${h(grupo.nombre)}”">${I.subir} Guardar en su subcarpeta</button>` : ''}
-          ${esProp() ? `${tipo === 'metrologia' ? `<button class="btn" data-act="copiarMto" title="Programar la metrología en los mismos meses del cronograma de mantenimiento">⇆ Igual al de mantenimiento</button>` : ''}${cap ? '' : `<button class="btn" data-act="generar">${I.cal} Generar desde periodicidad</button>`}<button class="btn pri" data-act="agregar">${I.mas} ${cap ? 'Capacitación' : 'Equipo'}</button>` : ''}</div></header>
+          ${esProp() ? `${tipo === 'metrologia' ? `<button class="btn" data-act="metroDatos" title="Proveedor y tipo (calibración / validación) de cada equipo para el formato FMB-003">Proveedor / CAL-VAL</button>` : ''}${tipo === 'metrologia' ? `<button class="btn" data-act="copiarMto" title="Programar la metrología en los mismos meses del cronograma de mantenimiento">⇆ Igual al de mantenimiento</button>` : ''}${cap ? '' : `<button class="btn" data-act="generar">${I.cal} Generar desde periodicidad</button>`}<button class="btn pri" data-act="agregar">${I.mas} ${cap ? 'Capacitación' : 'Equipo'}</button>` : ''}</div></header>
         <div class="crono-tabs" role="tablist" aria-label="Periodo">
           <button role="tab" class="ctab ${!dosAnios ? 'on' : ''}" data-act="periodo" data-v="1">Año ${anio} (ene – dic)</button>
           <button role="tab" class="ctab ${dosAnios ? 'on' : ''}" data-act="periodo" data-v="${dosAnios ? F.mesIni : (new Date().getMonth() + 1 > 1 ? new Date().getMonth() + 1 : 7)}">Entre dos años${dosAnios ? `: ${periodoTxt}` : ''}</button>
@@ -518,7 +518,7 @@
           const subTipo = CAT.SUBS_CRONO[{ mantenimiento: 0, metrologia: 1, capacitacion: 2 }[tipo]];
           const sub = [sedeCtx, subTipo, grupo.nombre].filter(Boolean).join('/');
           const nombre = `${titulo} ${grupo.nombre} ${periodoTxt}.pdf`.replace(/[\\/:*?"<>|]+/g, '-');
-          const blob = await FMT.cronograma({ ent, tipo, anio, filas: visibles, ventana, equipos: eqs, fmt: st.fmt.cronograma, titulo, consultorios: cons, cons: consSel });
+          const blob = tipo === 'metrologia' ? await A.pdfCronoMetro({ ent, filas: visibles, ventana, equipos: eqs, consultorios: cons, cons: consSel, fmt: st.fmt.cronograma_metro || {} }) : await FMT.cronograma({ ent, tipo, anio, filas: visibles, ventana, equipos: eqs, fmt: st.fmt.cronograma, titulo, consultorios: cons, cons: consSel });
           const ruta = `${ent.id}/general/cronogramas/${Date.now()}-${nombre.normalize('NFD').replace(/[^\w.-]+/g, '_')}`;
           await S.upload(ruta, blob);
           const prev = (await S.list('documentos', { entidad_id: ent.id, carpeta: 'cronogramas' })).find((d) => !d.equipo_id && d.subcarpeta === sub && d.nombre === nombre);
@@ -530,11 +530,12 @@
         },
         cronoPDF: async () => {
           const etiqueta = `${titulo} ${periodoTxt}${F.mes ? ' · ' + mesTxt : ''}${consSel ? ' · ' + (consSel.nombre || consSel.sede) : ''}`;
-          const blob = await FMT.cronograma({ ent, tipo, anio, filas: visibles, ventana, equipos: eqs, fmt: st.fmt.cronograma, titulo, consultorios: cons, cons: consSel });
+          const blob = tipo === 'metrologia' ? await A.pdfCronoMetro({ ent, filas: visibles, ventana, equipos: eqs, consultorios: cons, cons: consSel, fmt: st.fmt.cronograma_metro || {} }) : await FMT.cronograma({ ent, tipo, anio, filas: visibles, ventana, equipos: eqs, fmt: st.fmt.cronograma, titulo, consultorios: cons, cons: consSel });
           S.log('CONSULTA', 'cronogramas', ent.id, etiqueta);
           UI.verPDF({ titulo: etiqueta, blob, nombre: `Cronograma_${tipo}_${periodoTxt.replace(/\s+/g, '')}${F.mes ? '_' + CAT.MESES[F.mes - 1] : ''}${consSel ? '_' + (consSel.nombre || consSel.sede).replace(/\s+/g, '_') : ''}.pdf` });
         },
         // metrología paralela al mantenimiento: los meses programados del cronograma de mantenimiento pasan como "P" a metrología
+        metroDatos: () => A.formMetroDatos(visibles, eqs, pintar),
         copiarMto: () => modal({
           titulo: 'Cronograma de metrología igual al de mantenimiento', size: 'sm',
           cuerpo: `<div class="form"><p class="muted">Programa la metrología en los <b>mismos meses y semanas</b> del cronograma de mantenimiento preventivo (${h(periodoTxt)}${grupo ? ' · ' + h(grupo.nombre) : ''}${sedeCtx ? ' · ' + h(sedeCtx) : ''}). No borra ni cambia lo que ya está en metrología: solo llena los meses vacíos.</p>
@@ -1380,7 +1381,7 @@
 
   // =================================================================== FORMATOS
   A.V.formatos = async () => {
-    const nombres = { mediciones: 'Recomendaciones para mediciones (9.5)', hoja_vida: 'Hoja de vida', inventario: 'Inventario', cronograma: 'Cronogramas', mto_preventivo: 'Mantenimiento preventivo', mto_correctivo: 'Mantenimiento correctivo', metrologia: 'Metrología', alertas: 'Bitácora alertas sanitarias', evento: 'Reporte tecnovigilancia', acta_baja: 'Acta de baja', acta_entrega: 'Acta de entrega', cotizacion: 'Cotización', cuenta_cobro: 'Cuenta de cobro', glucometro: 'Control calidad glucómetro' };
+    const nombres = { mediciones: 'Recomendaciones para mediciones (9.5)', hoja_vida: 'Hoja de vida', inventario: 'Inventario', cronograma: 'Cronogramas', mto_preventivo: 'Mantenimiento preventivo', mto_correctivo: 'Mantenimiento correctivo', metrologia: 'Metrología', alertas: 'Bitácora alertas sanitarias', evento: 'Reporte tecnovigilancia', acta_baja: 'Acta de baja', acta_entrega: 'Acta de entrega', cotizacion: 'Cotización', cuenta_cobro: 'Cuenta de cobro', glucometro: 'Control calidad glucómetro', cronograma_metro: 'Cronograma de metrología (FMB-003)' };
     A.content().innerHTML = `<div class="page-head"><div><span class="eyebrow">Control documental</span><h1>Formatos</h1><span class="muted">Los cambios aplican a todos los PDF que se generen desde ahora. Solo el propietario puede modificarlos.</span></div></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Formato</th><th>Título impreso</th><th>Código</th><th>Versión</th><th>Fecha aprobación</th><th></th></tr></thead><tbody>
       ${Object.keys(CAT.FORMATOS).map((k) => { const x = st.fmt[k]; return `<tr><td><b>${nombres[k] || k}</b></td><td>${h(x.titulo)}</td><td class="mono">${h(x.codigo)}</td><td class="mono">${h(x.version)}</td><td class="num">${UI.fecha(x.fecha)}</td><td class="r"><button class="btn sm" data-act="editF" data-k="${k}">${I.edit} Modificar</button></td></tr>`; }).join('')}
@@ -1394,6 +1395,7 @@
           titulo: `Formato · ${nombres[d.k]}`,
           cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('titulo', 'Título impreso', x.titulo, { full: true })}${f.input('codigo', 'Código', x.codigo)}${f.input('version', 'Versión', x.version)}${f.input('fecha', 'Fecha de aprobación', x.fecha, { type: 'date' })}
             ${d.k === 'mto_preventivo' ? `${f.area('pruebas', 'Pruebas cualitativas por defecto (una por línea)', lista(x.pruebas), { rows: 6 })}${f.area('actividades', 'Actividades de mantenimiento (una por línea)', lista(x.actividades), { rows: 6 })}${f.area('herramientas', 'Herramientas e insumos (una por línea)', lista(x.herramientas), { rows: 5 })}` : ''}
+            ${d.k === 'cronograma_metro' ? `${f.input('proveedor', 'Proveedor de metrología por defecto (columna PROVEEDOR)', x.proveedor || '', { full: true })}` : ''}
             ${d.k === 'glucometro' ? `${f.input('proceso', 'Proceso', x.proceso, { full: true })}${f.input('subproceso', 'Subproceso', x.subproceso, { full: true })}${f.input('franja', 'Título de la tabla', x.franja, { full: true })}<p class="muted" style="grid-column:1/-1">La fecha sale en el formato como mes y año (ej. MARZO DE 2025). Cada entidad o sede puede tener su propio encabezado desde la carpeta 9. Control calidad glucómetro › Encabezado.</p>` : ''}
             ${d.k === 'cotizacion' ? `${f.area('objeto', 'Objeto de la cotización por defecto ({ENTIDAD} se reemplaza por el nombre de la entidad)', x.objeto ?? CAT.FORMATOS.cotizacion.objeto, { rows: 10 })}${f.area('condiciones', 'Condiciones comerciales por defecto', x.condiciones, { rows: 5 })}` : ''}</div></form>`,
           acciones: [{ t: 'Restablecer original', fn: async () => { await S.upsert('formatos', { clave: d.k, datos: CAT.FORMATOS[d.k] }); await A.cargarConfig(); A.recargar(); } }, { t: 'Cancelar' }, { t: 'Guardar formato', cls: 'pri', fn: async (m) => {
