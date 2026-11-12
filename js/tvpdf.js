@@ -143,7 +143,7 @@
     if (!evs.length) {
       y += 6;
       const txt = `${ent.razon_social || ''}${ent.nit ? `, identificada con NIT ${ent.nit}` : ''}, a través del referente de su Programa Institucional de Tecnovigilancia, certifica que durante el ${per} NO se presentaron ni se identificaron eventos ni incidentes adversos asociados al uso de dispositivos médicos en sus servicios, por lo cual se realiza el reporte trimestral EN CERO ante el INVIMA a través del aplicativo web de Tecnovigilancia, conforme a la Resolución 4816 de 2008.`;
-      doc.text(doc.splitTextToSize(txt, W - 2 * M), M, y, { lineHeightFactor: 1.5 }); y += 34;
+      doc.text(doc.splitTextToSize(txt, W - 2 * M), M, y, { lineHeightFactor: 1.5, align: 'justify', maxWidth: W - 2 * M }); y += 34;
       doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M }, styles: { fontSize: 8.5, cellPadding: 1.6, lineColor: NG, lineWidth: 0.2, textColor: NG }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 70, fillColor: CL } },
         body: [['Periodo reportado', per], ['Eventos / incidentes adversos no serios', '0 (cero)'], ['Eventos / incidentes adversos serios', String(reg?.serios ?? 0)], ['Fecha de reporte al INVIMA', fF(reg?.fecha_envio) || 'Pendiente'], ['Número de radicado / constancia', reg?.radicado || ''], ['Referente del programa', TV.cfg(ent).referente || ''], ['Observaciones', reg?.obs || '']] });
       y = doc.lastAutoTable.finalY + 22;
@@ -178,7 +178,7 @@
     const escribir = (t, { fs = 10, b = false, ind = 0, vin = '', gapA = 1.8 } = {}) => {
       doc.setFont('helvetica', b ? 'bold' : 'normal'); doc.setFontSize(fs); doc.setTextColor(...NG);
       const ls = doc.splitTextToSize(t, ancho - ind - (vin ? 5 : 0)); const lh = fs * 0.43;
-      ls.forEach((ln, i) => { salto(lh + 1); if (vin && !i) doc.text(vin, M + ind, y); doc.text(ln, M + ind + (vin ? 5 : 0), y); y += lh; });
+      ls.forEach((ln, i) => { salto(lh + 1); if (vin && !i) doc.text(vin, M + ind, y); if (b) doc.text(ln, M + ind + (vin ? 5 : 0), y); else window.PDFJ(doc, ln, M + ind + (vin ? 5 : 0), y, ancho - ind - (vin ? 5 : 0), i === ls.length - 1); y += lh; });
       y += gapA;
     };
     let n1 = 0;
@@ -270,7 +270,7 @@
       doc.setTextColor(...NG); img(doc, window.IBCOL_LOGO, W - 40, H - 16, 28, 12); if (ent.logo) img(doc, ent.logo, 12, H - 16, 28, 12);
       doc.setFontSize(7.5); doc.setTextColor(120); doc.text(`Programa de tecnovigilancia · ${ent.razon_social || ''}`, W / 2, H - 7, { align: 'center' }); doc.setTextColor(...NG);
     };
-    const vin = (items, x = 18, y = 40, w = W - 36, fs = 15) => { items.forEach((t) => { const sub = t.startsWith('  '); doc.setFont('helvetica', 'normal'); doc.setFontSize(sub ? fs - 1.5 : fs); const ls = doc.splitTextToSize(t.trim(), w - (sub ? 14 : 8)); doc.setTextColor(...(sub ? [70, 70, 70] : NG)); doc.setFillColor(...AZ); if (!sub) doc.circle(x + 1.5, y - 1.4, 1.2, 'F'); else doc.text('–', x + 7, y); doc.text(ls, x + (sub ? 11 : 6), y); y += ls.length * fs * 0.45 + (sub ? 2 : 3.2); }); doc.setTextColor(...NG); return y; };
+    const vin = (items, x = 18, y = 40, w = W - 36, fs = 15) => { items.forEach((t) => { const sub = t.startsWith('  '); doc.setFont('helvetica', 'normal'); doc.setFontSize(sub ? fs - 1.5 : fs); const ls = doc.splitTextToSize(t.trim(), w - (sub ? 14 : 8)); doc.setTextColor(...(sub ? [70, 70, 70] : NG)); doc.setFillColor(...AZ); if (!sub) doc.circle(x + 1.5, y - 1.4, 1.2, 'F'); else doc.text('–', x + 7, y); doc.text(ls, x + (sub ? 11 : 6), y, { align: 'justify', maxWidth: w - (sub ? 14 : 8) }); y += ls.length * fs * 0.45 + (sub ? 2 : 3.2); }); doc.setTextColor(...NG); return y; };
     const diapo = (t, items, sub) => { doc.addPage(); fondo(t, sub); vin(items); };
     const caso = (n, c) => {
       doc.addPage(); fondo(`Caso ${n}: ${c.titulo}`, c.tipo);
@@ -278,9 +278,9 @@
       doc.setFillColor(...col); doc.roundedRect(14, 32, W - 28, 12, 2, 2, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(`Clasificación: ${c.tipo.toUpperCase()}`, W / 2, 40, { align: 'center' });
       const half = (W - 40) / 2;
       doc.setFontSize(12); doc.setTextColor(...AZ); doc.text('¿Qué pasó?', 18, 54); doc.text('¿Qué se debe hacer?', 26 + half, 54); doc.setTextColor(...NG);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(13); doc.text(doc.splitTextToSize(c.que, half - 4), 18, 62);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(13); doc.text(doc.splitTextToSize(c.que, half - 4), 18, 62, { align: 'justify', maxWidth: half - 4 });
       vin(c.hacer, 24 + half, 62, half, 13);
-      if (c.leccion) { doc.setFillColor(...CL); doc.roundedRect(14, H - 50, W - 28, 22, 2, 2, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Lección aprendida / barrera:', 18, H - 42); doc.setFont('helvetica', 'normal'); doc.text(doc.splitTextToSize(c.leccion, W - 40), 18, H - 36); }
+      if (c.leccion) { doc.setFillColor(...CL); doc.roundedRect(14, H - 50, W - 28, 22, 2, 2, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('Lección aprendida / barrera:', 18, H - 42); doc.setFont('helvetica', 'normal'); doc.text(doc.splitTextToSize(c.leccion, W - 40), 18, H - 36, { align: 'justify', maxWidth: W - 40 }); }
     };
     // 1 portada
     doc.setFillColor(...AZ); doc.rect(0, 0, W, H, 'F'); doc.setFillColor(255, 255, 255); doc.roundedRect(18, 40, W - 36, H - 80, 4, 4, 'F');
@@ -295,7 +295,7 @@
     const cw = (W - 42) / 2, ch = 62, qx = [16, 26 + cw], qy = [34, 102];
     [['EVENTO ADVERSO SERIO', 'Daño no intencionado que llevó a la muerte o al deterioro serio de la salud del paciente, operador o de quien lo rodea.', [253, 226, 226], 'Reporte al INVIMA dentro de 72 horas'], ['INCIDENTE ADVERSO SERIO', 'Potencial riesgo de daño que PUDO haber llevado a la muerte o al deterioro serio, pero por causalidad o una barrera no se generó.', [253, 226, 226], 'Reporte al INVIMA dentro de 72 horas'],
       ['EVENTO ADVERSO NO SERIO', 'Daño no intencionado diferente a los que llevan a la muerte o al deterioro serio de la salud.', [255, 242, 204], 'Reporte trimestral (RETEIM-002)'], ['INCIDENTE ADVERSO NO SERIO', 'Potencial riesgo de daño diferente a los que pudieron llevar a la muerte o al deterioro serio de la salud.', [255, 242, 204], 'Reporte trimestral (RETEIM-002)']].forEach(([t, d, c, r], i) => {
-      const x = qx[i % 2], yy = qy[Math.floor(i / 2)]; doc.setFillColor(...c); doc.roundedRect(x, yy, cw, ch, 3, 3, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(t, x + cw / 2, yy + 10, { align: 'center' }); doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.text(doc.splitTextToSize(d, cw - 12), x + 6, yy + 20); doc.setFont('helvetica', 'bold'); doc.setTextColor(...AZ); doc.text(r, x + cw / 2, yy + ch - 6, { align: 'center' }); doc.setTextColor(...NG); });
+      const x = qx[i % 2], yy = qy[Math.floor(i / 2)]; doc.setFillColor(...c); doc.roundedRect(x, yy, cw, ch, 3, 3, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(t, x + cw / 2, yy + 10, { align: 'center' }); doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.text(doc.splitTextToSize(d, cw - 12), x + 6, yy + 20, { align: 'justify', maxWidth: cw - 12 }); doc.setFont('helvetica', 'bold'); doc.setTextColor(...AZ); doc.text(r, x + cw / 2, yy + ch - 6, { align: 'center' }); doc.setTextColor(...NG); });
     diapo('¿Qué se considera deterioro serio de la salud?', ['Enfermedad o daño que amenace la vida.', 'Daño de una función o estructura corporal.', 'Condición que requiera una intervención médica o quirúrgica para prevenir un daño permanente.', 'Evento que lleve a una incapacidad permanente parcial.', 'Evento que necesite hospitalización o prolongación de la hospitalización.', 'Evento que sea el origen de una malformación congénita.']);
     TV.CASOS.forEach((c, i) => caso(i + 1, c));
     casosEnt.slice(0, 4).forEach((ev, i) => caso(TV.CASOS.length + i + 1, { titulo: `caso de la institución (${UI.fecha(ev.fecha_evento)})`, tipo: ev.clasificacion || 'Evento / incidente adverso', que: `${ev.datos?.dm_generico ? ev.datos.dm_generico + ': ' : ''}${ev.descripcion || ''}`.slice(0, 600), hacer: [ev.datos?.acciones || ev.contingencia || 'Acciones registradas en el reporte FT-PGTV-016.'], leccion: ev.datos?.causa ? `Causa probable (NTC 5736): ${TV.causaTxt(ev.datos.causa)}` : '' }));

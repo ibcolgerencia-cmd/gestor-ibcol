@@ -241,7 +241,7 @@
     let y = TOP;
     const salto = (n) => { if (y + n > H - BOT) { doc.addPage(); y = TOP; } };
     const titulo = (t, center = true) => { salto(10); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text(t, center ? W / 2 : M, y, { align: center ? 'center' : 'left' }); y += 6; };
-    const parr = (t, fs = 9) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); for (const raw of String(t || '').split('\n')) { const vin = /^\s*[-•]\s+/.test(raw); const tx = raw.replace(/^\s*[-•]\s+/, ''); const ls = doc.splitTextToSize(tx, ancho - (vin ? 6 : 0)); ls.forEach((ln, i) => { salto(5); if (vin && i === 0) doc.text('•', M + 1.5, y); doc.text(ln, M + (vin ? 6 : 0), y); y += fs * 0.42; }); if (!raw.trim()) y += 1.5; } y += 2; };
+    const parr = (t, fs = 9) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); for (const raw of String(t || '').split('\n')) { const vin = /^\s*[-•]\s+/.test(raw); const tx = raw.replace(/^\s*[-•]\s+/, ''); const ls = doc.splitTextToSize(tx, ancho - (vin ? 6 : 0)); ls.forEach((ln, i) => { salto(5); if (vin && i === 0) doc.text('•', M + 1.5, y); window.PDFJ(doc, ln, M + (vin ? 6 : 0), y, ancho - (vin ? 6 : 0), i === ls.length - 1); y += fs * 0.42; }); if (!raw.trim()) y += 1.5; } y += 2; };
     const tablaOpts = { theme: 'grid', margin: { left: M, right: M, top: TOP, bottom: BOT }, styles: { font: 'helvetica', fontSize: 8, cellPadding: 1.2, lineColor: LIN, lineWidth: 0.2, textColor: NEGRO, valign: 'middle' }, headStyles: { fillColor: AZUL, textColor: NEGRO, fontStyle: 'bold', halign: 'center', lineColor: LIN, lineWidth: 0.2 } };
     const X = (b) => (b ? 'X' : '');
 
@@ -262,8 +262,8 @@
     salto(14); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text('ACTA No.', M, y); doc.setFont('helvetica', 'normal'); doc.text(String(a.numero || ''), M + 17, y); y += 5;
     doc.setFont('helvetica', 'bold'); const ol = 'OBJETIVO DE LA REUNIÓN: '; const ow = doc.getTextWidth(ol);
     const objL = doc.splitTextToSize(ol + (d.objetivo || ''), ancho); doc.text(ol, M, y); doc.setFont('helvetica', 'normal');
-    doc.text(doc.splitTextToSize((d.objetivo || ''), ancho - ow)[0] || '', M + ow, y); y += 4;
-    const resto = doc.splitTextToSize((d.objetivo || ''), ancho - ow).slice(1).join(' '); if (resto) { doc.splitTextToSize(resto, ancho).forEach((ln) => { salto(5); doc.text(ln, M, y); y += 4; }); } y += 4; void objL;
+    { const o1 = doc.splitTextToSize((d.objetivo || ''), ancho - ow); window.PDFJ(doc, o1[0] || '', M + ow, y, ancho - ow, o1.length < 2); } y += 4;
+    const resto = doc.splitTextToSize((d.objetivo || ''), ancho - ow).slice(1).join(' '); if (resto) { const rl = doc.splitTextToSize(resto, ancho); rl.forEach((ln, i) => { salto(5); window.PDFJ(doc, ln, M, y, ancho, i === rl.length - 1); y += 4; }); } y += 4; void objL;
 
     // asistentes (con firmas)
     const tablaAsis = (lista) => {
@@ -277,7 +277,7 @@
 
     titulo('ORDEN DEL DÍA', false);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-    (d.orden || []).forEach((t, i) => { doc.splitTextToSize(t, ancho - 10).forEach((ln, j) => { salto(5); if (!j) doc.text(`${i + 1}.`, M + 3, y); doc.text(ln, M + 9, y); y += 4; }); }); y += 3;
+    (d.orden || []).forEach((t, i) => { const ol2 = doc.splitTextToSize(t, ancho - 10); ol2.forEach((ln, j) => { salto(5); if (!j) doc.text(`${i + 1}.`, M + 3, y); window.PDFJ(doc, ln, M + 9, y, ancho - 10, j === ol2.length - 1); y += 4; }); }); y += 3;
 
     titulo('DESARROLLO DE LA REUNIÓN', false); parr(d.desarrollo || '');
 
@@ -310,7 +310,7 @@
     // anexo de alertas sanitarias
     const ma = d.meses_anexo || d.meses || [];
     salto(16); doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-    doc.text(doc.splitTextToSize(`Anexo de Alertas sanitarias emitidas por el Invima (${mesesTxt(ma) || 'meses'} de ${d.anio_obj || ''}).`, ancho), M, y); y += 6;
+    doc.text(doc.splitTextToSize(`Anexo de Alertas sanitarias emitidas por el Invima (${mesesTxt(ma) || 'meses'} de ${d.anio_obj || ''}).`, ancho), M, y, { align: 'justify', maxWidth: ancho }); y += 6;
     if (d.incluir_bitacora !== false) {
       const als = (await S.list('alertas', { entidad_id: ent.id })).filter((x) => ma.some((mm) => nrm(x.mes_consulta).includes(nrm(CAT.MESES[mm - 1]))) && String(x.mes_consulta || '').includes(String(d.anio_obj || '')));
       if (als.length) {

@@ -1,6 +1,46 @@
 // =====================================================================
 //  Generación de PDF con los formatos IBCOL (jsPDF + AutoTable + pdf-lib)
 // =====================================================================
+// ---------------------------------------------------------------------
+//  TEXTO JUSTIFICADO homogéneo en todos los PDF del gestor:
+//  · PDFJ(doc, línea, x, y, ancho, ultima): justifica una línea (la última
+//    de cada párrafo queda alineada a la izquierda, como en Word).
+//  · doc.text(..., { align: 'justify', maxWidth }) usa la misma rutina
+//    (evita huecos exagerados y líneas de una sola palabra).
+//  · Las celdas de las tablas quedan justificadas por defecto, salvo las
+//    que tienen alineación propia (centro, derecha, izquierda).
+// ---------------------------------------------------------------------
+(() => {
+  const J = window.jspdf && window.jspdf.jsPDF; if (!J || J.API.__ibcolJust) return;
+  const orig = (doc) => doc.__txt || doc.text;
+  const linea = (doc, ln, x, y, w, ultima, opt) => {
+    const o = orig(doc), t = String(ln ?? '').replace(/\s+$/, ''), pal = t.trim().split(/\s+/).filter(Boolean);
+    const op = opt && Object.keys(opt).length ? opt : undefined;
+    if (ultima || pal.length < 2 || !(w > 0)) { o.call(doc, t.trim(), x, y, op); return; }
+    const anchoPal = pal.reduce((a, p) => a + doc.getTextWidth(p), 0), esp = (w - anchoPal) / (pal.length - 1), esp0 = doc.getTextWidth(' ');
+    if (esp < esp0 * 0.6 || esp > esp0 * 3) { o.call(doc, t.trim(), x, y, op); return; }
+    let cx = x; pal.forEach((p) => { o.call(doc, p, cx, y, op); cx += doc.getTextWidth(p) + esp; });
+  };
+  // cada documento nuevo: doc.text con align 'justify' usa la rutina propia
+  J.API.events.push(['initialized', function () {
+    const doc = this; if (doc.__txt) return; doc.__txt = doc.text;
+    doc.text = function (text, x, y, opt, ...r) {
+      if (opt && opt.align === 'justify' && typeof x === 'number' && typeof y === 'number') {
+        const w = opt.maxWidth || 0; const op = { ...opt }; delete op.align; delete op.maxWidth;
+        let lineas = Array.isArray(text) ? text.map(String) : String(text ?? '').split(/\r?\n/);
+        if (w && !Array.isArray(text)) lineas = lineas.flatMap((l) => doc.splitTextToSize(l, w));
+        const lh = (doc.getFontSize() * (op.lineHeightFactor || doc.getLineHeightFactor())) / doc.internal.scaleFactor; delete op.lineHeightFactor;
+        lineas.forEach((ln, i) => linea(doc, ln, x, y + i * lh, w, i === lineas.length - 1, op));
+        return doc;
+      }
+      return doc.__txt.call(doc, text, x, y, opt, ...r);
+    };
+  }]);
+  J.API.__ibcolJust = true;
+  window.PDFJ = (doc, ln, x, y, w, ultima = false) => linea(doc, ln, x, y, w, ultima);
+  try { if (J.autoTableSetDefaults) J.autoTableSetDefaults({ styles: { halign: 'justify' }, headStyles: { halign: 'center' } }); } catch (e) { console.warn(e); }
+})();
+
 window.PDF = (() => {
   // Colores de las plantillas Excel de IBCOL (barras grises con títulos cian, etiquetas azul claro)
   const TEAL = [0, 150, 190], CYAN = [0, 176, 240], GRIS = [221, 243, 250], BARRA = [217, 217, 217], LINEA = [60, 60, 60], TXT = [20, 20, 20];
@@ -98,7 +138,7 @@ window.PDF = (() => {
   function parrafo(doc, y, texto, fs = 9) {
     doc.setFontSize(fs); doc.setFont('helvetica', 'normal'); y += fs * 0.3;
     const l = doc.splitTextToSize(texto || '', W(doc) - 2 * M);
-    l.forEach((ln) => { y = salto(doc, y, 6); doc.text(ln, M, y); y += fs * 0.45; });
+    l.forEach((ln, i) => { y = salto(doc, y, 6); window.PDFJ(doc, ln, M, y, W(doc) - 2 * M, i === l.length - 1); y += fs * 0.45; });
     return y + 2;
   }
 
@@ -292,7 +332,7 @@ window.PDF = (() => {
     const nL = 13, alto = 4.4;
     doc.setDrawColor(60); doc.setLineWidth(0.15); doc.rect(X0, y, AN, nL * alto);
     for (let i = 1; i < nL; i++) doc.line(X0, y + i * alto, X0 + AN, y + i * alto);
-    doc.setFontSize(7); doc.splitTextToSize(hv.recomendaciones || '', AN - 4).slice(0, nL).forEach((ln, i) => doc.text(ln, X0 + 2, y + i * alto + 3.2));
+    doc.setFontSize(7); { const rl = doc.splitTextToSize(hv.recomendaciones || '', AN - 4); rl.slice(0, nL).forEach((ln, i, a) => window.PDFJ(doc, ln, X0 + 2, y + i * alto + 3.2, AN - 4, i === rl.length - 1)); }
     y += nL * alto + 2;
     const hx = (AN - 6) / 2;
     barra(y, '11. CONVENCIONES', X0, hx); barra(y, '12. ELABORÓ', X0 + hx + 6, hx); y += 5;
@@ -524,7 +564,7 @@ window.PDF = (() => {
     doc.autoTable({ startY: y - 2, body: tot, theme: 'grid', margin: { left: W(doc) - M - (detalle ? 80 : 92), right: M }, styles: { fontSize: detalle ? 8.5 : 10, cellPadding: detalle ? 1.4 : 2.2 }, columnStyles: { 0: { fontStyle: 'bold', fillColor: GRIS }, 1: { halign: 'right' } },
       didParseCell: (d) => { if (d.row.index === last) { d.cell.styles.fillColor = TEAL; d.cell.styles.textColor = 255; d.cell.styles.fontStyle = 'bold'; } else if (String(d.row.raw[0]).startsWith('Descuento')) { d.cell.styles.textColor = [176, 46, 38]; } } });
     y = doc.lastAutoTable.finalY + 5;
-    doc.setFontSize(8.5); doc.text(doc.splitTextToSize(`Son: ${enLetras(total)} pesos m/cte.${desc ? ' Incluye descuento.' : ''}${pIva ? ` IVA ${pIva}% incluido.` : ''}`, W(doc) - 2 * M), M, y); y += 6;
+    doc.setFontSize(8.5); doc.text(doc.splitTextToSize(`Son: ${enLetras(total)} pesos m/cte.${desc ? ' Incluye descuento.' : ''}${pIva ? ` IVA ${pIva}% incluido.` : ''}`, W(doc) - 2 * M), M, y, { align: 'justify', maxWidth: W(doc) - 2 * M }); y += 6;
     y = seccion(doc, y, 'Condiciones comerciales');
     y = parrafo(doc, y, c.condiciones || '', 8.5);
     firmas(doc, y + 4, [firmaCotizacion(emp, firma)]);
@@ -576,7 +616,7 @@ window.PDF = (() => {
       const ls = doc.splitTextToSize((resto.join('') || '').toUpperCase(), ancho - (num ? 5 : 0));
       if (num) { doc.setFont('helvetica', 'bold'); doc.text(num.trim(), xc, y); }
       doc.setFont('helvetica', 'normal');
-      ls.forEach((ln) => { y = salto(doc, y, 8); doc.text(ln, xc + (num ? 5 : 0), y); y += 4.6; });
+      ls.forEach((ln, i) => { y = salto(doc, y, 8); window.PDFJ(doc, ln, xc + (num ? 5 : 0), y, ancho - (num ? 5 : 0), i === ls.length - 1); y += 4.6; });
       y += 1.5;
     });
     // Datos para el pago
@@ -635,17 +675,17 @@ window.PDF = (() => {
       if ((m = l.match(/^(\s*)[-*+]\s+(.*)/))) {
         const ind = Math.min(3, Math.floor(m[1].length / 2)) * 4;
         doc.setFontSize(9); const ls = doc.splitTextToSize(limpio(m[2]), w - 6 - ind);
-        ls.forEach((t, i) => { y = salto(doc, y, 6); if (!i) doc.text('•', M + 1.5 + ind, y + 3); doc.text(t, M + 5.5 + ind, y + 3); y += 4.2; });
+        ls.forEach((t, i) => { y = salto(doc, y, 6); if (!i) doc.text('•', M + 1.5 + ind, y + 3); window.PDFJ(doc, t, M + 5.5 + ind, y + 3, w - 6 - ind, i === ls.length - 1); y += 4.2; });
         y += 0.6; continue;
       }
       if ((m = l.match(/^(\s*)(\d+[.)])\s+(.*)/))) {
         const ind = Math.min(3, Math.floor(m[1].length / 2)) * 4;
         doc.setFontSize(9); const ls = doc.splitTextToSize(limpio(m[3]), w - 8 - ind);
-        ls.forEach((t, i) => { y = salto(doc, y, 6); if (!i) { doc.setFont('helvetica', 'bold'); doc.text(m[2], M + ind, y + 3); doc.setFont('helvetica', 'normal'); } doc.text(t, M + 7 + ind, y + 3); y += 4.2; });
+        ls.forEach((t, i) => { y = salto(doc, y, 6); if (!i) { doc.setFont('helvetica', 'bold'); doc.text(m[2], M + ind, y + 3); doc.setFont('helvetica', 'normal'); } window.PDFJ(doc, t, M + 7 + ind, y + 3, w - 8 - ind, i === ls.length - 1); y += 4.2; });
         y += 0.6; continue;
       }
       doc.setFontSize(9); const ls = doc.splitTextToSize(limpio(l), w);
-      ls.forEach((t) => { y = salto(doc, y, 6); doc.text(t, M, y + 3); y += 4.2; });
+      ls.forEach((t, i) => { y = salto(doc, y, 6); window.PDFJ(doc, t, M, y + 3, w, i === ls.length - 1); y += 4.2; });
       y += 1;
     }
     volcarTabla();
