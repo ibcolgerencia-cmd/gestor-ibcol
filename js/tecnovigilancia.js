@@ -143,10 +143,11 @@
     const tActual = trimDe(UI.hoy()), trimDebidos = tActual - 1;
     const item = (ok, t, det) => `<li style="display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line)">${pill(ok ? 'Cumple' : 'Pendiente', ok ? 'ok' : 'warn')}<div><b>${h(t)}</b><div class="muted" style="font-size:.85rem">${h(det)}</div></div></li>`;
     box.innerHTML = `<section class="panel"><header><div><h2>Documento del programa · ${h(fmt.codigo)} v${h(fmt.version)}</h2><span class="muted" style="font-size:.85rem">Programa institucional adaptado a ${h(ent.razon_social)}, basado en el documento de referencia de IBCOL. ${cfg.texto ? 'Esta entidad tiene un texto personalizado.' : plantilla ? 'Usa el texto de referencia.' : 'Aún no hay texto de referencia cargado.'}</span></div>
-        <div class="actions">${esProp() ? `<button class="btn" data-act="tvDatos">${I.edit} Datos del programa</button><button class="btn" data-act="tvTexto">${I.edit} Personalizar texto</button><button class="btn" data-act="tvDispo">Dispositivos objeto de vigilancia${cfg.dispositivos?.clases?.length ? ' ✓' : ''}</button>${!cfg.texto ? '' : `<button class="btn" data-act="tvTextoRef">Volver al de referencia</button>`}<button class="btn" data-act="tvPlantilla">Plantilla de referencia</button>` : ''}<button class="btn pri" data-act="tvGenerar" ${textoDe(ent) ? '' : 'disabled'}>${I.pdf} ${esProp() ? 'Generar documento (PDF)' : 'Ver documento (PDF)'}</button></div></header>
+        <div class="actions">${esProp() ? `<button class="btn" data-act="tvDatos">${I.edit} Datos del programa</button><button class="btn" data-act="tvTexto">${I.edit} Personalizar texto</button><button class="btn" data-act="tvActo">Acto administrativo (${h(TV.fmtDe('acto_tv').codigo)})</button><button class="btn" data-act="tvDispo">Dispositivos objeto de vigilancia${cfg.dispositivos?.clases?.length ? ' ✓' : ''}</button>${!cfg.texto ? '' : `<button class="btn" data-act="tvTextoRef">Volver al de referencia</button>`}<button class="btn" data-act="tvPlantilla">Plantilla de referencia</button>` : ''}<button class="btn pri" data-act="tvGenerar" ${textoDe(ent) ? '' : 'disabled'}>${I.pdf} ${esProp() ? 'Generar documento (PDF)' : 'Ver documento (PDF)'}</button></div></header>
       <div class="fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
         ${[['Referente del programa', [cfg.referente, cfg.cargo].filter(Boolean).join(' · ')], ['Delegado', [cfg.delegado, cfg.cargo_delegado].filter(Boolean).join(' · ')], ['Código inscripción Red Nacional (RNT)', cfg.codigo_rnt], ['Usuario aplicativo INVIMA', cfg.usuario_invima], ['Correo de notificaciones', cfg.correo], ['Fecha del documento', cfg.fecha ? UI.fecha(cfg.fecha) : UI.fecha(fmt.fecha)]].map(([l, v]) => `<div><span class="muted" style="font-size:.8rem">${h(l)}</span><div><b>${v ? h(v) : '<span class="muted">Sin registrar</span>'}</b></div></div>`).join('')}
       </div></section>
+      <section class="panel" data-anexos></section>
       <section class="panel"><header><h2>Estado del programa ${anioAct}</h2></header><ul style="list-style:none;margin:0;padding:0">
         ${item(!!cfg.fecha_generado, 'Documento del programa institucional', cfg.fecha_generado ? `Generado el ${UI.fecha(cfg.fecha_generado)}` : 'Genere el documento y guárdelo en "1. PROGRAMA DE TECNOVIGILANCIA".')}
         ${item(!!cfg.referente, 'Referente y delegado designados', cfg.referente ? `${cfg.referente}${cfg.delegado ? ' · delegado ' + cfg.delegado : ''}` : 'Registre el referente inscrito ante el INVIMA en "Datos del programa".')}
@@ -156,8 +157,10 @@
         ${item(ses.length && ej >= ses.filter((s) => s.fecha && s.fecha <= UI.hoy()).length, 'Plan de capacitación semestral', ses.length ? `${ej} de ${ses.length} sesiones ejecutadas.` : 'Cree el plan en la pestaña Capacitaciones.')}
         ${item(!evs.filter((e) => TV.esSerio(e) && e.estado === 'Abierto').length, 'Eventos serios notificados', `${evs.filter((e) => TV.esSerio(e)).length} serio(s) registrados; ${evs.filter((e) => TV.esSerio(e) && e.estado === 'Abierto').length} abierto(s).`)}
       </ul></section>`;
+    panelAnexos(box.querySelector('[data-anexos]'), ent);
     A.acts({
       tvDatos: () => formDatos(ent),
+      tvActo: () => formActo(ent),
       tvTexto: () => formTexto(ent),
       tvDispo: () => formDispositivos(ent),
       tvTextoRef: async () => { if (!(await confirmar('¿Quitar el texto personalizado y usar otra vez el texto de referencia?', 'Usar referencia'))) return; await guardarCfg(ent, { texto: null }); toast('Se usará el texto de referencia'); A.recargar(); },
@@ -171,7 +174,7 @@
     });
   };
   const formDatos = (ent) => {
-    const c = TV.cfg(ent), fmt = TV.fmtDe('programa_tv');
+    const c = TV.cfg(ent), fmt = TV.fmtDe('programa_tv'); const firmas = { reviso: c.firma_reviso || null, aprobo: c.firma_aprobo || null };
     const cambios = (c.cambios || []).map((x) => [x.version, x.fecha, x.desc, x.resp].join(' | ')).join('\n');
     modal({ titulo: 'Datos del programa de tecnovigilancia', size: 'wide', cuerpo: `<form class="form" onsubmit="return false">
       <fieldset><legend>Responsables (Resolución 4816 de 2008)</legend><div class="fields">${f.input('referente', 'Referente del programa (inscrito ante el INVIMA)', c.referente)}${f.input('cargo', 'Cargo del referente', c.cargo)}${f.input('delegado', 'Delegado del referente', c.delegado)}${f.input('cargo_delegado', 'Cargo del delegado', c.cargo_delegado)}</div></fieldset>
@@ -180,11 +183,61 @@
         <p class="muted full" style="font-size:.82rem">Por seguridad, la contraseña del aplicativo web del INVIMA no se guarda en el gestor ni se imprime en el documento.</p></div></fieldset>
       <fieldset><legend>Control documental</legend><div class="fields">${f.input('codigo', 'Código del documento', c.codigo || fmt.codigo)}${f.input('version', 'Versión', c.version || fmt.version)}${f.input('fecha', 'Fecha de aprobación', c.fecha || fmt.fecha, { type: 'date' })}${f.input('meta_eventos', 'Meta índice de eventos (trimestral)', c.meta_eventos || '3%')}
         ${f.input('elaboro', 'Elaboró (nombre | cargo)', c.elaboro || `${st.emp.responsable || ''}|${st.emp.cargo || 'Ingeniera Biomédica'}`)}${f.input('reviso', 'Revisó (nombre | cargo)', c.reviso)}${f.input('aprobo', 'Aprobó (nombre | cargo)', c.aprobo)}
-        ${f.area('cambios', 'Control de cambios (una línea por versión: versión | fecha AAAA-MM-DD | descripción | responsable)', cambios, { rows: 3 })}</div></fieldset></form>`,
+        ${f.area('cambios', 'Control de cambios (una línea por versión: versión | fecha AAAA-MM-DD | descripción | responsable)', cambios, { rows: 3 })}</div></fieldset>
+      <fieldset><legend>Firmas del documento</legend><p class="muted" style="font-size:.82rem;margin:0 0 6px">Elaboró usa la firma de "Mi empresa y firma". Revisó y Aprobó se firman aquí (dibujar en pantalla o cargar la imagen de la firma).</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">${[['reviso', 'Revisó'], ['aprobo', 'Aprobó']].map(([k, l]) => `<div class="field"><span class="lbl">Firma de quien ${l.toLowerCase()}</span><div style="display:flex;gap:8px;align-items:center"><span data-fprev="${k}" style="display:inline-flex;width:150px;height:48px;border:1px dashed var(--line);border-radius:8px;align-items:center;justify-content:center;overflow:hidden;font-size:.75rem">${c['firma_' + k] ? `<img src="${c['firma_' + k]}" alt="Firma" style="max-height:44px;max-width:146px">` : 'Sin firma'}</span><button type="button" class="btn sm" data-firmar="${k}">${I.firma} Firmar / cargar</button><button type="button" class="icon-btn bad" data-fquitar="${k}" aria-label="Quitar firma">${I.x}</button></div></div>`).join('')}</div></fieldset></form>`,
+      alAbrir: (m) => m.body.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-firmar]'), q = e.target.closest('[data-fquitar]');
+        if (b) { const k = b.dataset.firmar; const r = await UI.pedirFirma({ titulo: `Firma de quien ${k === 'reviso' ? 'revisó' : 'aprobó'} el programa`, actual: firmas[k] }); if (r) { firmas[k] = r; m.body.querySelector(`[data-fprev="${k}"]`).innerHTML = `<img src="${r}" alt="Firma" style="max-height:44px;max-width:146px">`; } }
+        if (q) { const k = q.dataset.fquitar; firmas[k] = null; m.body.querySelector(`[data-fprev="${k}"]`).textContent = 'Sin firma'; }
+      }),
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
-        const v = leer(m.body);
+        const v = leer(m.body); v.firma_reviso = firmas.reviso || null; v.firma_aprobo = firmas.aprobo || null;
         v.cambios = String(v.cambios || '').split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((x) => x[0]).map(([version, fecha, desc, resp]) => ({ version, fecha, desc, resp }));
         await guardarCfg(ent, v); toast('Datos del programa guardados'); A.recargar();
+      } }] });
+  };
+
+
+  // ------------------------------------------------------------------ anexos del programa (subcarpeta "2. ANEXOS DEL PROGRAMA")
+  const panelAnexos = async (el, ent) => {
+    if (!el) return;
+    const sub = await TV.subDestino(ent, 1);
+    const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => d.carpeta === 'tecnovigilancia' && (d.subcarpeta || '').split('/')[0] === sub).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
+    el.innerHTML = `<header><div><h2>Anexos del programa</h2><span class="muted" style="font-size:.85rem">Subcarpeta “${h(sub)}”: formatos y documentos que acompañan el programa (acto administrativo, FT-PGTV-016, FT-PGTV-015, FAR-013, RETEIM-002, NTC 5736…).</span></div>
+      ${esProp() ? `<div class="actions"><label class="btn">${I.subir} Cargar anexos<input type="file" multiple hidden data-anx></label></div>` : ''}</header>
+      ${docs.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Anexo</th><th>Fecha</th><th></th></tr></thead><tbody>${docs.map((d) => `<tr class="clic" data-act="tvAnxVer" data-id="${d.id}"><td>${h(d.nombre)}</td><td class="num">${UI.fecha(d.fecha_documento || d.created_at)}</td><td><div class="row-actions"><button class="icon-btn" data-act="tvAnxVer" data-id="${d.id}" aria-label="Abrir">${I.pdf}</button>${esProp() ? `<button class="icon-btn bad" data-act="tvAnxDel" data-id="${d.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Aún no hay anexos cargados.</div>'}`;
+    const inp = el.querySelector('[data-anx]');
+    if (inp) inp.onchange = async () => {
+      const fl = [...inp.files]; if (!fl.length) return; toast(`Cargando ${fl.length} anexo(s)…`);
+      for (const x of fl) { const path = `${ent.id}/general/tecnovigilancia/${Date.now()}-${slug(x.name)}`; await S.upload(path, x); await S.insert('documentos', { entidad_id: ent.id, equipo_id: null, carpeta: 'tecnovigilancia', subcarpeta: sub, nombre: x.name, archivo: path, mime: x.type || null, tamano: x.size, fecha_documento: UI.hoy(), visible_cliente: true }); }
+      toast('Anexos cargados'); panelAnexos(el, ent);
+    };
+    A.acts({
+      tvAnxVer: async (d) => { const doc = docs.find((x) => x.id === d.id); if (doc) A.abrirDoc(doc); },
+      tvAnxDel: async (d) => { const doc = docs.find((x) => x.id === d.id); if (!doc || !(await confirmar(`¿Eliminar el anexo “${doc.nombre}”?`))) return; try { await S.removeFile(doc.archivo); } catch {} await S.remove('documentos', doc.id); toast('Anexo eliminado'); panelAnexos(el, ent); },
+    });
+  };
+
+  // ------------------------------------------------------------------ acto administrativo AA-PGTV-035 (datos y firma de cada entidad)
+  const COMITE_BASE = ['Referente de Tecnovigilancia', 'Líder asistencial / profesional de la salud', 'Ingeniero Biomédico', 'Administrador'];
+  const formActo = (ent) => {
+    const c = TV.cfg(ent), a = c.acto || {}; let firma = a.firma || null;
+    modal({ titulo: `Acto administrativo · ${TV.fmtDe('acto_tv').codigo}`, size: 'wide', cuerpo: `<form class="form" onsubmit="return false">
+      <fieldset><legend>Referente delegado</legend><div class="fields">${f.input('ref_nombre', 'Nombre del referente', a.ref_nombre || c.referente)}${f.input('ref_cc', 'Cédula', a.ref_cc)}${f.input('ref_exp', 'Expedida en', a.ref_exp || ent.ciudad)}</div></fieldset>
+      <fieldset><legend>Representante legal (firma el acto)</legend><div class="fields">${f.input('rep_nombre', 'Nombre', a.rep_nombre || (c.aprobo || '').split('|')[0])}${f.input('rep_cc', 'Cédula', a.rep_cc)}${f.input('rep_exp', 'Expedida en', a.rep_exp || ent.ciudad)}${f.input('rep_cargo', 'Cargo', a.rep_cargo || 'Representante legal')}
+        <div class="field full"><span class="lbl">Firma</span><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span data-fprev style="display:inline-flex;width:170px;height:52px;border:1px dashed var(--line);border-radius:8px;align-items:center;justify-content:center;overflow:hidden;font-size:.75rem">${firma ? `<img src="${firma}" alt="Firma" style="max-height:48px;max-width:166px">` : 'Sin firma'}</span><button type="button" class="btn sm" data-firmar>${I.firma} Firmar / cargar</button>${c.firma_aprobo ? '<button type="button" class="btn sm" data-usar>Usar la firma de “Aprobó”</button>' : ''}</div></div></div></fieldset>
+      <fieldset><legend>Comité de tecnovigilancia</legend><div class="fields">${f.area('comite', 'Integrantes del comité (uno por línea)', (a.comite || COMITE_BASE).join('\n'), { rows: 4 })}${f.sel('periodicidad', 'Periodicidad de reuniones', ['trimestral', 'bimestral', 'mensual', 'semestral'], a.periodicidad || 'trimestral')}${f.input('fecha', 'Fecha del acto', a.fecha || UI.hoy(), { type: 'date' })}</div></fieldset></form>`,
+      alAbrir: (m) => m.body.addEventListener('click', async (e) => {
+        const prev = m.body.querySelector('[data-fprev]');
+        if (e.target.closest('[data-firmar]')) { const r = await UI.pedirFirma({ titulo: 'Firma del representante legal', actual: firma }); if (r) { firma = r; prev.innerHTML = `<img src="${r}" alt="Firma" style="max-height:48px;max-width:166px">`; } }
+        if (e.target.closest('[data-usar]')) { firma = c.firma_aprobo; prev.innerHTML = `<img src="${firma}" alt="Firma" style="max-height:48px;max-width:166px">`; }
+      }),
+      acciones: [{ t: 'Cancelar' }, { t: 'Guardar y generar PDF', cls: 'pri', fn: async (m) => {
+        const v = leer(m.body); const acto = { ...v, comite: String(v.comite || '').split('\n').map((x) => x.trim()).filter(Boolean), firma };
+        await guardarCfg(ent, { acto });
+        const doc = TV.pdfActo(ent, { acto, cfg: TV.cfg(ent) });
+        verDoc(ent, doc, 'Acto administrativo de tecnovigilancia', `${TV.fmtDe('acto_tv').codigo}_Acto_administrativo_${slug(ent.razon_social)}.pdf`, 1);
       } }] });
   };
 

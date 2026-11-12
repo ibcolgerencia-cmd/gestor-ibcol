@@ -220,7 +220,7 @@
         y = doc.lastAutoTable.finalY + 10;
         // firmas
         salto(40); const bw = (ancho - 8) / 3; ['ELABORÓ', 'REVISÓ', 'APROBÓ'].forEach((t, i) => { const x = M + i * (bw + 4); const p = [cfg.elaboro || `${st.emp.responsable || ''}|${st.emp.cargo || 'Ingeniera Biomédica'}`, cfg.reviso || `${cfg.referente || ''}|${cfg.cargo || 'Referente de tecnovigilancia'}`, cfg.aprobo || '|Representante legal'][i].split('|');
-          doc.rect(x, y, bw, 30); doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text(t, x + bw / 2, y + 4.5, { align: 'center' }); if (i === 0 && st.firma) img(doc, st.firma, x + 4, y + 7, bw - 8, 11);
+          doc.rect(x, y, bw, 30); doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text(t, x + bw / 2, y + 4.5, { align: 'center' }); { const fz = [st.firma, cfg.firma_reviso, cfg.firma_aprobo][i]; if (fz) img(doc, fz, x + 4, y + 7, bw - 8, 11); }
           doc.line(x + 4, y + 20, x + bw - 4, y + 20); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text(doc.splitTextToSize(p[0] || '', bw - 4), x + bw / 2, y + 23.5, { align: 'center' }); doc.text(doc.splitTextToSize(p[1] || '', bw - 4)[0] || '', x + bw / 2, y + 27, { align: 'center' }); });
         y += 34; continue;
       }
@@ -272,6 +272,41 @@
       [['Nombre del indicador', 'Oportunidad del reporte de eventos e incidentes adversos serios.'], ['Objetivo del indicador', 'Garantizar que todo evento o incidente adverso serio se notifique al INVIMA dentro de las 72 horas.'], ['Fórmula de cálculo', '(Serios reportados en <= 72 h / total de serios) × 100'], ['Unidad de medición', 'Porcentaje.'], ['Periodicidad', 'Trimestral.'], ['Meta prevista', '100%.'], ['Fuente de información', 'Reportes FT-PGTV-016 y constancias del aplicativo web del INVIMA.']],
       [['Nombre del indicador', 'Eficacia de la capacitación (resultado del post test).'], ['Objetivo del indicador', 'Evaluar el conocimiento adquirido por el personal capacitado.'], ['Fórmula de cálculo', 'Promedio de calificación del post test (%)'], ['Unidad de medición', 'Porcentaje.'], ['Periodicidad', 'Semestral.'], ['Meta prevista', '>= 80%.'], ['Fuente de información', 'Formato pre y post test FMB-008.']],
     ];
+  };
+
+
+  // ------------------------------------------------------------------ ACTO ADMINISTRATIVO AA-PGTV-035
+  TV.pdfActo = (ent, { acto: a, cfg }) => {
+    const fmt = fmtDe('acto_tv'), doc = nuevo('p'), W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 20, ancho = W - 2 * M, BOT = 30;
+    let y = TV.encabezado(doc, { fmt, ent, titulo: fmt.titulo }) + 4;
+    const salto = (n) => { if (y + n > H - BOT) { doc.addPage(); y = TV.encabezado(doc, { fmt, ent, titulo: fmt.titulo }) + 4; } };
+    const par = (t, { b = false, fs = 10, ind = 0, w = ancho, gap = 2 } = {}) => { doc.setFont('helvetica', b ? 'bold' : 'normal'); doc.setFontSize(fs); const ls = doc.splitTextToSize(t, w - ind); ls.forEach((ln, i) => { salto(5); if (b) doc.text(ln, M + ind, y); else window.PDFJ ? window.PDFJ(doc, ln, M + ind, y, w - ind, i === ls.length - 1) : doc.text(ln, M + ind, y); y += fs * 0.45; }); y += gap; };
+    const ref = a.ref_nombre || cfg.referente || '[REFERENTE]';
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); doc.text(doc.splitTextToSize('ACTO ADMINISTRATIVO PARA LA ASIGNACIÓN Y CONFORMACIÓN DEL COMITÉ DE TECNOVIGILANCIA', ancho), W / 2, y, { align: 'center' }); y += 12;
+    par(`Se delega a ${ref.toUpperCase()}, identificado(a) con C.C. ${a.ref_cc || '__________'} expedida en ${a.ref_exp || '__________'}, como referente del PROGRAMA DE TECNOVIGILANCIA de ${ent.razon_social}, quien tiene la responsabilidad de dinamizar el reporte periódico e inmediato de los eventos e incidentes adversos presentados en la institución, cumpliendo con los tiempos establecidos por el INVIMA, para lo cual deberá cumplir con lo estipulado en la normatividad vigente, el programa de tecnovigilancia, las responsabilidades descritas a continuación y las demás que le sean notificadas formalmente.`, { gap: 4 });
+    par('1. ACTIVIDADES Y RESPONSABILIDADES', { b: true, gap: 3 });
+    const resp = ['Estar inscrito(a) en el aplicativo web del INVIMA como referente del programa de tecnovigilancia de la institución.', 'Informar de manera inmediata al INVIMA todo evento o incidente adverso serio que ocurra.', 'Proponer medidas preventivas para tomar acciones inmediatas luego de la ocurrencia de un evento o incidente adverso serio.', 'Realizar los reportes periódicos ante el INVIMA.', 'Registrar, analizar y gestionar todo evento o incidente adverso susceptible de ser causado por un dispositivo y/o equipo médico.', 'Realizar seguimiento de los eventos e incidentes adversos relacionados con el uso de dispositivos y/o equipos médicos.',
+      `Orientar sobre el correcto diligenciamiento del formato ${fmtDe('evento').codigo || 'FT-PGTV-016'} Reporte voluntario de evento / incidente adverso con dispositivos médicos.`, `Realizar el almacenamiento y seguimiento mensual del RISARH: alertas, retiros de producto (recall), informes de seguridad y hurtos emitidos por el INVIMA, registrándolos en la bitácora de consulta de alertas sanitarias ${fmtDe('alertas').codigo || 'FT-PGTV-015'}.`,
+      'Gestionar el programa de capacitaciones sobre el uso de dispositivos y equipos médicos, la cultura del reporte y su diligenciamiento.', `Liderar el comité de tecnovigilancia, diligenciando el formato acta de reunión ${fmtDe('acta_comite').codigo || 'FAR-013'}.`, 'Realizar el análisis de los eventos adversos, serios y no serios, relacionados con el uso de dispositivos y/o equipos médicos (FT-PGTV-021, Protocolo de Londres).',
+      'Informar al INVIMA todo evento adverso serio e incidente adverso serio dentro de las 72 horas siguientes a su ocurrencia, a través del aplicativo web.', 'Enviar trimestralmente los eventos e incidentes adversos no serios en el formato RETEIM-002 a través del aplicativo web del INVIMA, o el reporte en cero cuando no se presenten.', 'Comunicar al fabricante o importador del dispositivo médico la ocurrencia del evento o incidente adverso, cuando se estime pertinente.'];
+    doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, top: 40, bottom: BOT }, styles: { fontSize: 8.8, cellPadding: 1.6, lineColor: NG, lineWidth: 0.2, textColor: NG }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold', halign: 'center' },
+      head: [['ACTIVIDAD / RESPONSABILIDAD']], body: [[`El referente del programa de tecnovigilancia en ${ent.razon_social} es ${ref}, quien tendrá las siguientes responsabilidades:`], ...resp.map((r) => [`• ${r}`])], rowPageBreak: 'avoid' });
+    y = doc.lastAutoTable.finalY + 5;
+    doc.autoTable({ startY: y, theme: 'grid', pageBreak: 'avoid', margin: { left: M, right: M, top: 40, bottom: BOT }, styles: { fontSize: 8.8, cellPadding: 1.8, lineColor: NG, lineWidth: 0.2, textColor: NG },
+      body: [[{ content: 'Envío de reporte al INVIMA', styles: { fontStyle: 'bold', fillColor: CL } }], ['Los incidentes y eventos adversos presentados se reportan trimestralmente ante el Instituto Nacional de Vigilancia de Medicamentos y Alimentos – INVIMA; cuando no se presenten, se envía el reporte en cero. Aplicativo web: https://farmacoweb.invima.gov.co/TecnoVigilancia/']] });
+    y = doc.lastAutoTable.finalY + 6;
+    par('Hasta tanto no haya cambios, se mantendrá vigente el presente acto administrativo.', { gap: 5 });
+    salto(30); par('2. CONFORMACIÓN DEL COMITÉ DE TECNOVIGILANCIA', { b: true, gap: 2 }); par('Así mismo, el grupo que conformará el comité será:', { gap: 2 });
+    (a.comite && a.comite.length ? a.comite : ['Referente de Tecnovigilancia']).forEach((x, i) => par(`${'abcdefghijklmnop'[i]})  ${x}`, { ind: 6, gap: 0.5 })); y += 3;
+    salto(20); par('3. FUNCIONES DEL COMITÉ', { b: true, gap: 2 }); par('El comité de tecnovigilancia es el responsable del análisis y la gestión de los eventos e incidentes adversos reportados, utilizando la metodología del Protocolo de Londres, y del seguimiento a los planes de acción, alertas sanitarias e indicadores del programa.', { gap: 4 });
+    salto(20); par('4. PERIODICIDAD DE LAS REUNIONES', { b: true, gap: 2 }); par(`El comité de tecnovigilancia se reunirá de manera ${a.periodicidad || 'trimestral'} o en forma extraordinaria cuando se presente un evento o incidente adverso serio que lo requiera.`, { gap: 6 });
+    const fd = a.fecha ? new Date(a.fecha + 'T12:00:00') : new Date();
+    par(`Dado en ${ent.ciudad || '__________'}, a los ${fd.getDate()} días del mes de ${CAT.MESES[fd.getMonth()].toLowerCase()} de ${fd.getFullYear()}.`, { gap: 6 });
+    salto(42); y += 4; if (a.firma) img(doc, a.firma, M, y, 60, 18); y += 20;
+    doc.setDrawColor(...NG); doc.line(M, y, M + 75, y); y += 4.5; doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text((a.rep_nombre || 'REPRESENTANTE LEGAL').toUpperCase(), M, y); y += 4.5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); [a.rep_cc ? `C.C. ${a.rep_cc}${a.rep_exp ? ` expedida en ${a.rep_exp}` : ''}` : '', a.rep_cargo || 'Representante legal', ent.razon_social].filter(Boolean).forEach((l) => { doc.text(l, M, y); y += 4.3; });
+    for (let i = 2; i <= doc.getNumberOfPages(); i++) { doc.setPage(i); TV.encabezado(doc, { fmt, ent, titulo: fmt.titulo }); }
+    TV.pie(doc, fmt, { elaboro: false }); return doc;
   };
 
   // ------------------------------------------------------------------ PRESENTACIÓN DE LA CAPACITACIÓN (diapositivas en PDF)
