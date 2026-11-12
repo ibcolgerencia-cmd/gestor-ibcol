@@ -882,7 +882,8 @@
   // ------------------------------------------------------------ Indicadores
   A.G.indicadores = async (el, { ent }) => {
     const [eqs, cronos, mtos, evs, als] = await Promise.all([S.list('equipos', { entidad_id: ent.id }), S.list('cronogramas', { entidad_id: ent.id }), S.list('mantenimientos', { entidad_id: ent.id }), S.list('eventos', { entidad_id: ent.id }), S.list('alertas', { entidad_id: ent.id })]);
-    const k = A.kpis({ equipos: eqs, cronos, mtos, eventos: evs, alertas: als, anio: anioAct });
+    const docsAl = await S.list('documentos', { entidad_id: ent.id }).catch(() => []);
+    const k = A.kpis({ equipos: eqs, cronos, mtos, eventos: evs, alertas: als, docs: docsAl, anio: anioAct });
     el.innerHTML = `<section class="panel"><header><h2>Gestión de indicadores ${anioAct}</h2><button class="btn" data-act="kPDF">${I.pdf} Informe PDF</button></header>${A.kpiTiles(k)}
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Indicador</th><th>Fórmula</th><th class="r">Resultado</th><th>Meta</th></tr></thead><tbody>${k.map((x) => `<tr><td><b>${h(x.nombre)}</b></td><td class="muted">${h(x.formula)}</td><td class="r num">${h(x.valor)}</td><td>${h(x.meta)}</td></tr>`).join('')}</tbody></table></div></section>`;
     A.acts({ kPDF: () => { const doc = PDF.indicadores({ ent, k, emp: st.emp, anio: anioAct }); UI.verPDF({ titulo: 'Informe de indicadores', blob: doc.output('blob'), nombre: `Indicadores_${anioAct}_${ent.razon_social}.pdf` }); } });
