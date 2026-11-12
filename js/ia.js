@@ -58,7 +58,8 @@
       if (carpeta === 'indicadores') {
         const anio = new Date().getFullYear();
         const [cronos, mtos, evs, als] = await Promise.all([S.list('cronogramas', { entidad_id: ent.id }), S.list('mantenimientos', { entidad_id: ent.id }), S.list('eventos', { entidad_id: ent.id }), S.list('alertas', { entidad_id: ent.id })]);
-        out.push('INDICADORES CALCULADOS:\n' + A.kpis({ equipos: eqs, cronos, mtos, eventos: evs, alertas: als, anio }).map((k) => `- ${k.nombre}: ${k.valor} (meta ${k.meta}; ${k.det}; fórmula: ${k.formula})`).join('\n'));
+        const docsAl = await S.list('documentos', { entidad_id: ent.id }).catch(() => []);
+        out.push('INDICADORES CALCULADOS:\n' + A.kpis({ equipos: eqs, cronos, mtos, eventos: evs, alertas: als, docs: docsAl, anio }).map((k) => `- ${k.nombre}: ${k.valor} (meta ${k.meta}; ${k.det}; fórmula: ${k.formula})`).join('\n'));
       }
     }
     if (eq) {

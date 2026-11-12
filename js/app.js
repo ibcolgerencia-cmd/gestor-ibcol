@@ -268,7 +268,20 @@ window.APP = (() => {
   }, true);
 
   // Indicadores de gestión
-  A.kpis = ({ equipos, cronos, mtos, eventos, alertas, anio = new Date().getFullYear() }) => {
+  // meses con consulta de alertas según los archivos cargados (ej. «FT-PGTV-015 BITÁCORA ALERTAS SANITARIAS - 02 FEBRERO 2026.pdf»)
+  const MESES_N = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  A.mesesAlertasDocs = (docs = [], anio) => {
+    const out = new Set();
+    docs.forEach((d) => {
+      const t = `${d.nombre || ''} ${d.subcarpeta || ''}`; if (!(d.carpeta === 'alertas' || /alerta|pgtv[\s_-]*0?15/i.test(t))) return;
+      const n = String(d.nombre || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const y = (n.match(/20\d\d/) || [])[0]; let m = MESES_N.findIndex((x) => n.includes(x) || (x === 'septiembre' && n.includes('setiembre')));
+      if (m < 0) { const f = d.fecha_documento || ''; if (+String(f).slice(0, 4) === anio && /bitacora|consulta/.test(n)) m = +String(f).slice(5, 7) - 1; }
+      if (m >= 0 && (+y || +String(d.fecha_documento || '').slice(0, 4)) === anio) out.add(m + 1);
+    });
+    return out;
+  };
+  A.kpis = ({ equipos, cronos, mtos, eventos, alertas, docs = [], anio = new Date().getFullYear() }) => {
     const mesAct = new Date().getFullYear() === anio ? new Date().getMonth() + 1 : 12;
     const cumpl = (tipo) => {
       let p = 0, e = 0;
@@ -283,7 +296,9 @@ window.APP = (() => {
     const metVig = reqMet.filter((e) => e.fecha_prox_metro && UI.diasHasta(e.fecha_prox_metro) >= 0).length;
     const disp = activos.length ? Math.round((activos.filter((e) => e.estado === 'Activo').length / activos.length) * 100) : null;
     const evA = eventos.filter((e) => new Date(e.fecha_evento).getFullYear() === anio);
-    const meses = new Set(alertas.map((a) => (a.mes_consulta || '').toLowerCase()).filter(Boolean)).size;
+    const mesesSet = new Set(alertas.map((a) => { const t = String(a.mes_consulta || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); const y = (t.match(/20\d\d/) || [])[0]; if (y && +y !== anio) return 0; return MESES_N.findIndex((x) => t.includes(x)) + 1; }).filter((x) => x > 0));
+    A.mesesAlertasDocs(docs, anio).forEach((m) => mesesSet.add(m));
+    const meses = [...mesesSet].filter((m) => m <= mesAct).length;
     const pct = (x) => (x === null ? '—' : x + '%');
     return [
       { k: 'mp', nombre: 'Cumplimiento mantenimiento preventivo', formula: 'Preventivos ejecutados / programados a la fecha × 100', valor: pct(mp.v), n: mp.v, meta: '≥ 95%', ok: mp.v === null ? null : mp.v >= 95, det: `${mp.e} de ${mp.p} programados` },
@@ -305,7 +320,7 @@ window.APP = (() => {
     const anio = new Date().getFullYear();
     const [ents, eqs, docs, cronos, mtos, evs, als, aud] = await Promise.all([S.list('entidades', {}, 'razon_social'), S.list('equipos'), S.list('documentos'), S.list('cronogramas', { anio }), S.list('mantenimientos'), S.list('eventos'), S.list('alertas'), S.list('auditoria', {}, '-fecha', 8)]);
     const venc = A.vencimientos(eqs, docs.filter((d) => d.fecha_vencimiento), ents);
-    const k = A.kpis({ equipos: eqs, cronos, mtos, eventos: evs, alertas: als, anio });
+    const k = A.kpis({ equipos: eqs, cronos, mtos, eventos: evs, alertas: als, docs, anio });
     const mes = new Date().getMonth() + 1; let progMes = 0, ejeMes = 0;
     cronos.filter((c) => c.tipo !== 'capacitacion').forEach((c) => Object.entries(c.plan || {}).forEach(([kk, v]) => { if (+kk.split('-')[0] === mes && v) { progMes++; if (v === 'E') ejeMes++; } }));
     const porEnt = ents.map((e) => {
@@ -419,7 +434,7 @@ window.APP = (() => {
     const docs = sede ? docsT.filter((d) => d.equipo_id ? eqs.some((e) => e.id === d.equipo_id) : A.esDeSede(d, sede, sedesE)) : docsT;
     const venc = A.vencimientos(eqs, docs.filter((d) => d.fecha_vencimiento));
     const enSede = (x) => !sede || eqs.some((e) => e.id === x.equipo_id);
-    const k = A.kpis({ equipos: eqs, cronos: cronos.filter(enSede), mtos: mtos.filter(enSede), eventos: evs, alertas: als, anio });
+    const k = A.kpis({ equipos: eqs, cronos: cronos.filter(enSede), mtos: mtos.filter(enSede), eventos: evs, alertas: als, docs: docsT, anio });
     const nEqSede = (sd) => { const ids = new Set(consE.filter((c) => (c.sede || 'Sede principal') === sd).map((c) => c.id)); return eqsT.filter((e) => ids.has(e.consultorio_id) && e.estado !== 'Dado de baja').length; };
     const nDocSede = (sd) => docsT.filter((d) => !d.equipo_id && (d.subcarpeta || '').split('/')[0] === sd).length;
     const tarjetasSedes = porSedes && !sede ? `<section class="folder-group"><span class="eyebrow">Sedes · abra una sede para ver sus carpetas</span><div class="folders">${sedesE.map((sd) => `<div class="folder-w">${esProp() ? `<div class="folder-tools"><button class="folder-x del" data-act="borrarSede" data-s="${h(sd)}" title="Eliminar esta sede" aria-label="Eliminar la sede ${h(sd)}">${I.x}</button></div>` : ''}<button class="folder sede" data-act="abrirSede" data-s="${h(sd)}"><span class="ic"></span><b>${h(sd.toUpperCase())}</b><small>${nEqSede(sd)} equipo${nEqSede(sd) === 1 ? "" : "s"} · ${nDocSede(sd)} archivo${nDocSede(sd) === 1 ? "" : "s"}</small></button></div>`).join('')}</div></section>` : '';
