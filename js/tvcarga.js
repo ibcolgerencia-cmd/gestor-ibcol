@@ -54,17 +54,17 @@
       return null;
     };
     tri = buscaT(n); if (tri) fuente.push('nombre'); else { tri = buscaT(t); if (tri) fuente.push('contenido'); }
-    const y = (todo.match(/trimestr(?:e|al)[^0-9]{0,40}(20\d{2})/) || n.match(/\b(20\d{2})\b/) || t.match(/\b(20\d{2})\b/) || [])[1]; if (y) anio = +y;
+    const y = (t.match(/ano\s+(?:de\s+)?(?:reporte|reportado)[^0-9]{0,12}(20\d{2})/) || todo.match(/trimestr(?:e|al)[^0-9]{0,40}(20\d{2})/) || n.match(/\b(20\d{2})\b/) || t.match(/\b(20\d{2})\b/) || [])[1]; if (y) anio = +y;
     const fs = fechas(texto).concat(fechas(nombre));
     // fecha de reporte: la que sigue a "fecha de reporte / envío / radicación / notificación", si no la más reciente
-    let fecha = null; const mF = texto && nrm(texto).match(/fecha\s+(?:de\s+)?(?:reporte|envio|radicacion|notificacion|generacion|cargue|elaboracion)[^0-9]{0,25}([0-9][0-9\/.\- a-z]{6,30})/);
+    let fecha = null; const mF = texto && nrm(texto).match(/fecha\s+(?:y\s+hora\s+)?(?:del?\s+)?(?:reporte|envio|radicacion|notificacion|generacion|cargue|elaboracion|ingreso)[^0-9]{0,25}([0-9][0-9\/.\- a-z]{6,30})/);
     if (mF) fecha = fechas(mF[1])[0] || null;
     if (!fecha && fs.length) fecha = [...fs].sort().pop();
     // sin trimestre detectado: el trimestre anterior a la fecha del reporte
     if (!tri && fecha) { const mo = +fecha.slice(5, 7), yy = +fecha.slice(0, 4); const tq = Math.ceil(mo / 3) - 1; tri = tq || 4; if (!anio) anio = tq ? yy : yy - 1; fuente.push('fecha'); }
     if (!anio && fecha) anio = +fecha.slice(0, 4);
     const cero = /en cero|reporte cero|reportes? en 0|cero \(0\)|sin (eventos|incidentes|reportes)|no se presentaron|no se reportaron|ningun (evento|incidente)|0 eventos/.test(todo);
-    const rad = (texto.match(/radicad[oa]\s*(?:n[°o.º]*|numero|no\.?)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-\/]{4,})/i) || [])[1] || '';
+    const rad = (texto.match(/c[oó]digo\s+asignado\s*[:#]?\s*([0-9][0-9\-]{6,})/i) || [])[1] || (texto.match(/radicad[oa]\s*(?:n[°o.º]*|numero|no\.?)?\s*[:#]?\s*([A-Z0-9][A-Z0-9\-\/]{4,})/i) || [])[1] || '';
     return { anio: anio || new Date().getFullYear(), t: tri || null, cero, fecha: fecha || '', radicado: rad, seguro: !!(tri && y && !fuente.includes('fecha')), fuente: fuente.join(', ') || 'sin datos' };
   };
   // ------------------------------------------------------------------ detección de una consulta de alertas
@@ -90,7 +90,7 @@
   const elegirPDFs = () => new Promise((res) => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.pdf,application/pdf'; i.multiple = true; i.onchange = () => res([...i.files]); i.click(); });
   const progreso = (txt) => { const m = modal({ titulo: 'Leyendo los PDF…', cuerpo: `<p data-pg>${h(txt)}</p>`, acciones: [] }); return { set: (t) => { const p = m.body?.querySelector('[data-pg]'); if (p) p.textContent = t; }, cerrar: () => m.cerrar?.() }; };
   const opt = (vals, sel) => vals.map(([v, t]) => `<option value="${h(v)}" ${String(v) === String(sel) ? 'selected' : ''}>${h(t)}</option>`).join('');
-  const anios = () => { const y = new Date().getFullYear(); return [y + 1, y, y - 1, y - 2, y - 3, y - 4].map((a) => [a, a]); };
+  const anios = () => { const y = new Date().getFullYear(); return Array.from({ length: 10 }, (_, i) => y + 1 - i).map((a) => [a, a]); };
 
   // ================================================================== REPORTES TRIMESTRALES
   // items: [{ file? | doc?, nombre, blob }]
@@ -98,7 +98,7 @@
     const sub4 = await TV.subDestino(ent, 3);
     let items = [];
     if (existentes) {
-      const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => d.carpeta === 'tecnovigilancia' && /\.pdf$/i.test(d.nombre || '') && ((d.subcarpeta || '').split('/')[0] === sub4 || /trimestr|reteim|en cero/i.test(d.nombre || '')));
+      const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => d.carpeta === 'tecnovigilancia' && /\.pdf$/i.test(d.nombre || '') && ((d.subcarpeta || '').split('/')[0] === sub4 || /trimestr|reteim|en cero|tcvg|reporte masivo/i.test(d.nombre || '')));
       if (!docs.length) { toast(`No hay PDF en "${sub4}"`, true); return; }
       items = docs.map((d) => ({ doc: d, nombre: d.nombre }));
     } else {
@@ -111,12 +111,16 @@
       try { if (!it.blob) it.blob = await S.fileBlob(it.doc.archivo); it.det = TV.detectarTrimestral(it.nombre, await TV.textoPDF(it.blob)); } catch (e) { it.det = TV.detectarTrimestral(it.nombre, ''); it.err = e.message; }
     }
     pg.cerrar();
+    // si el PDF no trae texto (captura de pantalla) y en ese trimestre no hay eventos no serios registrados → reporte en cero
+    const evs = await S.list('eventos', { entidad_id: ent.id }).catch(() => []);
+    items.forEach((it) => { if (!it.det.cero && it.det.t && !evs.some((e) => !TV.esSerio(e) && new Date(e.fecha_evento).getFullYear() === it.det.anio && Math.floor(new Date(e.fecha_evento).getMonth() / 3) + 1 === it.det.t)) it.det.cero = true; });
+    items.sort((a, b) => (a.det.anio * 10 + (a.det.t || 0)) - (b.det.anio * 10 + (b.det.t || 0)));
     const fila = (it, i) => `<tr data-i="${i}"><td style="max-width:240px;word-break:break-word">${h(it.nombre)}<div class="muted" style="font-size:.75rem">Detectado por: ${h(it.det.fuente)}</div></td>
       <td><select data-k="anio" aria-label="Año">${opt(anios(), it.det.anio)}</select></td>
       <td><select data-k="t" aria-label="Trimestre">${opt([['', '— Elija —'], ...ROM.map((r, k) => [k + 1, `${r} trimestre`])], it.det.t || '')}</select></td>
       <td><select data-k="cero" aria-label="Tipo">${opt([['0', 'Con eventos (RETEIM-002)'], ['1', 'Reporte en cero']], it.det.cero ? '1' : '0')}</select></td>
       <td><input type="date" data-k="fecha" value="${h(it.det.fecha)}" aria-label="Fecha de reporte"></td><td><input data-k="radicado" value="${h(it.det.radicado)}" aria-label="Radicado" style="width:120px"></td>
-      <td>${it.det.seguro ? '<span class="pill ok">Detectado</span>' : '<span class="pill warn">Revisar</span>'}</td></tr>`;
+      <td>${it.det.seguro ? '<span class="pill ok">Detectado</span>' : it.det.t ? '<span class="pill">Por fecha: revisar</span>' : '<span class="pill warn">Revisar</span>'}</td></tr>`;
     modal({ titulo: `Reportes trimestrales cargados (${items.length})`, size: 'wide', cuerpo: `<p class="muted" style="font-size:.85rem">Revise lo que el sistema leyó de cada PDF. Al guardar, cada archivo queda en "${h(sub4)}/AÑO/TRIMESTRE" y ese trimestre queda como <b>reportado</b>.</p>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Archivo</th><th>Año</th><th>Trimestre</th><th>Tipo</th><th>Fecha de reporte</th><th>Radicado</th><th></th></tr></thead><tbody>${items.map(fila).join('')}</tbody></table></div>`,
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar y organizar', cls: 'pri', fn: async (m) => {
