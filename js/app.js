@@ -703,7 +703,7 @@ window.APP = (() => {
     if (def.subsAnio) for (let a = new Date().getFullYear(); a >= new Date().getFullYear() - 3; a--) subs.push(def.subsAnio(a));
     await A.archivos(document.getElementById('archivos'), {
       entidad_id: entId, equipo_id: def.rel ? null : (eqId || null), carpeta: def.carpetaReal || k, titulo: k === 'inventarios' ? 'Archivos del inventario' : 'Archivos y subcarpetas',
-      subs, todos: !!def.todos, relEquipo: def.rel ? eqId : null, sede, sedes: sedesE,
+      subs, subsFlex: !!def.subsFlex, todos: !!def.todos, relEquipo: def.rel ? eqId : null, sede, sedes: sedesE,
     });
   };
 
@@ -730,7 +730,8 @@ window.APP = (() => {
   // ---------------------------------------------------------------- Archivos de una carpeta (con subcarpetas)
   st.subSel = st.subSel || {};
   A.archivos = async (cont, opts) => {
-    const { entidad_id, equipo_id, carpeta, titulo = 'Archivos', subs = [], todos = false, relEquipo = null, sede = null, sedes = [] } = opts;
+    const { entidad_id, equipo_id, carpeta, titulo = 'Archivos', todos = false, relEquipo = null, sede = null, sedes = [] } = opts;
+    let subs = [...(opts.subs || [])];
     const recargar = () => A.archivos(cont, opts);
     const filtros = { carpeta, entidad_id: entidad_id || null };
     let docs = await S.list('documentos', filtros, '-created_at');
@@ -749,6 +750,8 @@ window.APP = (() => {
     const llave = `${entidad_id}|${equipo_id || relEquipo || ''}|${carpeta}${sede ? '|' + sede : ''}`;
     st.subExtra = st.subExtra || {};
     const raiz = (d) => (d.subcarpeta || '').split('/')[0];
+    // subcarpetas fijas "flexibles": si ya existe una equivalente con otro nombre (ej. "1. PROGRAMA TECNOVIGILANCIA"), se usa la existente
+    if (opts.subsFlex) { const eqv = (x) => String(x).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/^\s*\d+\s*[.\-)]\s*/, '').replace(/\b(DE|DEL|LA|LAS|LOS|Y|EL)\b/g, '').replace(/[^A-Z]/g, ''); const reales = [...new Set(docs.map(raiz).filter(Boolean))].map(eqv); subs = subs.filter((x) => { const k = eqv(x); return !reales.some((r) => r !== k && (r.includes(k) || k.includes(r)) && Math.min(r.length, k.length) >= 6); }); }
     const listaSubs = [...new Set([...subs, ...[...new Set([...(st.subExtra[llave] || []).map((x) => x.split('/')[0]), ...docs.map(raiz).filter(Boolean)])].filter((x) => !subs.includes(x)).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))])];
     let sel = st.subSel[llave] ?? '';
     // sel puede ser una ruta "SUB/SUBSUB/…" (subcarpetas dentro de subcarpetas)
