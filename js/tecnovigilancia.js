@@ -138,7 +138,7 @@
     const cfg = TV.cfg(ent), plantilla = st.fmt.programa_tv_texto?.texto || '', fmt = { ...TV.fmtDe('programa_tv'), ...(cfg.codigo ? { codigo: cfg.codigo } : {}), ...(cfg.version ? { version: cfg.version } : {}) };
     const [evs, regs, actas] = await Promise.all([S.list('eventos', { entidad_id: ent.id }), regsDe(ent), S.list('actas_comite', { entidad_id: ent.id }).catch(() => [])]);
     const rr = regs || [];
-    const ses = rr.filter((r) => r.tipo === 'sesion' && r.anio === anioAct), ej = ses.filter((s) => s.datos?.estado === 'Ejecutada').length;
+    const ses = rr.filter((r) => r.tipo === 'sesion' && r.datos?.programa !== 'equipos' && r.anio === anioAct), ej = ses.filter((s) => s.datos?.estado === 'Ejecutada').length;
     const trimOk = rr.filter((r) => r.tipo === 'trimestral' && r.anio === anioAct && r.datos?.fecha_envio).length;
     const tActual = trimDe(UI.hoy()), trimDebidos = tActual - 1;
     const item = (ok, t, det) => `<li style="display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line)">${pill(ok ? 'Cumple' : 'Pendiente', ok ? 'ok' : 'warn')}<div><b>${h(t)}</b><div class="muted" style="font-size:.85rem">${h(det)}</div></div></li>`;
@@ -450,7 +450,7 @@
   const vCapacitacion = async (box, { ent }) => {
     const anio = st.tvCapAnio[ent.id] || anioAct;
     const regs = await regsDe(ent); if (regs === null) { box.innerHTML = `<section class="panel"><header><h2>Capacitaciones</h2></header>${avisoSQL()}</section>`; return; }
-    const ses = regs.filter((r) => r.tipo === 'sesion' && r.anio === anio).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    const ses = regs.filter((r) => r.tipo === 'sesion' && r.datos?.programa !== 'equipos' && r.anio === anio).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
     const tests = regs.filter((r) => r.tipo === 'test');
     const tDe = (s, fase) => tests.filter((t) => t.datos.sesion_id === s.id && t.datos.fase === fase);
     ses.forEach((s) => { const a = prom(tDe(s, 'pre')), b = prom(tDe(s, 'post')); s._pre = a === null ? '' : a + '%'; s._post = b === null ? '' : b + '%'; });
@@ -579,8 +579,10 @@
       }),
       acciones: [{ t: 'Cerrar' }] });
   };
+  TV.aplicarTest = (...a) => aplicarTest(...a); TV.enlaceVirtual = (...a) => enlaceVirtual(...a); TV.resultados = (...a) => resultados(...a); TV.puntos = puntos; TV.prom = prom;
   const txtBanco = (l) => l.map((q, i) => `${i + 1}. ${q.p}\n${q.o.map((o, j) => `${q.c.includes(j) ? '*' : ''}${'abcdefg'[j]}) ${o}`).join('\n')}`).join('\n\n');
   const leerBanco = (t) => { const out = []; let q = null; String(t).split('\n').forEach((raw) => { const l = raw.trim(); if (!l) return; const mo = l.match(/^(\*?)\s*([a-g])\)\s*(.+)$/i); if (mo && q) { if (mo[1]) q.c.push(q.o.length); q.o.push(mo[3].trim()); return; } const mp = l.match(/^\d+[.)]\s*(.+)$/); if (mp) { q = { p: mp[1].trim(), o: [], c: [] }; out.push(q); } }); return out.filter((x) => x.o.length >= 2 && x.c.length); };
+  TV.txtBanco = txtBanco; TV.leerBanco = leerBanco;
   const formBanco = (ent) => modal({ titulo: `Preguntas del pre y post test · ${ent.razon_social}`, size: 'wide', cuerpo: `<p class="muted" style="font-size:.85rem">Una pregunta por bloque: <span class="mono">1. Pregunta</span> y debajo las opciones <span class="mono">a) …</span>. Marque con <span class="mono">*</span> la(s) correcta(s), ej. <span class="mono">*b) opción correcta</span>. Las sesiones que ya tienen test conservan sus preguntas.</p><textarea data-tx rows="26" style="width:100%;font-family:ui-monospace,monospace;font-size:.8rem">${h(txtBanco(preguntasDe(ent)))}</textarea>`,
     acciones: [{ t: 'Restablecer preguntas base', fn: (m) => { m.body.querySelector('[data-tx]').value = txtBanco(TV.PREGUNTAS); return false; } }, { t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { const l = leerBanco(m.body.querySelector('[data-tx]').value); if (l.length < 3) { toast('Revise el formato: se necesitan al menos 3 preguntas con su respuesta marcada con *', true); return false; } await guardarCfg(ent, { preguntas: l }); toast(`${l.length} preguntas guardadas para esta entidad`); A.recargar(); } }] });
   const formCodificacion = () => {
@@ -600,8 +602,9 @@
     const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null);
     const cel = (v, ok, txt) => ({ v, ok: v === null ? null : ok, txt: txt ?? (v === null ? '—' : `${v}%`) });
     const mp = (t) => { let p = 0, e = 0; (cronos || []).filter((c) => c.tipo === 'mantenimiento' && c.anio === anio).forEach((c) => Object.entries(c.plan || {}).forEach(([k, val]) => { const mm = +k.split('-')[0]; if ((t ? Math.ceil(mm / 3) === t : true) && mm <= mesLim && ['P', 'E', 'N'].includes(val)) { p++; if (val === 'E') e++; } })); return { p, e }; };
-    const ses = (regs || []).filter((r) => r.tipo === 'sesion' && r.anio === anio && r.datos?.estado !== 'Cancelada');
-    const tests = (regs || []).filter((r) => r.tipo === 'test' && r.anio === anio && r.datos?.fase === 'post');
+    const ses = (regs || []).filter((r) => r.tipo === 'sesion' && r.datos?.programa !== 'equipos' && r.anio === anio && r.datos?.estado !== 'Cancelada');
+    const idsSes = new Set(ses.map((x) => x.id));
+    const tests = (regs || []).filter((r) => r.tipo === 'test' && r.anio === anio && r.datos?.fase === 'post' && idsSes.has(r.datos?.sesion_id));
     const mesesAl = new Set(); (alertas || []).forEach((a) => { const tx = String(a.mes_consulta || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); const y = (tx.match(/20\d\d/) || [])[0]; if (y && +y !== anio) return; const i = CAT.MESES.findIndex((m) => tx.includes(m.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase())); if (i >= 0) mesesAl.add(i + 1); }); (A.mesesAlertasDocs?.(docs || [], anio) || []).forEach((m) => mesesAl.add(m));
     const T = [1, 2, 3, 4];
     const fila = (nombre, formula, metaTxt, fn) => { const v = T.map((t) => fn(t)); return { nombre, formula, meta: metaTxt, v, anual: fn(0) }; };
