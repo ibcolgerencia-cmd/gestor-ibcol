@@ -730,3 +730,5 @@ h1 .icon-btn { vertical-align: middle; }
 .plegable > summary .muted { font-weight: 500; font-size: .85rem; }
 .plegable > summary:hover { background: color-mix(in srgb, var(--accent, #0096be) 6%, transparent); border-radius: var(--r); }
 .plegable > .panel, .plegable > section.panel { border: 0; border-top: 1px solid var(--line); border-radius: 0 0 var(--r) var(--r); }
+/* protocolos y programas: pestañas de secciones */
+@media (max-width: 760px) { .prot-grid { grid-template-columns: 1fr !important; } .prot-grid > div:first-child { max-height: 220px !important; } }
