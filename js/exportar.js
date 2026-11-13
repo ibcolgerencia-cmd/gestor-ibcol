@@ -45,7 +45,7 @@
       const eqs = eqsT.filter((e) => cons.some((c) => c.id === e.consultorio_id) || (!sede && !e.consultorio_id)).filter((e) => o.baja || e.estado !== 'Dado de baja')
         .sort((a, b) => (a.orden ?? 999) - (b.orden ?? 999) || String(a.codigo_inv || '').localeCompare(String(b.codigo_inv || ''), 'es', { numeric: true }));
       const docsGen = docsT.filter((d) => !d.equipo_id && (!sede || A.esDeSede(d, sede, sedes)));
-      const ocE = A.ocultas(ent, 'ent');
+      const ocE = A.ocultas(ent, 'ent', sede);
 
       // ---- plan de trabajo: lista de piezas en orden { nivel, titulo, tarea }
       const piezas = []; // { nivel:0|1|2|3, titulo, fuente: async () => ({ bytes } | { img, tipo } | null), nota }

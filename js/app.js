@@ -440,7 +440,7 @@ window.APP = (() => {
     const tarjetasSedes = porSedes && !sede ? `<section class="folder-group"><span class="eyebrow">Sedes · abra una sede para ver sus carpetas</span><div class="folders">${sedesE.map((sd) => `<div class="folder-w">${esProp() ? `<div class="folder-tools"><button class="folder-x del" data-act="borrarSede" data-s="${h(sd)}" title="Eliminar esta sede" aria-label="Eliminar la sede ${h(sd)}">${I.x}</button></div>` : ''}<button class="folder sede" data-act="abrirSede" data-s="${h(sd)}"><span class="ic"></span><b>${h(sd.toUpperCase())}</b><small>${nEqSede(sd)} equipo${nEqSede(sd) === 1 ? "" : "s"} · ${nDocSede(sd)} archivo${nDocSede(sd) === 1 ? "" : "s"}</small></button></div>`).join('')}</div></section>` : '';
     const nDocs = (c) => (c.k === CARP_EQ ? eqs.filter((e) => e.estado !== 'Dado de baja').length : docs.filter((d) => d.carpeta === c.k && (c.todos || !d.equipo_id)).length);
     const etiqueta = (c) => { const n = nDocs(c); return c.k === CARP_EQ ? `${n} equipo${n === 1 ? '' : 's'} por área` : `${n} archivo${n === 1 ? '' : 's'}${c.gen ? ' · registros' : ''}`; };
-    const ocE = A.ocultas(ent, 'ent');
+    const ocE = A.ocultas(ent, 'ent', sede);
     const visiblesE = A.carpetasEnt(ent).filter((c) => !ocE.has(c.k));
     const grupos = [...new Set(visiblesE.map((c) => c.g))];
     content().innerHTML = `
@@ -476,7 +476,7 @@ window.APP = (() => {
       usuariosEnt: () => go('usuarios', { ent: id }),
       importarDrive: () => A.importarEntidad(ent),
       configCarp: () => A.configCarpetas(ent),
-      quitarCarp: (d) => A.quitarCarpeta(ent, d.tipo, d.k, d.tipo === 'ent' ? nDocs(A.carpetasEnt(ent).find((c) => c.k === d.k)) : null),
+      quitarCarp: (d) => A.quitarCarpeta(ent, d.tipo, d.k, d.tipo === 'ent' ? nDocs(A.carpetasEnt(ent).find((c) => c.k === d.k)) : null, null, { sede, sedes: porSedes ? sedesE : [] }),
       nuevaCarpeta: (d) => A.nuevaCarpeta(ent, null, d.g),
       renCarp: (d) => A.renombrarCarpeta(ent, d.tipo, d.k),
     });
@@ -1145,7 +1145,9 @@ window.APP = (() => {
   // Se guardan en entidades.config = { ocultas_ent: [...], ocultas_eq: [...] }.
   // Quitar una carpeta NO borra sus archivos: quedan guardados y vuelven si se activa de nuevo.
   const OBLIG = new Set(['equipos', 'hoja_vida']); // sin estas no funciona la estructura
-  A.ocultas = (ent, tipo) => new Set((ent?.config || {})[tipo === 'eq' ? 'ocultas_eq' : 'ocultas_ent'] || []);
+  A.ocultas = (ent, tipo, sede = null) => new Set([...((ent?.config || {})[tipo === 'eq' ? 'ocultas_eq' : 'ocultas_ent'] || []), ...(tipo !== 'eq' && sede ? ((ent?.config || {}).ocultas_sede || {})[sede] || [] : [])]);
+  // sedes donde se quitó una carpeta (solo para esas sedes)
+  A.sedesSinCarpeta = (ent, k) => Object.entries((ent?.config || {}).ocultas_sede || {}).filter(([, l]) => (l || []).includes(k)).map(([s]) => s);
   // carpetas ocultas de un equipo: las quitadas para toda la entidad + las quitadas solo en ese equipo (equipos.hv.ocultas)
   A.ocultasEq = (ent, eq) => new Set([...A.ocultas(ent, 'eq'), ...((eq?.hv || {}).ocultas || [])]);
   // Nombre de una carpeta para una entidad (puede haberse cambiado en entidades.config.nombres_ent / nombres_eq)
@@ -1237,16 +1239,40 @@ window.APP = (() => {
     }
   };
   A.guardarConfig = (ent, config) => guardarConfig(ent, config);
-  A.quitarCarpeta = async (ent, tipo, k, nArch, eq = null) => {
+  A.quitarCarpeta = async (ent, tipo, k, nArch, eq = null, { sede = null, sedes = [] } = {}) => {
     const cat = tipo === 'eq' ? A.carpetasEq(ent, eq) : A.carpetasEnt(ent), c0 = cat.find((x) => x.k === k); if (!c0) return;
     const c = { ...c0, n: A.nomCarpeta(ent, tipo, k, eq) };
     if (tipo === 'eq' && eq) return quitarCarpetaEquipo(ent, eq, k, c.n, nArch);
+    if (tipo === 'ent' && sedes.length > 1) return quitarCarpetaSede(ent, k, c.n, nArch, sede, sedes);
     const extra = nArch ? ` Tiene ${nArch} archivo${nArch === 1 ? '' : 's'}: no se borran, quedan guardados y vuelven a aparecer si activa la carpeta otra vez.` : '';
     const donde = tipo === 'eq' ? 'de TODOS los equipos de' : 'de la carpeta de';
     if (!(await confirmar(`¿Quitar “${c.n}” ${donde} ${ent.razon_social}? El cliente tampoco la verá.${extra} Puede volver a mostrarla con el botón “Carpetas” de la entidad.`, 'Quitar carpeta'))) return;
     const cfg = { ...(ent.config || {}) }, key = tipo === 'eq' ? 'ocultas_eq' : 'ocultas_ent';
     cfg[key] = [...new Set([...(cfg[key] || []), k])];
     if (await guardarConfig(ent, cfg)) { S.log('EDITAR', 'entidades', ent.id, `Quitó la carpeta ${c.n}`); toast(`Carpeta “${c.n}” quitada`); A.recargar(); }
+  };
+  // entidad con varias sedes: quitar la carpeta solo en algunas sedes o en toda la entidad
+  const quitarCarpetaSede = (ent, k, nom, nArch, sede, sedes) => {
+    const ya = new Set(A.sedesSinCarpeta(ent, k));
+    modal({ titulo: `Quitar la carpeta “${nom}”`, size: 'sm',
+      cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Quitar una carpeta no borra sus archivos${nArch ? ` (tiene ${nArch})` : ''}: quedan guardados y vuelven a aparecer si la muestra otra vez con el botón “Carpetas”. El cliente tampoco la verá donde se quite.</p>
+        <label class="checks full radio-line"><input type="radio" name="alcance" value="sedes" checked> Solo en estas sedes:</label>
+        <div style="margin:2px 0 8px 26px;display:grid;gap:4px">${sedes.map((s) => `<label class="checks"><input type="checkbox" name="sede" value="${h(s)}" ${s === sede || ya.has(s) ? 'checked' : ''}> ${h(s)}${ya.has(s) ? ' <small class="muted">(ya quitada)</small>' : ''}</label>`).join('')}</div>
+        <label class="checks full radio-line"><input type="radio" name="alcance" value="entidad"> En toda la entidad (todas las sedes y la vista general)</label></form>`,
+      acciones: [{ t: 'Cancelar' }, { t: 'Quitar carpeta', cls: 'pri danger', fn: async (m) => {
+        const al = m.body.querySelector('[name=alcance]:checked').value, sel = [...m.body.querySelectorAll('[name=sede]:checked')].map((x) => x.value);
+        const cfg = { ...(ent.config || {}) };
+        if (al === 'entidad') { cfg.ocultas_ent = [...new Set([...(cfg.ocultas_ent || []), k])]; }
+        else {
+          if (!sel.length) { toast('Marque al menos una sede', true); return false; }
+          const os = { ...(cfg.ocultas_sede || {}) };
+          sedes.forEach((s) => { const l = new Set(os[s] || []); if (sel.includes(s)) l.add(k); else l.delete(k); if (l.size) os[s] = [...l]; else delete os[s]; });
+          cfg.ocultas_sede = os;
+        }
+        if (!(await guardarConfig(ent, cfg))) return false;
+        S.log('EDITAR', 'entidades', ent.id, `Quitó la carpeta ${nom} ${al === 'entidad' ? 'de toda la entidad' : `en ${sel.join(', ')}`}`);
+        toast(al === 'entidad' ? `Carpeta “${nom}” quitada de la entidad` : `Carpeta “${nom}” quitada en ${sel.length} sede${sel.length === 1 ? '' : 's'}`); A.recargar();
+      } }] });
   };
   // quitar una carpeta desde un equipo: solo ese equipo, los equipos que no la requieren, o todos
   const quitarCarpetaEquipo = (ent, eq, k, nom, nArch) => {
@@ -1274,18 +1300,21 @@ window.APP = (() => {
         toast(`Carpeta “${nom}” quitada en ${lista.length} equipo${lista.length === 1 ? '' : 's'}`); A.recargar();
       } }] });
   };
-  A.configCarpetas = (ent) => {
+  A.configCarpetas = async (ent) => {
     const ocE = A.ocultas(ent, 'ent'), ocQ = A.ocultas(ent, 'eq');
+    const sedes = A.sedesDe(await S.list('consultorios', { entidad_id: ent.id }), ent), osd = (ent.config || {}).ocultas_sede || {};
+    const porSede = sedes.length > 1 ? `<fieldset style="margin-top:10px"><legend>Por sede (desmarque las carpetas que una sede no necesita)</legend>${sedes.map((sd) => `<details class="cfg-sede"><summary><b>${h(sd)}</b> <small class="muted">${(osd[sd] || []).length ? `${(osd[sd] || []).length} quitada${(osd[sd] || []).length === 1 ? '' : 's'}` : 'todas visibles'}</small></summary><div class="cfg-cols" style="margin-top:6px">${A.carpetasEnt(ent).filter((c) => !OBLIG.has(c.k)).map((c) => `<label class="checks cfg-carp"><input type="checkbox" name="sd" value="${h(sd)}|${c.k}" ${(osd[sd] || []).includes(c.k) ? '' : 'checked'}> ${h(A.nomCarpeta(ent, 'ent', c.k))}</label>`).join('')}</div></details>`).join('')}</fieldset>` : '';
     const lista = (cat, oc, tipo) => cat.map((c) => `<label class="checks cfg-carp"><input type="checkbox" name="${tipo}" value="${c.k}" ${oc.has(c.k) ? '' : 'checked'} ${OBLIG.has(c.k) ? 'disabled' : ''}> ${h(A.nomCarpeta(ent, tipo, c.k))}${OBLIG.has(c.k) ? ' <small class="muted">(siempre visible)</small>' : ''}</label>`).join('');
     modal({
       titulo: `Carpetas de ${ent.razon_social}`, size: 'wide',
       cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Marque las carpetas que usa esta entidad. Las que desmarque se quitan para el propietario y para el cliente. Los archivos que tengan <b>no se borran</b>: vuelven a aparecer si marca la carpeta otra vez.</p>
         <div class="cfg-cols"><fieldset><legend>Carpeta de la entidad</legend>${lista(CAT.CARPETAS_ENTIDAD, ocE, 'ent')}</fieldset>
-        <fieldset><legend>Carpeta de cada equipo</legend>${lista(CAT.CARPETAS_EQUIPO, ocQ, 'eq')}</fieldset></div></form>`,
+        <fieldset><legend>Carpeta de cada equipo</legend>${lista(CAT.CARPETAS_EQUIPO, ocQ, 'eq')}</fieldset></div>${porSede}</form>`,
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
         const marc = (n) => new Set([...m.body.querySelectorAll(`[name=${n}]:checked`)].map((x) => x.value));
         const vE = marc('ent'), vQ = marc('eq');
         const cfg = { ...(ent.config || {}), ocultas_ent: CAT.CARPETAS_ENTIDAD.filter((c) => !OBLIG.has(c.k) && !vE.has(c.k)).map((c) => c.k), ocultas_eq: CAT.CARPETAS_EQUIPO.filter((c) => !OBLIG.has(c.k) && !vQ.has(c.k)).map((c) => c.k) };
+        if (sedes.length > 1) { const vis = new Set([...m.body.querySelectorAll('[name=sd]:checked')].map((x) => x.value)), os = {}; sedes.forEach((sd) => { const l = A.carpetasEnt(ent).filter((c) => !OBLIG.has(c.k) && !vis.has(`${sd}|${c.k}`)).map((c) => c.k); if (l.length) os[sd] = l; }); cfg.ocultas_sede = os; }
         if (!(await guardarConfig(ent, cfg))) return false;
         S.log('EDITAR', 'entidades', ent.id, `Carpetas: ${cfg.ocultas_ent.length + cfg.ocultas_eq.length} quitadas`);
         toast('Carpetas actualizadas'); A.recargar();
