@@ -136,6 +136,32 @@
         q('¿Qué parámetros se verifican en el TENS?', ['Peso y volumen', 'Frecuencia, ancho de pulso e intensidad de salida', 'Temperatura', 'Presión arterial'], 1),
         q('Una quemadura por el TENS se debe:', ['Reportar como evento adverso en el formato FT-PGTV-016', 'Ignorar', 'Tratar sin informar', 'Reportar solo al año'], 0),
       ] },
+
+    // ------------------------------------------------------------------ LIMPIEZA Y DESINFECCIÓN
+    { k: 'limpieza', n: 'Limpieza y desinfección', clase: '', re: null, tema: 'Limpieza y desinfección de equipos biomédicos y dispositivos médicos', dirigido: 'Personal asistencial y de servicios generales que limpia los equipos',
+      objetivo: 'Fortalecer en el personal la limpieza y desinfección correcta de los equipos biomédicos para prevenir infecciones asociadas a la atención en salud y conservar los equipos en buen estado.',
+      diapos: [
+        ['¿Por qué limpiar y desinfectar los equipos?', ['Los equipos que tocan al paciente o al personal pueden transmitir microorganismos de un paciente a otro.', 'La limpieza y desinfección correctas previenen las infecciones asociadas a la atención en salud (IAAS).', 'Además protegen el equipo: los productos mal usados dañan pantallas, plásticos, sensores y cables.']],
+        ['Conceptos clave', ['Limpieza: retiro de la suciedad visible y la materia orgánica; siempre va antes de desinfectar.', 'Desinfección: eliminación de la mayoría de microorganismos con un producto químico (bajo, intermedio o alto nivel).', 'Esterilización: eliminación de toda forma de vida microbiana (instrumental crítico).', 'Clasificación de Spaulding: crítico (tejido estéril), semicrítico (mucosas) y no crítico (piel intacta).']],
+        ['Elementos de protección personal', ['Higiene de manos antes y después de limpiar el equipo.', 'Guantes de látex o nitrilo; tapabocas y gafas si hay riesgo de salpicaduras.', 'Cambie los guantes entre un equipo contaminado y uno limpio.']],
+        ['Productos de limpieza y desinfección', ['Use solo el desinfectante institucional con registro sanitario vigente: {DESINFECTANTE}.', 'Respete la dilución y el tiempo de contacto indicados en la ficha técnica.', 'No mezcle productos ni use alcohol o hipoclorito en pantallas, acrílicos y transductores sin autorización del fabricante.', 'Rotule los recipientes con producto, fecha de preparación y vencimiento.']],
+        ['Paso a paso', ['Higiene de manos y elementos de protección personal.', 'Apague y desconecte el equipo (si aplica).', 'Retire el polvo y la suciedad visible.', 'Aplique el desinfectante en el paño, no directamente sobre el equipo.', 'Limpie de lo más limpio a lo más sucio y de arriba hacia abajo.', 'Deje actuar el tiempo de contacto (1 minuto) y deje secar.', 'Registre la limpieza en el formato FMB-006.']],
+        ['Frecuencia', ['Entre pacientes: superficies y accesorios que tocan al paciente (brazaletes, sensores, electrodos reutilizables, transductores).', 'Diaria: superficies externas, pantallas, cables y carros.', 'Terminal o semanal: limpieza profunda del equipo y su entorno.', 'Inmediata: ante derrames de sangre o fluidos corporales.']],
+        ['Cuidados por tipo de equipo', ['Pantallas y paneles: paño humedecido, sin rociar ni usar productos abrasivos.', 'Transductores y sensores: producto compatible indicado por el fabricante; nunca sumergir el conector.', 'Cables y mangueras: limpiar desde el equipo hacia el paciente, sin doblarlos.', 'Equipos de laboratorio: cámaras y bandejas según el manual (centrífugas, incubadoras, analizadores).']],
+        ['Errores frecuentes', ['Rociar el desinfectante directamente sobre el equipo o el panel.', 'Usar el mismo paño para varios equipos o áreas.', 'No esperar el tiempo de contacto del producto.', 'Limpiar con el equipo encendido o conectado.', 'No registrar la actividad en el formato.']],
+      ],
+      preguntas: [
+        q('¿Qué va primero?', ['La desinfección', 'La limpieza (retirar la suciedad visible)', 'Da lo mismo', 'La esterilización'], 1),
+        q('¿Cómo se aplica el desinfectante en un equipo biomédico?', ['Rociándolo directamente sobre el equipo', 'Aplicándolo en el paño y luego pasando el paño por el equipo', 'Sumergiendo el equipo', 'Con un balde de agua'], 1),
+        q('El orden correcto para limpiar es:', ['De lo más sucio a lo más limpio', 'De lo más limpio a lo más sucio y de arriba hacia abajo', 'Al azar', 'De abajo hacia arriba'], 1),
+        q('Antes de limpiar un equipo eléctrico se debe:', ['Dejarlo encendido', 'Apagarlo y desconectarlo (si aplica)', 'Subirle el volumen', 'Nada'], 1),
+        q('El tiempo de contacto del desinfectante es:', ['El tiempo que el producto debe permanecer húmedo sobre la superficie para actuar', 'El tiempo de vencimiento del producto', 'El tiempo que dura la jornada', 'No existe'], 0),
+        q('¿Con qué frecuencia se limpian las partes que tocan al paciente?', ['Una vez al mes', 'Entre cada paciente', 'Una vez al año', 'Solo cuando se vean sucias'], 1),
+        q('¿Qué elementos de protección se usan para limpiar los equipos?', ['Ninguno', 'Guantes, y tapabocas y gafas si hay riesgo de salpicaduras', 'Solo gorro', 'Solo bata'], 1),
+        q('Ante un derrame de sangre sobre un equipo se debe:', ['Esperar a la limpieza semanal', 'Limpiar y desinfectar de inmediato con elementos de protección', 'Taparlo con papel', 'Seguir usándolo'], 1),
+        q('¿Dónde se registra la limpieza y desinfección de los equipos?', ['En ninguna parte', 'En el formato de limpieza y desinfección (FMB-006)', 'En la historia clínica', 'En el inventario'], 1),
+        q('¿Qué producto se debe usar?', ['Cualquier producto de aseo del hogar', 'El desinfectante institucional con registro sanitario, en la dilución indicada', 'Una mezcla de varios productos', 'Solo agua'], 1),
+      ] },
   ];
 
   // preguntas generales para cualquier otro equipo del inventario

@@ -349,7 +349,7 @@ Se capacita al personal en el uso seguro, la limpieza y los cuidados de los equi
       ] },
 
     // ---------------------------------------------------------------- 4. PROGRAMA DE CAPACITACIÓN – EDUCACIÓN CONTINUA
-    { k: 'capacitacion', n: 'Programa de capacitación', sub: '4. CAPACITACIÓN - EDUCACIÓN CONTINUA', tipo: 'PROGRAMA', titulo: 'PROGRAMA DE CAPACITACIÓN – EDUCACIÓN CONTINUA', codigo: 'PCEC-019', version: '002', fecha: '2022-09-01', datos: ['cap'],
+    { k: 'capacitacion', n: 'Programa y plan de capacitación', sub: '4. CAPACITACIÓN - EDUCACIÓN CONTINUA', tipo: 'PROGRAMA', titulo: 'PROGRAMA Y PLAN DE CAPACITACIÓN – EDUCACIÓN CONTINUA', codigo: 'PCEC-019', version: '002', fecha: '2022-09-01', datos: ['cap'],
       secciones: [
         { t: 'JUSTIFICACIÓN', x: `El objetivo de la capacitación es fortalecer las competencias del personal mediante actividades organizadas de forma sistemática, que proporcionen conocimientos y habilidades para el uso seguro de la tecnología biomédica y el mejoramiento del desempeño.
 
@@ -377,6 +377,11 @@ Contribuir al mejoramiento institucional fortaleciendo las competencias del pers
 - Competencia: capacidad de una persona para desempeñar sus funciones con la calidad y los resultados esperados.
 - Educación continua: actividades de actualización permanente del talento humano.
 - Pre test / post test: evaluaciones aplicadas antes y después de la capacitación para medir el conocimiento adquirido.` },
+        { t: 'PRINCIPIOS', x: `- Complementariedad: la capacitación acompaña la planeación institucional.
+- Integralidad: contribuye al desarrollo de competencias técnicas y humanas.
+- Objetividad: responde a necesidades identificadas en el diagnóstico.
+- Participación: involucra a líderes y colaboradores.
+- Continuidad: se realiza de forma permanente y planificada.` },
         { t: 'DESARROLLO O PROCEDIMIENTO', x: `## Diagnóstico de necesidades
 Se tienen en cuenta: los requisitos de formación continua de la Resolución 3100 de 2019; los equipos nuevos o actualizados; los resultados de las rondas, mantenimientos y reportes de tecnovigilancia (fallas por mal uso); y las solicitudes de los líderes de servicio.
 ## Temas por capacitar
@@ -391,6 +396,12 @@ Las capacitaciones se programan teniendo en cuenta la rutina de trabajo y los tu
 Las capacitaciones se programan en el cronograma de capacitación continua FT-CCC-012 y se realizan como mínimo de forma semestral. Además, se realiza inducción al personal nuevo en el uso de los equipos de su servicio.
 ## Análisis de resultados
 Después de cada capacitación se elabora el informe con: fecha y hora, tema, capacitador, asistentes, resultados del pre y post test, evidencia fotográfica y conclusiones.` },
+        { t: 'MODALIDADES Y HERRAMIENTAS', x: `- Capacitación o actualización presencial con práctica en los equipos del servicio.
+- Inducción y reinducción al personal nuevo.
+- Material: presentaciones en PowerPoint por equipo y de limpieza y desinfección, guías rápidas y evaluación por enlace (pre y post test).
+- Acta de capacitación con resultados del pre y post test y evidencia fotográfica.` },
+        { t: 'PLAN Y CRONOGRAMA DE CAPACITACIÓN', x: `[[CRONOGRAMA_CAP]]` },
+        { t: 'PRESUPUESTO', x: `Los recursos para la ejecución del presente programa y plan están sujetos a la disponibilidad presupuestal de la vigencia; las capacitaciones en tecnología biomédica se incluyen en el contrato de ingeniería biomédica con {EMPRESA}.` },
         { t: 'INDICADORES', x: `[[INDICADORES_CAP]]` },
         { t: 'BIBLIOGRAFÍA Y ANEXOS', x: `- Resolución 3100 de 2019. Ministerio de Salud y Protección Social.
 - Anexo 1. FMB-008 Formato pre y post test.
@@ -400,7 +411,7 @@ Después de cada capacitación se elabora el informe con: fecha y hora, tema, ca
       ] },
 
     // ---------------------------------------------------------------- 4b. PLAN DE CAPACITACIÓN
-    { k: 'plan_cap', n: 'Plan de capacitación', sub: '4. CAPACITACIÓN - EDUCACIÓN CONTINUA', tipo: 'PLAN', titulo: 'PLAN DE CAPACITACIÓN – EDUCACIÓN CONTINUA', codigo: 'PCEC-019', version: '002', fecha: '2022-09-01', datos: ['cap'],
+    { k: 'plan_cap', oculto: true, n: 'Plan de capacitación', sub: '4. CAPACITACIÓN - EDUCACIÓN CONTINUA', tipo: 'PLAN', titulo: 'PLAN DE CAPACITACIÓN – EDUCACIÓN CONTINUA', codigo: 'PCEC-019', version: '002', fecha: '2022-09-01', datos: ['cap'],
       secciones: [
         { t: 'JUSTIFICACIÓN', x: `El Plan de Capacitación es el instrumento con el que {ENTIDAD} organiza para la vigencia {ANIO} las actividades de formación continua de su talento humano, en respuesta a los requisitos de habilitación de servicios de salud y a las necesidades identificadas en el uso de la tecnología biomédica.` },
         { t: 'DIAGNÓSTICO DE NECESIDADES DE CAPACITACIÓN', x: `- Requerimiento de formación continua de la Resolución 3100 de 2019 para el personal de los procesos prioritarios.
