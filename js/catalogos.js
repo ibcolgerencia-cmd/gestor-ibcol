@@ -31,7 +31,7 @@ window.CAT = (() => {
     { k: 'inventarios', n: '1. INVENTARIOS', g: G1, gen: 'inventario' },
     { k: 'cronogramas', n: '2. CRONOGRAMAS', g: G1, gen: 'cronogramas', subs: SUBS_CRONO },
     { k: 'equipos', n: '3. INFORMACIÓN DEL EQUIPO', g: G1, nav: 'areas' },
-    { k: 'protocolos', n: '4. PROTOCOLOS Y PROGRAMAS', g: G1, ia: true },
+    { k: 'protocolos', n: '4. PROTOCOLOS Y PROGRAMAS', g: G1, gen: 'protocolos', ia: true },
     { k: 'alertas', n: '5. ALERTAS SANITARIAS', g: G1, gen: 'alertas', subsAnio: (a) => `${a}-CONSULTA ALERTAS E INFORMES DE SEGURIDAD`, ia: true },
     { k: 'capacitaciones', n: '6. PLAN DE CAPACITACIÓN', g: G1, ia: true },
     { k: 'limpieza', n: '7. LISTA CHEQUEO LIMPIEZA Y DESINFECCIÓN', g: G1, gen: 'limpieza', ia: true },
