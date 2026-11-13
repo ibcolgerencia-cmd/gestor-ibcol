@@ -31,7 +31,6 @@ window.CAT = (() => {
     { k: 'inventarios', n: '1. INVENTARIOS', g: G1, gen: 'inventario' },
     { k: 'cronogramas', n: '2. CRONOGRAMAS', g: G1, gen: 'cronogramas', subs: SUBS_CRONO },
     { k: 'equipos', n: '3. INFORMACIÓN DEL EQUIPO', g: G1, nav: 'areas' },
-    { k: 'protocolos', n: '4. PROTOCOLOS Y PROGRAMAS', g: G1, gen: 'protocolos', ia: true },
     { k: 'alertas', n: '5. ALERTAS SANITARIAS', g: G1, gen: 'alertas', subsAnio: (a) => `${a}-CONSULTA ALERTAS E INFORMES DE SEGURIDAD`, ia: true },
     { k: 'capacitaciones', n: '6. PLAN DE CAPACITACIÓN', g: G1, ia: true },
     { k: 'limpieza', n: '7. LISTA CHEQUEO LIMPIEZA Y DESINFECCIÓN', g: G1, gen: 'limpieza', ia: true },
@@ -40,6 +39,8 @@ window.CAT = (() => {
     { k: 'actas_revision', n: '10. ACTAS REVISIÓN SEDES', g: G1, ia: true },
     { k: 'hv_ingenieros', n: '11. HOJAS DE VIDA INGENIEROS BIOMÉDICOS', g: G1 },
     { k: 'temperatura', n: '12. TEMPERATURA Y HUMEDAD', g: G1, gen: 'temperatura' },
+    // solo en la documentación general de la entidad (no se repite en cada sede)
+    { k: 'protocolos', n: 'PROTOCOLOS Y PROGRAMAS', g: G2, gen: 'protocolos', ia: true, soloGeneral: true },
     { k: 'tecnovigilancia', n: 'PROGRAMA DE TECNOVIGILANCIA', g: G2, gen: 'tecnovigilancia', ia: true, subsFlex: true,
       subs: ['1. PROGRAMA DE TECNOVIGILANCIA', '2. ANEXOS DEL PROGRAMA', '3. COMITÉS DE TECNOVIGILANCIA', '4. REPORTES TRIMESTRALES', '5. REPORTES SERIOS 72 HORAS', '6. CAPACITACIONES', '7. INDICADORES'] },
     { k: 'contratos', n: 'CONTRATOS DE PRESTACIÓN DE SERVICIOS', g: G2 },

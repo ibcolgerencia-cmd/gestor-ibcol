@@ -441,7 +441,7 @@ window.APP = (() => {
     const nDocs = (c) => (c.k === CARP_EQ ? eqs.filter((e) => e.estado !== 'Dado de baja').length : docs.filter((d) => d.carpeta === c.k && (c.todos || !d.equipo_id)).length);
     const etiqueta = (c) => { const n = nDocs(c); return c.k === CARP_EQ ? `${n} equipo${n === 1 ? '' : 's'} por área` : `${n} archivo${n === 1 ? '' : 's'}${c.gen ? ' · registros' : ''}`; };
     const ocE = A.ocultas(ent, 'ent', sede);
-    const visiblesE = A.carpetasEnt(ent).filter((c) => !ocE.has(c.k));
+    const visiblesE = A.carpetasEnt(ent).filter((c) => !ocE.has(c.k) && !(sede && c.soloGeneral));
     const grupos = [...new Set(visiblesE.map((c) => c.g))];
     content().innerHTML = `
       ${sede ? migas([...A.rutaEnt(ent), sede.toUpperCase()]) : esProp() ? migas([['Entidades', 'entidades'], ent.razon_social]) : ''}

@@ -60,7 +60,7 @@
       };
       if (o.generales) {
         for (const c of A.carpetasEnt(ent)) {
-          if (ocE.has(c.k)) continue;
+          if (ocE.has(c.k) || (sede && c.soloGeneral)) continue;
           if (c.k === 'equipos') continue;
           const lista = docsGen.filter((d) => d.carpeta === c.k).sort((a, b) => String(a.subcarpeta || '').localeCompare(String(b.subcarpeta || ''), 'es', { numeric: true }) || A.ordenDocs(a, b));
           const genInv = c.k === 'inventarios' && eqs.length;
