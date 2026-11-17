@@ -405,43 +405,149 @@
     if (r > g + 60 && r > b + 40) return 'N';
     return 'P';
   };
+  // Lee cualquier cronograma (mantenimiento FMB-002 por semanas 1-4, o metrología FMB-003 con CP / CE por mes),
+  // con uno o varios bloques (un bloque por servicio, cada uno con sus títulos), en Excel o en PDF.
+  // Devuelve { anio, mesIni, filas: [{ codigo, nombre, serie, servicio, plan, planes: { año: { 'mes-semana': 'P'|'E'|'N' } }, metTipo, proveedor }] }
+  const mesFlex = (t) => { const x = norm(t).replace(/[^A-Z]/g, ''); const m = mesDeTxt(t); if (m) return m; if (x.length < 4 || x.length > 10) return 0; if (/^SE(PT|TI|RPT)/.test(x) && x.length <= 7) return 9; const i = MESES_N.findIndex((n) => n.startsWith(x)); return i + 1; };
+  const fechasEn = (txt) => [...String(txt || '').matchAll(/(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})/g)].map((m) => ({ m: +m[2], y: +m[3] })).filter((d) => d.m >= 1 && d.m <= 12);
+  // año del primer mes del periodo: "AÑO 2026", o una fecha del título/hoja/archivo (ej. 01-04-2026 = abril 2026)
+  const anioBase = (txt, mesIni) => {
+    const a = norm(txt).match(/A[NÑ]O\D{0,3}(20\d{2})/); if (a) return +a[1];
+    const ds = fechasEn(txt); if (!ds.length) return null;
+    const ex = ds.find((d) => d.m === mesIni); if (ex) return ex.y;
+    const d = ds[0]; return d.m >= mesIni ? d.y : d.y - 1;
+  };
+  const marcaDe = (t, rol) => { t = norm(t).trim(); if (!t || /^(NA|N\/A|-)$/.test(t)) return ''; if (rol === 'E') return 'E'; if (rol === 'P') return /^N\b|^NO\b/.test(t) ? 'N' : /^G$/.test(t) ? 'G' : /^C$/.test(t) ? 'C' : 'P'; return /^E/.test(t) ? 'E' : /^N/.test(t) ? 'N' : /^G$/.test(t) ? 'G' : /^C$/.test(t) ? 'C' : 'P'; };
+  const esCodigo = (t) => /^[A-Z0-9]{1,6}(-[A-Z0-9]{1,8}){1,4}$/i.test(String(t || '').trim()) && /\d/.test(t) && /[A-Z]/i.test(t);
+  const FIN_BLOQUE = /CONVEN[SC]ION|ELABORADO POR|REVISADO POR|APROBADO POR/;
+  const SALTAR = /PRESTADOR|\bREPS\b|FECHA ACTUALIZACI|^SERVICIO$|^EQUIPO$/;
+  // arma las filas de un bloque: info (columna → texto), marcas (columna de mes → texto)
+  const armarFila = (o, marcas, cols, yDe) => {
+    if (!o.codigo && esCodigo(o.af)) o.codigo = o.af.trim();
+    const planes = {};
+    marcas.forEach(([col, t]) => { const k = cols[col]; if (!k) return; const v = marcaDe(t, k.rol); if (!v) return; const y = yDe(k.m); const p = (planes[y] = planes[y] || {}); const key = `${k.m}-${k.s || 2}`;
+      if (k.rol === 'E') { Object.keys(p).filter((x) => +x.split('-')[0] === k.m).forEach((x) => delete p[x]); p[key] = 'E'; } else if (!Object.keys(p).some((x) => +x.split('-')[0] === k.m && p[x] === 'E')) p[key] = v; });
+    return { ...o, planes };
+  };
   async function leerPlanExcel(file) {
     const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', cellStyles: true });
+    const out = []; let anio = null, mesIni = null; const meta = {};
     for (const nombre of wb.SheetNames) {
       const ws = wb.Sheets[nombre]; if (!ws['!ref']) continue;
       const rg = XLSX.utils.decode_range(ws['!ref']);
       const val = (r, c) => { const x = ws[XLSX.utils.encode_cell({ r, c })]; return x ? String(x.w ?? x.v ?? '').trim() : ''; };
-      let anio = null, filaMes = -1, filaEq = -1, mapa = null;
-      for (let r = rg.s.r; r <= Math.min(rg.e.r, rg.s.r + 40); r++) {
-        let meses = 0;
-        for (let c = rg.s.c; c <= rg.e.c; c++) { const t = val(r, c); const a = norm(t).match(/A[NÑ]O\D{0,3}(20\d{2})/); if (a && !anio) anio = +a[1]; if (mesDeTxt(t)) meses++; }
-        if (meses >= 6 && filaMes < 0) filaMes = r;
-        if (filaEq < 0) { const cs = []; for (let c = rg.s.c; c <= rg.e.c; c++) cs.push(val(r, c)); if (cs.some((t) => /^EQUIPO$/.test(norm(t))) && cs.some((t) => /SERIE|MARCA/.test(norm(t)))) { filaEq = r; mapa = {}; cs.forEach((t, i) => { const k = colDe(t); if (k && !(k in mapa)) mapa[k] = rg.s.c + i; }); } }
+      const fila = (r) => { const cs = []; for (let c = rg.s.c; c <= rg.e.c; c++) cs.push(val(r, c)); return cs; };
+      // filas de títulos (EQUIPO + MARCA/SERIE): una por bloque
+      const heads = []; for (let r = rg.s.r; r <= rg.e.r; r++) { const cs = fila(r); if (cs.some((t) => /^EQUIPOS?$/.test(norm(t))) && cs.some((t) => /SERIE|MARCA/.test(norm(t)))) heads.push(r); }
+      if (!heads.length) continue;
+      let txtTop = `${file.name || ''} ${nombre}`; for (let r = rg.s.r; r < heads[0]; r++) txtTop += ' ' + fila(r).join(' ');
+      if (!meta.sede) { const s = txtTop.match(/\bSEDE\s+([^\n]+?)(?=\s{2,}|\s+E-?MAIL|\s+FECHA|$)/i); if (s) meta.sede = s[1].trim(); }
+      if (!meta.reps) { const s = txtTop.match(/REPS\)?\D{0,6}(\d{10,12})/i); if (s) meta.reps = s[1]; }
+      for (const [hi, r0] of heads.entries()) {
+        const rEnd = (heads[hi + 1] ?? rg.e.r + 1) - 1;
+        const mapa = {}; fila(r0).forEach((t, i) => { const k = colDe(t); if (k && !(k in mapa)) mapa[k] = rg.s.c + i; });
+        fila(r0).forEach((t, i) => { if (/PROVEEDOR/.test(norm(t)) && !('prov' in mapa)) mapa.prov = rg.s.c + i; });
+        // fila de los meses (la misma de los títulos o una cercana)
+        let filaMes = -1; for (let r = Math.max(rg.s.r, r0 - 3); r <= Math.min(rg.e.r, r0 + 1) && filaMes < 0; r++) if (fila(r).filter((t) => mesFlex(t)).length >= 6) filaMes = r;
+        if (filaMes < 0) continue;
+        const mesEnCol = {}; for (let c = rg.s.c; c <= rg.e.c; c++) { const m = mesFlex(val(filaMes, c)); if (m) mesEnCol[c] = m; }
+        (ws['!merges'] || []).forEach((mg) => { if (mg.s.r <= filaMes && mg.e.r >= filaMes && mesEnCol[mg.s.c]) for (let c = mg.s.c; c <= mg.e.c; c++) mesEnCol[c] = mesEnCol[mg.s.c]; });
+        // subtítulos: semanas 1-4, o CP / CE (programada / ejecutada), y CAL / VAL
+        const sub = filaMes + 1; const cols = {}; let mesAct = 0, cCal = -1, cVal = -1, primero = 0;
+        for (let c = rg.s.c; c <= rg.e.c; c++) {
+          const t = norm(val(sub, c)).replace(/\s/g, '');
+          if (t === 'CAL') cCal = c; if (t === 'VAL') cVal = c;
+          if (mesEnCol[c]) mesAct = mesEnCol[c]; if (!mesAct) continue;
+          if (/^[1-4]$/.test(t)) cols[c] = { m: mesAct, s: +t, rol: null };
+          else if (/^(CP|P|PROG|PROGRAMAD[OA])$/.test(t)) cols[c] = { m: mesAct, s: null, rol: 'P' };
+          else if (/^(CE|E|EJEC|EJECUTAD[OA])$/.test(t)) cols[c] = { m: mesAct, s: null, rol: 'E' };
+          if (cols[c] && !primero) primero = mesAct;
+        }
+        const nMeses = new Set(Object.values(cols).map((k) => k.m)).size;
+        if (nMeses < 6) continue;
+        if (!mesIni) { mesIni = primero; anio = anioBase(txtTop, mesIni); }
+        const base = anio || new Date().getFullYear();
+        const yDe = (m) => (m < mesIni ? base + 1 : base);
+        let servSec = '';
+        for (let r = sub + 1; r <= rEnd; r++) {
+          const cs = fila(r); const todo = norm(cs.join(' '));
+          if (FIN_BLOQUE.test(todo)) break;
+          const sv = cs.find((t) => /^\s*SERVICIO\s*[-:]\s*\S/i.test(t)); if (sv) { servSec = sv.replace(/^\s*SERVICIO\s*[-:]\s*/i, '').trim(); }
+          if (SALTAR.test(todo) && !cs.some(esCodigo)) continue;
+          const o = {}; Object.entries(mapa).forEach(([k, c]) => { o[k] = val(r, c); });
+          if (!o.nombre || SALTAR.test(norm(o.nombre)) || /^(CP|CE|CAL|VAL)$/.test(norm(o.nombre))) continue;
+          if (!o.servicio && servSec) o.servicio = servSec;
+          const marcas = Object.keys(cols).map((c) => [c, val(r, +c)]).filter(([, t]) => t);
+          // semanas coloreadas sin texto (formato FMB-002)
+          Object.keys(cols).forEach((c) => { if (cols[c].rol || val(r, +c)) return; const x = ws[XLSX.utils.encode_cell({ r, c: +c })]; const v = x?.s ? tipoColor(x.s.fgColor) || tipoColor(x.s.bgColor) : ''; if (v) marcas.push([c, v]); });
+          const f = armarFila(o, marcas, cols, yDe);
+          if (cCal >= 0 || cVal >= 0) { const cal = cCal >= 0 && val(r, cCal), vl = cVal >= 0 && val(r, cVal); f.metTipo = cal && vl ? 'CAL/VAL' : vl ? 'VAL' : cal ? 'CAL' : ''; }
+          if (o.prov) f.proveedor = o.prov;
+          out.push(f);
+        }
       }
-      if (filaMes < 0 || !mapa) continue;
-      // columnas de semanas: fila con 1-4 debajo de los meses
-      const filaSem = filaMes + 1; const colMS = {}; let mesAct = 0;
-      const mesEnCol = {}; for (let c = rg.s.c; c <= rg.e.c; c++) { const m = mesDeTxt(val(filaMes, c)); if (m) mesEnCol[c] = m; }
-      (ws['!merges'] || []).forEach((mg) => { if (mg.s.r === filaMes && mesEnCol[mg.s.c]) for (let c = mg.s.c; c <= mg.e.c; c++) mesEnCol[c] = mesEnCol[mg.s.c]; });
-      for (let c = rg.s.c; c <= rg.e.c; c++) { if (mesEnCol[c]) mesAct = mesEnCol[c]; const w = +val(filaSem, c); if (mesAct && w >= 1 && w <= 4) colMS[c] = `${mesAct}-${w}`; }
-      if (Object.keys(colMS).length < 12) continue;
-      const out = [];
-      for (let r = Math.max(filaSem, filaEq) + 1; r <= rg.e.r; r++) {
-        const o = {}; Object.entries(mapa).forEach(([k, c]) => { o[k] = val(r, c); });
-        if (!o.nombre || /ELABORADO|IBCOL|PRESTADOR|RESPONSABLE/i.test(o.nombre)) continue;
-        const plan = {};
-        Object.entries(colMS).forEach(([c, k]) => {
-          const x = ws[XLSX.utils.encode_cell({ r, c: +c })]; const t = norm(x ? (x.w ?? x.v ?? '') : '');
-          let v = /^E/.test(t) || t === 'EJECUTADO' ? 'E' : /^N/.test(t) ? 'N' : t ? 'P' : '';
-          if (!v && x?.s) v = tipoColor(x.s.fgColor) || tipoColor(x.s.bgColor);
-          if (v) plan[k] = v;
-        });
-        out.push({ ...o, plan });
-      }
-      if (out.length) return { anio, filas: out };
+      if (out.length) break; // una hoja basta (las demás suelen ser copias o años anteriores)
     }
-    return null;
+    if (!out.length) return null;
+    out.forEach((f) => { f.plan = f.planes[anio] || Object.values(f.planes)[0] || {}; });
+    return { anio, mesIni: mesIni || 1, filas: out, meta };
   }
+  // Cronograma en PDF (exportado del Excel): se ubica cada texto por su posición en la tabla
+  async function leerPlanPDF(file) {
+    if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    const out = []; let anio = null, mesIni = null, txtTop = file.name || ''; const meta = {};
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const items = (await (await pdf.getPage(p)).getTextContent()).items.filter((it) => it.str.trim()).map((it) => ({ x: it.transform[4], y: it.transform[5], w: it.width || 0, t: it.str.trim() }));
+      items.forEach((it) => { it.cx = it.x + it.w / 2; });
+      // líneas de meses (≥ 6 meses a la misma altura)
+      const mesIt = items.filter((it) => mesFlex(it.t) && it.t.length <= 12);
+      const lineas = []; mesIt.forEach((it) => { const l = lineas.find((x) => Math.abs(x.y - it.y) < 4); if (l) l.its.push(it); else lineas.push({ y: it.y, its: [it] }); });
+      const hdrs = lineas.filter((l) => l.its.length >= 6).sort((a, b) => b.y - a.y);
+      if (p === 1 && hdrs.length) items.filter((it) => it.y > hdrs[0].y + 4).forEach((it) => { txtTop += ' ' + it.t; });
+      if (!meta.sede) { const s = txtTop.match(/\bSEDE\s+([^\n]+?)(?=\s{2,}|\s+E-?MAIL|\s+FECHA|$)/i); if (s) meta.sede = s[1].trim(); }
+      hdrs.forEach((hd, hi) => {
+        const meses = hd.its.map((it) => ({ m: mesFlex(it.t), cx: it.cx })).sort((a, b) => a.cx - b.cx);
+        const sig = hdrs[hi + 1];
+        // subtítulos CP/CE o 1-4 justo debajo de los meses
+        const subs = items.filter((it) => it.y < hd.y - 1 && it.y > hd.y - 16 && /^(CP|CE|[1-4])$/i.test(it.t));
+        const paso = meses.length > 1 ? (meses[meses.length - 1].cx - meses[0].cx) / (meses.length - 1) : 30;
+        const cols = subs.map((it) => { const mm = meses.reduce((a, b) => (Math.abs(b.cx - it.cx) < Math.abs(a.cx - it.cx) ? b : a)); const t = it.t.toUpperCase(); return { cx: it.cx, m: mm.m, s: /^\d$/.test(t) ? +t : null, rol: t === 'CP' ? 'P' : t === 'CE' ? 'E' : null }; });
+        if (new Set(cols.map((c) => c.m)).size < 6) return;
+        const xMin = Math.min(...cols.map((c) => c.cx)) - paso / 4;
+        if (!mesIni) { mesIni = [...cols].sort((a, b) => a.cx - b.cx)[0].m; anio = anioBase(txtTop, mesIni); }
+        const base = anio || new Date().getFullYear(); const yDe = (m) => (m < mesIni ? base + 1 : base);
+        // títulos de las columnas de datos (a la altura de los meses o un poco más abajo)
+        const cab = items.filter((it) => it.cx < xMin && it.y < hd.y + 10 && it.y > hd.y - 16 && (colDe(it.t) || /PROVEEDOR|^CAL$|^VAL$/.test(norm(it.t)))).map((it) => ({ k: /PROVEEDOR/.test(norm(it.t)) ? 'prov' : /^CAL$/.test(norm(it.t)) ? 'cal' : /^VAL$/.test(norm(it.t)) ? 'val' : colDe(it.t), cx: it.cx }));
+        const vistos = new Set(); const heads = cab.filter((c) => (vistos.has(c.k) ? false : vistos.add(c.k)));
+        if (!heads.some((c) => c.k === 'nombre')) return;
+        const yTop = Math.min(...subs.map((s) => s.y)) - 2;
+        const fin = items.filter((it) => it.y < yTop && FIN_BLOQUE.test(norm(it.t))).sort((a, b) => b.y - a.y)[0];
+        const piso = Math.max(sig ? sig.y + 30 : -Infinity, fin ? fin.y + 2 : -Infinity);
+        const area = items.filter((it) => it.y < yTop && it.y > piso);
+        const hN = heads.find((c) => c.k === 'nombre');
+        const near = (it) => heads.reduce((a, b) => (Math.abs(b.cx - it.cx) < Math.abs(a.cx - it.cx) ? b : a));
+        const filas = []; area.filter((it) => it.cx < xMin && near(it) === hN && !SALTAR.test(norm(it.t))).sort((a, b) => b.y - a.y).forEach((it) => { const f = filas.find((x) => Math.abs(x.y - it.y) < 3); if (!f) filas.push({ y: it.y, info: {}, marcas: [] }); });
+        if (!filas.length) return;
+        area.forEach((it) => {
+          const f = filas.reduce((a, b) => (Math.abs(b.y - it.y) < Math.abs(a.y - it.y) ? b : a)); if (Math.abs(f.y - it.y) > 9) return;
+          if (it.cx >= xMin) { const c = cols.reduce((a, b) => (Math.abs(b.cx - it.cx) < Math.abs(a.cx - it.cx) ? b : a)); f.marcas.push([cols.indexOf(c), it.t]); }
+          else { const k = near(it).k; (f.info[k] = f.info[k] || []).push(it); }
+        });
+        const colsM = Object.fromEntries(cols.map((c, i) => [i, c]));
+        filas.forEach((f) => {
+          const o = {}; Object.entries(f.info).forEach(([k, l]) => { o[k] = l.sort((a, b) => b.y - a.y || a.x - b.x).map((x) => x.t).join(' ').trim(); });
+          if (!o.nombre) return; const r = armarFila(o, f.marcas, colsM, yDe);
+          if (o.cal || o.val) r.metTipo = o.cal && o.val ? 'CAL/VAL' : o.val ? 'VAL' : 'CAL'; if (o.prov) r.proveedor = o.prov;
+          delete r.cal; delete r.val; delete r.prov; out.push(r);
+        });
+      });
+    }
+    if (!out.length) return null;
+    out.forEach((f) => { f.plan = f.planes[anio] || Object.values(f.planes)[0] || {}; });
+    return { anio, mesIni: mesIni || 1, filas: out, meta };
+  }
+  A.leerCronograma = (file) => (/\.pdf$/i.test(file.name || '') ? leerPlanPDF(file) : leerPlanExcel(file));
 
   // ---------------------------------------------------------------- llenar inventario y cronograma con los archivos cargados
   // Toma los inventarios y cronogramas (Excel/PDF) de la entidad o sede, busca cada equipo por código (o nombre + serie)
@@ -449,6 +555,43 @@
   // Núcleo: lee los documentos y completa los equipos (eqsS) y la programación del cronograma.
   // tipo: 'mantenimiento' | 'metrologia' | 'auto' (lo deduce del nombre o subcarpeta del archivo) | null (no programa)
   const tipoDeDoc = (doc) => { const t = norm(`${doc.subcarpeta || ''} ${doc.nombre}`); return /CAPACIT/.test(t) ? null : /METROLOG|CALIBRA/.test(t) ? 'metrologia' : 'mantenimiento'; };
+  // Aplica la programación leída de un cronograma a los cronogramas de la entidad.
+  // reemplazar: los meses del periodo del archivo quedan exactamente como en el archivo (si no, solo se llenan los meses vacíos)
+  A.aplicarPlan = async (ent, plan, tipoD, { buscar, anioPlan = new Date().getFullYear(), cronCache = {}, reemplazar = false, datosMetro = true, prog = () => {} } = {}) => {
+    let nPlan = 0, nEq = 0; const sin = [], ids = [];
+    const base = plan.anio || anioPlan, mi = plan.mesIni || 1;
+    const ventana = [...Array(12).keys()].map((i) => { const abs = mi - 1 + i; return { y: base + Math.floor(abs / 12), m: (abs % 12) + 1 }; });
+    for (const [i, r] of plan.filas.entries()) {
+      prog(`Cronograma: ${i + 1} de ${plan.filas.length}`);
+      const e = buscar(r); if (!e) { sin.push(r); continue; } ids.push(e.id);
+      const planes = r.planes || { [base]: r.plan || {} };
+      // datos de metrología del archivo (proveedor, CAL / VAL) y periodicidad si estaba en "No aplica"
+      if (tipoD === 'metrologia' && datosMetro) {
+        const hv = { ...(e.hv || {}) }; let ch = false; const cambios = {};
+        if (r.proveedor && hv.met_proveedor !== r.proveedor) { hv.met_proveedor = r.proveedor; ch = true; }
+        if (r.metTipo && hv.met_tipo !== r.metTipo) { hv.met_tipo = r.metTipo; ch = true; }
+        if (ch) cambios.hv = hv;
+        const nMarcas = Object.values(planes).reduce((a, p) => a + Object.keys(p).length, 0);
+        if (nMarcas && (!e.periodicidad_metro || e.periodicidad_metro === 'No aplica')) cambios.periodicidad_metro = 'Anual';
+        if (Object.keys(cambios).length) { const u = await S.update('equipos', e.id, cambios); Object.assign(e, u || cambios); }
+      }
+      let tocado = false;
+      for (const y of new Set([...Object.keys(planes).map(Number), ...(reemplazar ? ventana.map((v) => v.y) : [])])) {
+        const ck = `${tipoD}-${y}`;
+        cronCache[ck] = cronCache[ck] || await S.list('cronogramas', { entidad_id: ent.id, tipo: tipoD, anio: y });
+        const c = cronCache[ck].find((x) => x.equipo_id === e.id);
+        const nuevo = { ...(c?.plan || {}) }; let cambio = false; const py = planes[y] || {};
+        if (reemplazar) ventana.filter((v) => v.y === y).forEach((v) => { Object.keys(nuevo).forEach((k) => { if (k !== 'notas' && +k.split('-')[0] === v.m && !py[k]) { delete nuevo[k]; cambio = true; } }); });
+        Object.entries(py).forEach(([k, v]) => { const mm = +k.split('-')[0]; const ocupado = Object.keys(nuevo).some((x) => x !== 'notas' && +x.split('-')[0] === mm && nuevo[x]);
+          if (reemplazar ? nuevo[k] !== v : !ocupado) { if (reemplazar) Object.keys(nuevo).forEach((x) => { if (x !== k && x !== 'notas' && +x.split('-')[0] === mm) delete nuevo[x]; }); nuevo[k] = v; cambio = true; } });
+        if (!cambio) continue;
+        if (c) { await S.update('cronogramas', c.id, { plan: nuevo }); c.plan = nuevo; } else if (Object.keys(nuevo).length) cronCache[ck].push(await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: e.id, tipo: tipoD, anio: y, plan: nuevo }));
+        tocado = true;
+      }
+      if (tocado) nPlan++; nEq++;
+    }
+    return { nPlan, nEq, sin, ids, ventana };
+  };
   async function procesarDocs(ent, eqsS, docsSel, { datos = true, reemplazar = false, codigos = false, crear = false, ordenar = false, sedeDe = () => null, tipo = null, anioPlan = new Date().getFullYear(), prog = () => {}, eqsDe = null } = {}) {
     let nAct = 0, nPlan = 0, nNuevos = 0; const sinMatch = new Set(), errores = [], actIds = new Set(), sedesOrdenadas = new Set();
     const cronCache = {};
@@ -491,7 +634,7 @@
       catch (e) { errores.push(`${doc.nombre}: no se pudo abrir`); continue; }
       let filas = [], plan = null;
       try { filas = await A.parsearInventario(file); } catch (e) { /* puede ser un cronograma sin tabla de inventario */ }
-      if (tipoD && /\.(xlsx?|xlsm)$/i.test(doc.nombre)) { try { plan = await leerPlanExcel(file); } catch (e) { console.warn(e); } }
+      if (tipoD && /\.(xlsx?|xlsm|pdf)$/i.test(doc.nombre)) { try { plan = await A.leerCronograma(file); } catch (e) { console.warn(e); } }
       if (!filas.length && plan) filas = plan.filas;
       filas = filas.filter((r) => /[A-ZÁÉÍÓÚÑ]{3}/i.test(r.nombre || ''));
       if (!filas.length) { errores.push(`${doc.nombre}: no se encontró la tabla de equipos`); continue; }
@@ -531,19 +674,10 @@
         const nuevo = [...deSede].sort((a, b) => idx(a) - idx(b) || deSede.indexOf(a) - deSede.indexOf(b));
         for (const [i, c] of nuevo.entries()) if (c.orden !== i + 1) { await S.update('consultorios', c.id, { orden: i + 1 }); c.orden = i + 1; }
       }
-      // 2) programación del cronograma
+      // 2) programación del cronograma (puede abarcar dos años: ej. abril 2026 – marzo 2027)
       if (plan && tipoD) {
-        const y = plan.anio || anioPlan; const ck = `${tipoD}-${y}`;
-        cronCache[ck] = cronCache[ck] || await S.list('cronogramas', { entidad_id: ent.id, tipo: tipoD, anio: y });
-        for (const r of plan.filas) {
-          const e = buscar(r, usadosP); if (!e || !Object.keys(r.plan).length) continue;
-          const c = cronCache[ck].find((x) => x.equipo_id === e.id);
-          const nuevo = { ...(c?.plan || {}) }; let cambio = false;
-          Object.entries(r.plan).forEach(([k, v]) => { if (!nuevo[k]) { nuevo[k] = v; cambio = true; } });
-          if (!cambio) continue;
-          if (c) { await S.update('cronogramas', c.id, { plan: nuevo }); c.plan = nuevo; } else cronCache[ck].push(await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: e.id, tipo: tipoD, anio: y, plan: nuevo }));
-          nPlan++;
-        }
+        const r2 = await A.aplicarPlan(ent, plan, tipoD, { buscar: (r) => buscar(r, usadosP), anioPlan, cronCache });
+        nPlan += r2.nPlan;
       }
     }
     return { nAct, nPlan, nNuevos, sinMatch, errores };

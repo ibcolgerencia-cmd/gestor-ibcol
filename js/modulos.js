@@ -302,7 +302,15 @@
       });
       // enlazado con el inventario: todos los equipos activos aparecen (aunque aún no tengan programación), en el orden del inventario
       if (!cap) eqs.filter((e) => e.estado !== 'Dado de baja' && !(A.esCarpetaDoc && A.esCarpetaDoc(e.nombre)) && (tipo !== 'metrologia' || e.periodicidad_metro !== 'No aplica')).forEach((e) => { const k = `e|${e.id}`; if (!mapa.has(k)) mapa.set(k, { key: k, equipo_id: e.id, tema: null, cr: {} }); });
-      const filas = [...mapa.values()].sort((a, b) => (cap ? String(a.tema || '').localeCompare(String(b.tema || '')) : ordenEq(eqd(a.equipo_id), eqd(b.equipo_id))));
+      // cronograma cargado desde un archivo (Excel / PDF): mismo orden y solo sus equipos en esa sede (config.crono_orden[tipo][sede])
+      const co = cap ? {} : (ent.config?.crono_orden?.[tipo] || {});
+      const posCO = new Map(); Object.values(co).forEach((o) => (o.ids || []).forEach((id, i) => posCO.set(id, i)));
+      const sedeEq = (e) => sedeC(cons.find((c) => c.id === e?.consultorio_id));
+      let ocultosCO = 0;
+      if (!cap && !F.todosEq) [...mapa.values()].forEach((r) => { const e = eqd(r.equipo_id); const o = co[sedeEq(e)]; if (o?.solo && !posCO.has(e.id)) { mapa.delete(r.key); ocultosCO++; } });
+      const ordBase = cap ? null : new Map([...eqs].sort(ordenEq).map((e, i) => [e.id, i]));
+      const llaveEq = (e) => { const sd = sedeEq(e), o = co[sd]; return [sedes.indexOf(sd), o?.orden !== false && posCO.has(e.id) && o ? posCO.get(e.id) : 1e5 + (ordBase.get(e.id) ?? 9e4)]; };
+      const filas = [...mapa.values()].sort((a, b) => { if (cap) return String(a.tema || '').localeCompare(String(b.tema || '')); const ka = llaveEq(eqd(a.equipo_id)), kb = llaveEq(eqd(b.equipo_id)); return ka[0] - kb[0] || ka[1] - kb[1]; });
       const mesF = (r, m) => mesDe(r.cr[yDe(m)], m);
       const mesAct = new Date().getMonth() + 1;
       const consDe = (r) => cons.find((x) => x.id === eqd(r.equipo_id).consultorio_id);
@@ -350,8 +358,9 @@
           ${F.mes ? `<div class="field"><select data-estado aria-label="Estado en el mes"><option value="">Cualquier estado</option><option value="P" ${F.estado === 'P' ? 'selected' : ''}>Programado</option><option value="E" ${F.estado === 'E' ? 'selected' : ''}>Ejecutado</option><option value="N" ${F.estado === 'N' ? 'selected' : ''}>No ejecutado</option></select></div>` : ''}
           <input type="search" data-q value="${h(F.qRaw || '')}" placeholder="Buscar código, equipo, serie…" aria-label="Buscar en el cronograma">
           <span class="muted">${visibles.length} de ${filas.length}</span>
-          ${esProp() && !cap ? `<span class="sp"></span><button class="btn" data-act="marcarCrono" title="Marcar de una vez una semana en uno o varios meses para todos los equipos que se están viendo">✓ Marcar todo</button><button class="btn" data-act="limpiarCrono" title="Quitar de una vez las marcas (P, E, N, G, C) de los equipos que se están viendo">✕ Desmarcar todo</button><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
+          ${esProp() && !cap ? `<button class="btn" data-act="cargarCrono" title="Cargar un cronograma en Excel o PDF (mantenimiento o metrología, con semanas o CP / CE): programa cada equipo en el mismo orden del archivo">${I.subir} Cargar Excel / PDF</button>` : ''}${esProp() && !cap ? `<span class="sp"></span><button class="btn" data-act="marcarCrono" title="Marcar de una vez una semana en uno o varios meses para todos los equipos que se están viendo">✓ Marcar todo</button><button class="btn" data-act="limpiarCrono" title="Quitar de una vez las marcas (P, E, N, G, C) de los equipos que se están viendo">✕ Desmarcar todo</button><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
         ${resumen}
+        ${ocultosCO || F.todosEq ? `<p class="muted" style="margin:4px 0">${F.todosEq ? 'Mostrando todos los equipos.' : `Cronograma cargado del archivo «${h(Object.values(co).find((o) => o.solo)?.archivo || '')}»: ${ocultosCO} equipo${ocultosCO === 1 ? '' : 's'} de la sede que no ${ocultosCO === 1 ? 'está' : 'están'} en el archivo no se muestra${ocultosCO === 1 ? '' : 'n'}.`} <button class="btn sm" data-act="todosEq">${F.todosEq ? 'Ver solo los del archivo' : 'Mostrar todos'}</button></p>` : ''}
         <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span><span><i style="background:#b9a3e3"></i>G · En garantía</span><span><i style="background:#7cc4e8"></i>C · Comodato</span>${esProp() ? `<span>Toque una semana para cambiar su estado (P → E → N → G → C)${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses · botón de anotaciones de cada fila para escribir, por mes, notas como “Equipo en garantía, mantenimiento a cargo del proveedor”'}.</span>` : ''}</div>
         ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
         ${A.datalistNR}
@@ -427,6 +436,8 @@
         anio12: () => { F.anio12 = !F.anio12; pintar(); },
         llenarNR: () => A.completarNR([...new Set(visibles.map((r) => eqd(r.equipo_id)).filter((e) => e.id))], pintar),
         llenarArch: () => A.llenarDesdeArchivos(ent, { sede: sedeCtx || null, tipo: cap ? null : tipo, anio, alTerminar: () => { st.cronoAnio = anio; A.recargar(); } }),
+        cargarCrono: () => A.cargarCronograma(ent, { tipo, sede: sedeCtx || (F.serv.startsWith('sede:') ? F.serv.slice(5) : null), alTerminar: (r) => { if (r.tipo === tipo) { anio = r.anio; F.mesIni = r.mesIni; F.mes = 0; if (!sedeCtx && r.sede) F.serv = 'sede:' + r.sede; } A.recargar(); } }),
+        todosEq: () => { F.todosEq = !F.todosEq; pintar(); },
         celda: async (d, b) => {
           const r = filas[+d.r]; const y = +d.y; const orden = ['', 'P', 'E', 'N', 'G', 'C'];
           const actual = r.cr[y]?.plan?.[d.k] || '';
