@@ -113,14 +113,18 @@
       return c;
     };
     const vistos = new Set();
+    const sinSuf = (t) => comp(String(t || '').replace(/(-B)+$/i, ''));
+    const codsInv = new Set(filas.map((r) => sinSuf(r.codigo)).filter(Boolean));
     for (const [i, r] of filas.entries()) {
       prog(`Equipo ${i + 1} de ${filas.length}`);
       const c = await servicio(r.servicio);
       const datos = { nombre: titulo(r.nombre), consultorio_id: c.id, ubicacion: titulo(r.ubicacion || r.servicio) || null, marca: r.marca || null, modelo: r.modelo || null, serie: r.serie && !/^N\/?R$/i.test(r.serie) ? r.serie : null,
         activo_fijo: r.af || null, clase_riesgo: riesgoDe(r.riesgo), registro_sanitario: r.rs || null, orden: Number(r.item) || i + 1 };
-      let e = r.codigo ? eqs.find((x) => !vistos.has(x.id) && comp(x.codigo_inv) === comp(r.codigo)) : null;
+      // 1) por código en TODA la entidad (los códigos son únicos: si el equipo quedó en otra sede o servicio, se mueve al del inventario)
+      let e = r.codigo ? (eqs.find((x) => !vistos.has(x.id) && comp(x.codigo_inv) === comp(r.codigo)) || eqsTodos.find((x) => !vistos.has(x.id) && sinSuf(x.codigo_inv) === sinSuf(r.codigo))) : null;
       if (!e && comp(r.codigo).length >= 5) e = eqs.find((x) => !vistos.has(x.id) && comp(x.codigo_inv).includes(comp(r.codigo)));
-      if (!e) e = eqs.find((x) => !vistos.has(x.id) && comp(x.nombre) === comp(datos.nombre) && (!x.serie || comp(x.serie) === comp(datos.serie)) && !A.esCarpetaDoc(x.nombre));
+      // 2) por nombre en el mismo servicio (con sede) o en la entidad, solo entre equipos cuyo código no está en el inventario (p. ej. creados desde carpetas de documentos)
+      if (!e) { const cand = eqs.filter((x) => !vistos.has(x.id) && !codsInv.has(sinSuf(x.codigo_inv)) && comp(x.nombre) === comp(datos.nombre) && (!x.serie || comp(x.serie) === comp(datos.serie)) && !A.esCarpetaDoc(x.nombre)); e = cand.find((x) => x.consultorio_id === c.id) || (sede ? null : cand[0]); }
       if (e) { const nuevo = await S.update('equipos', e.id, { ...datos, codigo_inv: r.codigo || e.codigo_inv }); Object.assign(e, nuevo); nA++; }
       else {
         let cod = r.codigo || `${comp(datos.nombre).slice(0, 3)}-${String(i + 1).padStart(3, '0')}`;
@@ -140,7 +144,10 @@
     const ordenInv = [...enInv];
     const consAhora = (await S.list('consultorios', { entidad_id: ent.id })).filter(deSede);
     for (const c of consAhora) { const i = ordenInv.indexOf(norm(c.nombre)); if (i >= 0 && c.orden !== i + 1) await S.update('consultorios', c.id, { orden: i + 1 }); }
-    return { nS: Math.max(0, nS), nE, nA };
+    // mismo orden del archivo (servicio por servicio y equipo por equipo) en el inventario, los cronogramas y 3. Información del equipo
+    prog('Ordenando como en el inventario…');
+    const plan = await A.planOrdenInventario(ent, sede, filas); await A.aplicarOrdenInventario(plan, prog);
+    return { nS: Math.max(0, nS), nE, nA, sinInv: plan.sinInv };
   };
 
   // ---------------------------------------------------------------- ordenar según el inventario anexado
@@ -346,8 +353,11 @@
       let filas;
       try { filas = await A.parsearInventario(file); } catch (e) { return toast(e.message, true); }
       const servicios = [...new Set(filas.map((r) => titulo(r.servicio) || 'SIN SERVICIO'))];
-      const eqs = await S.list('equipos', { entidad_id: ent.id });
+      const [eqs, consE] = await Promise.all([S.list('equipos', { entidad_id: ent.id }), S.list('consultorios', { entidad_id: ent.id })]);
       const malos = eqs.filter((e) => A.esCarpetaDoc(e.nombre)).length;
+      // sede del inventario: se adivina por el nombre del archivo ("Inventario Siempree II" → SIEMPREE II)
+      const sedes = A.sedesDe(consE, ent), nf = ` ${comp(file.name.replace(/\.[^.]+$/, '')).replace(/\d{4}/g, ' ')} `;
+      const sedeAdiv = sedes.length > 1 ? [...sedes].sort((a, b) => comp(b).length - comp(a).length).find((sd) => { const k = comp(sd); return k && new RegExp(`${k}(?![I])`).test(nf.replace(/\s/g, '')); }) || '' : '';
       modal({
         titulo: `Inventario de ${ent.razon_social}`, size: 'wide',
         cuerpo: `<div class="form"><p>Leí <b>${filas.length} equipos</b> en <b>${servicios.length} servicios</b> de “${h(file.name)}”. Revise antes de aplicar:</p>
@@ -355,10 +365,12 @@
           ${filas.map((r) => `<tr><td class="num">${h(r.item || '')}</td><td class="mono">${h(r.codigo || '')}</td><td><b>${h(r.nombre)}</b></td><td>${h(r.marca || '')}</td><td>${h(r.modelo || '')}</td><td class="mono">${h(r.serie || '')}</td><td>${h(r.servicio || '')}</td><td>${h(riesgoDe(r.riesgo) || r.riesgo || '')}</td><td class="mono">${h(r.rs || '')}</td></tr>`).join('')}
           </tbody></table></div>
           <p class="muted">Al aplicar: se crean los servicios (${servicios.map(h).join(', ')}) y dentro de cada uno sus equipos con sus datos. Los equipos que ya existen se actualizan, no se duplican.${malos ? ` También se reubicarán los documentos que quedaron mal clasificados en la importación anterior (${malos} carpetas de documentos que se habían creado como equipos).` : ''}</p>
+          ${sedes.length > 1 ? `<div class="fields" style="margin-top:8px"><label class="field full"><span>¿De qué sede es este inventario?</span><select name="sede_inv">${['', ...sedes].map((sd) => `<option value="${h(sd)}" ${sd === sedeAdiv ? 'selected' : ''}>${sd ? h(sd) : 'Toda la entidad (varias sedes)'}</option>`).join('')}</select></label></div><p class="muted" style="font-size:.85rem">Los servicios y equipos de esa sede quedan en el mismo orden del archivo, servicio por servicio, en el Inventario, los Cronogramas y 3. Información del equipo. Un equipo cuyo código está en el archivo pero quedó en otra sede o servicio se mueve al que indica el inventario.</p>` : '<p class="muted" style="font-size:.85rem">Los servicios y equipos quedan en el mismo orden del archivo en el Inventario, los Cronogramas y 3. Información del equipo.</p>'}
           <div class="muted" data-prog></div></div>`,
         acciones: [{ t: 'Cancelar' }, { t: 'Aplicar inventario', cls: 'pri', fn: async (m) => {
           const pr = m.body.querySelector('[data-prog]'); const p = (t) => { pr.textContent = t; };
-          const r1 = await A.aplicarInventario(ent, filas, p);
+          const sedeInv = m.body.querySelector('[name=sede_inv]')?.value || null;
+          const r1 = await A.aplicarInventario(ent, filas, p, { sede: sedeInv });
           if (!ent.logo) { try { const logo = await A.logoDeInventario(file); if (logo) { await S.update('entidades', ent.id, { logo }); ent.logo = logo; } } catch (e) { console.warn('logo', e); } }
           let r2 = { movidos: 0, borrados: 0 };
           r2 = await A.repararEstructura(ent, p);
@@ -369,7 +381,8 @@
           }
           toast(`${r1.nS} servicios y ${r1.nE} equipos creados, ${r1.nA} actualizados${r2.movidos ? ` · ${r2.movidos} documentos reubicados` : ''}`);
           A.go('areas', { id: ent.id });
-          setTimeout(() => A.revisarDocumentos(ent, { auto: true }), 600);
+          if (r1.sinInv?.length) setTimeout(() => modal({ titulo: `${r1.sinInv.length} equipo${r1.sinInv.length === 1 ? '' : 's'} no está${r1.sinInv.length === 1 ? '' : 'n'} en el inventario`, cuerpo: `<p>Estos equipos${sedeInv ? ` de ${h(sedeInv)}` : ''} no aparecen en el archivo. Quedaron al final de su servicio, sin cambios. Revise si están repetidos, de baja o en otra sede.</p><ul>${r1.sinInv.map((e) => `<li><span class="mono">${h(e.codigo_inv || '')}</span> ${h(e.nombre || '')}</li>`).join('')}</ul>`, acciones: [{ t: 'Entendido', cls: 'pri' }] }), 500);
+          else setTimeout(() => A.revisarDocumentos(ent, { auto: true }), 600);
         } }],
       });
     };
