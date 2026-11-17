@@ -168,12 +168,15 @@ window.FMT = (() => {
   const partes = (arr, n) => { const out = []; for (let i = 0; i < Math.max(1, arr.length); i += n) out.push(arr.slice(i, i + n)); return out; };
 
   // ------------------------------------------------------------------ HOJA DE VIDA (FHVEB-001)
+  // las listas no traen las imágenes pesadas (foto del equipo, firmas): se completan antes de dibujar
+  const completar = async (t, r) => { if (r && window.APP?.S?.completar) await window.APP.S.completar(t, r); return r; };
   async function hojaVida({ eq, ent, cons, fmt = {} }) {
+    await completar('equipos', eq);
     const hv = eq.hv || {}; const v = { ...cabEntidad(ent, cons) };
     v.ent_contacto = [ent?.representante, ent?.telefono].filter(Boolean).length ? `CONTACTO: ${[ent.representante, ent.telefono].filter(Boolean).join(' - ')}` : undefined;
     const tr = hv.tipo_registro || (eq.registro_sanitario ? 'RS' : 'NR');
     Object.assign(v, { rs: nr(val(eq, 'registro_sanitario')), mk_rs: X(tr === 'RS'), mk_pc: X(tr === 'PC'), mk_na: X(tr === 'NA'), mk_nr: X(tr === 'NR'),
-      ecri: nr(hv.ecri), reps: nr(ent?.reps), distintivo: nr(hv.distintivo), equipo: U(val(eq, 'nombre')), foto: hv.foto || null, funcion: nr(hv.funcion),
+      ecri: nr(hv.ecri), reps: nr(ent?.reps), distintivo: nr(hv.distintivo), equipo: U(val(eq, 'nombre')), foto: eq.foto || hv.foto || null, funcion: nr(hv.funcion),
       marca: nr(val(eq, 'marca')), af: nr(val(eq, 'activo_fijo')), modelo: nr(val(eq, 'modelo')), servicio: nr(cons?.servicio || cons?.nombre), serie: nr(val(eq, 'serie')), ubicacion: nr(val(eq, 'ubicacion')),
       inventario: nr(val(eq, 'codigo_inv')), movil: X(hv.movil !== 'Fijo'), fijo: X(hv.movil === 'Fijo') });
     const adq = lista(hv.adquisicion || 'Compra')[0];
@@ -227,6 +230,7 @@ window.FMT = (() => {
   }
 
   async function mtoCorrectivo(o) {
+    await completar('mantenimientos', o.m);
     const d = o.m.datos || {}; const v = mtoComun(o);
     Object.assign(v, { frecuencia: fD(d.fecha_reporte), tiempo: d.horas ? `${d.horas} h` : '', falla: d.falla || '', diagnostico: d.diagnostico || '', causa: d.causa || '' });
     (d.actividades || []).slice(0, 12).forEach((a, i) => { v[`ac${i}`] = a; v[`ok${i}`] = '✓'; });
@@ -234,6 +238,7 @@ window.FMT = (() => {
   }
 
   async function metrologia(o) {
+    await completar('mantenimientos', o.m);
     const d = o.m.datos || {}; const v = mtoComun(o);
     Object.assign(v, { frecuencia: o.eq.periodicidad_metro || '', tiempo: d.tiempo || '', laboratorio: d.laboratorio || '', certificado: d.certificado || '', magnitud: d.magnitud || '',
       fecha_cal: fD(o.m.fecha), proxima: fD(d.proxima), resultado: d.resultado || '', mediciones: d.mediciones || '' });
@@ -242,6 +247,7 @@ window.FMT = (() => {
 
   // ------------------------------------------------------------------ MANTENIMIENTO PREVENTIVO (FMB-004)
   async function mtoPreventivo({ m, eq, ent, cons, fmt = {} }) {
+    await completar('mantenimientos', m);
     const d = m.datos || {};
     const v = { equipo: U(val(eq, 'nombre')), numero: m.numero || '', entidad: ent?.razon_social || '', sede: cons?.sede || '', servicio: cons?.nombre || '', marca: nr(val(eq, 'marca')), modelo: nr(val(eq, 'modelo')), serie: nr(val(eq, 'serie')),
       frecuencia: d.frecuencia || eq.periodicidad_mto || '', fecha: fD(m.fecha), tiempo: d.tiempo ? (/^\d{1,2}:\d{2}$/.test(d.tiempo) ? d.tiempo + ':00' : d.tiempo) : undefined,

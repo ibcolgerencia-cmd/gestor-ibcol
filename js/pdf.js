@@ -265,7 +265,7 @@ window.PDF = (() => {
       [L('PÁGINA WEB'), V(nr(hv.prov_web)), L('PÁGINA WEB'), V(nr(hv.fab_web))],
     ], c4, { left: xR });
     doc.setDrawColor(60); doc.setLineWidth(0.2); doc.rect(X0, yFoto, fotoW, y - yFoto);
-    if (hv.foto) logo(doc, hv.foto, X0 + 2, yFoto + 2, fotoW - 4, y - yFoto - 4);
+    if (eq.foto || hv.foto) logo(doc, eq.foto || hv.foto, X0 + 2, yFoto + 2, fotoW - 4, y - yFoto - 4);
     else { doc.setFontSize(6.5); doc.setTextColor(150); doc.text('FOTO DEL EQUIPO', X0 + fotoW / 2, yFoto + (y - yFoto) / 2, { align: 'center' }); doc.setTextColor(20); }
     y += 1;
 

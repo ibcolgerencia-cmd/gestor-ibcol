@@ -101,10 +101,24 @@ window.Store = (() => {
       const p = fn(); CACHE.set(k, { t: tabla, at: Date.now(), p });
       try { return copia(await p); } catch (e) { CACHE.delete(k); throw e; }
     };
-    async function listRed(t, filtros, orden, limite = 100000) {
+    // columnas pesadas (imágenes en base64, fotos de auditoría) que NO se descargan en las listas; se traen
+    // solo cuando hacen falta con S.completar(tabla, fila|filas) o con S.get / list(..., { completo: true }).
+    const PESADOS = { mantenimientos: ['firma_realizo', 'firma_recibe'], equipos: ['foto'], auditoria: ['antes', 'despues'] };
+    const COLS = {}, TODAS = {}, verC = () => String(window.IBCOL_VERSION || '');
+    async function columnasLigeras(t) {
+      if (!PESADOS[t]) return '*';
+      if (!COLS[t]) {
+        let cols = null; try { cols = JSON.parse(localStorage.getItem(`ibcol.cols.${verC()}.${t}`) || 'null'); } catch {}
+        if (!cols) { const r = await sb.from(t).select('*').limit(1); if (r.error || !r.data?.length) return '*'; cols = Object.keys(r.data[0]); try { localStorage.setItem(`ibcol.cols.${verC()}.${t}`, JSON.stringify(cols)); } catch {} }
+        TODAS[t] = cols; COLS[t] = cols.filter((c) => !PESADOS[t].includes(c)).join(',');
+      }
+      return COLS[t];
+    }
+    async function listRed(t, filtros, orden, limite = 100000, completo = false) {
       const out = [], key = KEYS[t] || 'id';
+      const sel = completo || (t === 'auditoria' && limite <= 50) ? '*' : await columnasLigeras(t);
       for (let desde = 0; desde < limite; desde += 1000) {
-        let q = aplicar(sb.from(t).select('*'), filtros);
+        let q = aplicar(sb.from(t).select(sel), filtros);
         if (orden) q = q.order(orden.replace('-', ''), { ascending: !orden.startsWith('-') });
         if (!orden || orden.replace('-', '') !== key) q = q.order(key, { ascending: true });
         const hasta = Math.min(desde + 999, limite - 1);
@@ -130,7 +144,22 @@ window.Store = (() => {
       },
       async logout() { limpiar(); try { await this.log('LOGOUT', 'perfiles', perfil?.id, 'Salida'); } catch {} perfil = null; await sb.auth.signOut(); },
       // Supabase entrega máximo 1000 filas por consulta: se pide por páginas hasta traer todo
-      async list(t, filtros, orden, limite = 100000) { return deCache(t, ckey('l', t, filtros || {}, orden || '', limite), () => listRed(t, filtros, orden, limite)); },
+      async list(t, filtros, orden, limite = 100000, opts = {}) { const c = !!opts.completo; return deCache(t, ckey('l', t, filtros || {}, orden || '', limite, c), () => listRed(t, filtros, orden, limite, c)); },
+      // trae las columnas pesadas que faltan (firmas, foto, antes/después) de una fila o de varias
+      async completar(t, filas) {
+        if (!PESADOS[t] || !filas) return filas;
+        await columnasLigeras(t); const P = PESADOS[t].filter((k) => !TODAS[t] || TODAS[t].includes(k));
+        if (!P.length) { (Array.isArray(filas) ? filas : [filas]).forEach((r) => r && PESADOS[t].forEach((k) => { if (!(k in r)) r[k] = null; })); return filas; }
+        const lista = Array.isArray(filas) ? filas : [filas], key = KEYS[t] || 'id';
+        const faltan = lista.filter((r) => r && r[key] && P.some((k) => !(k in r)));
+        for (let i = 0; i < faltan.length; i += 100) {
+          const ids = faltan.slice(i, i + 100).map((r) => r[key]);
+          let datos = []; try { datos = await deCache(t, ckey('c', t, ids), async () => chk(await sb.from(t).select([key, ...P].join(',')).in(key, ids))); } catch (e) { if (!/column|columna/i.test(e.message)) throw e; console.warn('completar', t, e.message); }
+          datos.forEach((d) => { const r = faltan.find((x) => x[key] === d[key]); if (r) P.forEach((k) => { r[k] = d[k] ?? null; }); });
+        }
+        faltan.forEach((r) => PESADOS[t].forEach((k) => { if (!(k in r)) r[k] = null; }));
+        return filas;
+      },
       async get(t, id) { return deCache(t, ckey('g', t, id), async () => chk(await sb.from(t).select('*').eq(KEYS[t] || 'id', id).maybeSingle())); },
       async insert(t, o) { limpiar(t); try { return chk(await sb.from(t).insert(sinExcel(t, o)).select().single()); } finally { limpiar(t); } },
       async update(t, id, o) { limpiar(t); try { return chk(await sb.from(t).update(sinExcel(t, o)).eq(KEYS[t] || 'id', id).select().single()); } finally { limpiar(t); } },
@@ -324,6 +353,7 @@ window.Store = (() => {
         return p;
       },
       async logout() { auditar('LOGOUT', 'perfiles', perfil?.id, null, null, 'Salida'); guardar(); perfil = null; try { sessionStorage.removeItem(SS); } catch {} },
+      async completar(t, filas) { return filas; },
       async list(t, filtros, orden, limite = 100000) {
         let r = tabla(t).filter((x) => visible(t, x));
         Object.entries(filtros || {}).forEach(([k, v]) => { r = r.filter((x) => (v === null ? x[k] == null : x[k] === v)); });

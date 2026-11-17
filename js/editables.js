@@ -262,10 +262,11 @@
   const contenidoFirmado = (reg) => { const { firma_digital, ...datos } = reg.datos || {}; return canon({ tipo: reg.tipo, numero: reg.numero, fecha: reg.fecha, equipo_id: reg.equipo_id, datos, realizo: !!reg.firma_realizo, recibe: !!reg.firma_recibe }); };
   const codigo = (hex) => hex.slice(0, 16).toUpperCase().match(/.{4}/g).join('-');
   A.firmarDigital = async (reg) => ({ por: st.perfil?.usuario || '', nombre: st.emp.responsable || '', cargo: st.emp.cargo || '', fecha: new Date().toISOString(), hash: codigo(await sha256(contenidoFirmado(reg))) });
-  A.verificarFirma = async (reg) => { const fd = reg.datos?.firma_digital; if (!fd) return null; return codigo(await sha256(contenidoFirmado(reg))) === fd.hash; };
+  A.verificarFirma = async (reg) => { const fd = reg.datos?.firma_digital; if (!fd) return null; await S.completar('mantenimientos', reg); return codigo(await sha256(contenidoFirmado(reg))) === fd.hash; };
 
   // Firmar (o volver a firmar) un reporte ya guardado: quien recibe y quien realizó
-  A.firmarReporte = (m, eq, ent, cons) => {
+  A.firmarReporte = async (m, eq, ent, cons) => {
+    await S.completar('mantenimientos', m); // las firmas no vienen en las listas
     const d = m.datos || {}; let fRecibe = m.firma_recibe || null, fRealizo = m.firma_realizo || st.firma || null; let cambioRecibe = false;
     const caja = (t, img, i) => `<div class="field"><span class="lbl">${t}</span><div class="sig-prev">${img ? `<img src="${img}" alt="Firma">` : '<span class="muted">Sin firma</span>'}</div><button type="button" class="btn sm" data-fsig="${i}">${I.firma} Capturar firma</button></div>`;
     modal({

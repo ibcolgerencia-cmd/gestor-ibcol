@@ -767,7 +767,7 @@
 
   // ------------------------------------------------------------ Mantenimientos (carpeta)
   A.G.mto = async (el, { ent, eq }, tipo) => {
-    const [cons, mtos] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('mantenimientos', { equipo_id: eq.id, tipo }, '-fecha')]);
+    const [cons, mtos] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('mantenimientos', { equipo_id: eq.id, tipo }, '-fecha', 100000, { completo: true })]);
     const c = cons.find((x) => x.id === eq.consultorio_id);
     const nom = { preventivo: 'Reportes de mantenimiento preventivo', correctivo: 'Reportes de mantenimiento correctivo', metrologia: 'Registros de metrología y calibración' }[tipo];
     const firmable = tipo !== 'metrologia';
@@ -963,7 +963,7 @@
 
   // ------------------------------------------------------------ Hoja de vida completa
   A.formHojaVida = (eq, cons) => {
-    const hv = eq.hv || {}, x = (k) => `hv_${k}`; let foto = hv.foto || null;
+    const hv = eq.hv || {}, x = (k) => `hv_${k}`; let foto = eq.foto || hv.foto || null;
     const chk = (k, l, opts) => f.checks(x(k), l, opts, Array.isArray(hv[k]) ? hv[k] : hv[k] ? [hv[k]] : []);
     const anexos = [['reg_sanitario', '8.1 Registro sanitario o permiso'], ['importacion', '8.2 Registro de importación'], ['factura', '8.3 Factura o contrato'], ['acta_recibido', '8.4 Ingreso almacén / acta de recibido'], ['crono_garantia', '8.5 Cronograma en garantía'], ['protocolo', '8.6 Protocolo del fabricante'], ['guia', '8.7 Guía rápida de operación']];
     const T = ['Identificación', 'Código ECRI', 'Adquisición', 'Proveedor y fabricante', 'Datos técnicos', 'Apoyo técnico', 'Accesorios', 'Anexos', '9.5 Mediciones y recomendaciones'];
@@ -1030,7 +1030,7 @@
         const d = leer(m.body); const cols = {}, nhv = { ...hv, anexos: {} };
         Object.entries(d).forEach(([k, v]) => { if (k.startsWith('hv_anexo_')) nhv.anexos[k.slice(9)] = v; else if (k.startsWith('hv_')) nhv[k.slice(3)] = v; else cols[k] = v; });
         if (!(Array.isArray(nhv.fuente) ? nhv.fuente : [nhv.fuente]).includes('Otro')) nhv.fuente_cual = '';
-        nhv.accesorios = repLeer(m.body, 'acc'); nhv.foto = foto; nhv.mediciones_tabla = nhv.mediciones_aplica === 'No aplica' ? [] : repLeer(m.body, 'med');
+        nhv.accesorios = repLeer(m.body, 'acc'); if ('foto' in eq) { delete nhv.foto; cols.foto = foto; } else nhv.foto = foto; nhv.mediciones_tabla = nhv.mediciones_aplica === 'No aplica' ? [] : repLeer(m.body, 'med');
         if (!cols.nombre || !cols.codigo_inv) { toast('Nombre y código de inventario son obligatorios', true); return false; }
         nhv.nr = { ...(hv.nr || {}) }; Object.keys(nhv.nr).forEach((k) => { if (k in cols && cols[k] && !/^(no registra|nr|no aplica)$/i.test(cols[k]) && cols[k] !== eq[k]) delete nhv.nr[k]; });
         Object.keys(cols).forEach((k) => { if (/^(no registra|no aplica)$/i.test(cols[k] || '') && !['codigo_inv', 'nombre'].includes(k)) { nhv.nr[k] = /aplica/i.test(cols[k]) ? 'NA' : true; cols[k] = ''; } });
@@ -1064,6 +1064,7 @@
     agregar(k, /[.!?:]$/.test(t) ? t : `${t}.`, false);
   };
   A.formMto = async ({ eq, ent, cons, tipo, m = null, nota = null, fecha: fechaIni = null, pre = null, alGuardar = null }) => {
+    if (m) await S.completar('mantenimientos', m); // las firmas no vienen en las listas
     const todos = await S.list('mantenimientos', { entidad_id: ent.id });
     // anotaciones hechas en el cronograma (mantenimiento o metrología) para este equipo
     let notasCr = [];
@@ -1574,9 +1575,14 @@
       const k = Object.keys(a.despues).filter((x) => !['updated_at', 'created_at'].includes(x) && JSON.stringify(a.antes[x]) !== JSON.stringify(a.despues[x]));
       return k.length ? `<div class="muted" style="font-size:.8rem">${k.slice(0, 4).map((x) => `${h(x)}: <s>${h(String(typeof a.antes[x] === 'object' ? '…' : a.antes[x] ?? '—').slice(0, 30))}</s> → ${h(String(typeof a.despues[x] === 'object' ? '(actualizado)' : a.despues[x] ?? '—').slice(0, 30))}`).join(' · ')}</div>` : '';
     };
+    // la lista llega sin «antes/después» (son copias completas de los registros, con imágenes): se traen solo
+    // para las primeras filas que se ven en pantalla
+    let completando = false;
     const pintar = () => {
       const t = ft.toLowerCase();
       const l = aud.filter((a) => (!fa || a.accion === fa) && (!t || `${a.usuario} ${en(a.entidad_id)} ${a.detalle} ${JSON.stringify(a.despues || a.antes || {})}`.toLowerCase().includes(t))).slice(0, 400);
+      const sinDet = l.slice(0, 40).filter((a) => !('antes' in a));
+      if (sinDet.length && !completando) { completando = true; S.completar('auditoria', sinDet).then(() => { completando = false; pintar(); }).catch(() => { completando = false; }); }
       A.content().querySelector('tbody').innerHTML = l.map((a) => `<tr><td class="num" style="white-space:nowrap">${UI.fechaHora(a.fecha)}</td><td class="mono">${h(a.usuario || '')}</td><td><span class="pill ${a.accion === 'DELETE' ? 'bad' : a.accion === 'UPDATE' ? 'warn' : a.accion === 'INSERT' ? 'ok' : 'acc'}">${a.accion}</span></td><td>${A.accionTxt(a)}${cambios(a)}</td><td>${h(en(a.entidad_id))}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Sin registros.</td></tr>';
     };
     A.content().querySelector('[data-fa]').onchange = (e) => { fa = e.target.value; pintar(); };

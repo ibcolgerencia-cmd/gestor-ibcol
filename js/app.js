@@ -634,7 +634,7 @@ window.APP = (() => {
         <div class="actions">${A.estadoPill(eq.estado)}${esProp() ? `<button class="btn" data-act="fotoEq">${I.subir} Imagen del equipo</button>` : ''}<button class="btn" data-act="pdfHV">${I.pdf} Hoja de vida PDF</button>${esProp() ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button><button class="btn pri" data-act="editHV">${I.edit} Editar hoja de vida</button>` : ''}</div></div>
       <section class="panel"><div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
         <div style="flex:0 0 150px;height:150px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff${esProp() ? ';cursor:pointer' : ''}" ${esProp() ? 'data-act="fotoEq" title="Cambiar imagen del equipo"' : ''}>
-          ${eq.hv?.foto ? `<img src="${eq.hv.foto}" alt="Imagen del equipo" style="max-width:100%;max-height:100%;object-fit:contain">` : '<span class="muted" style="font-size:.8rem;text-align:center;padding:8px">IMAGEN DEL EQUIPO<br>(sin cargar)</span>'}</div>
+          ${eq.foto || eq.hv?.foto ? `<img src="${eq.foto || eq.hv.foto}" alt="Imagen del equipo" style="max-width:100%;max-height:100%;object-fit:contain">` : '<span class="muted" style="font-size:.8rem;text-align:center;padding:8px">IMAGEN DEL EQUIPO<br>(sin cargar)</span>'}</div>
         <div class="hv-sum" style="flex:1;min-width:260px">
         <div><span>Registro sanitario</span><b class="mono">${h(eq.registro_sanitario || 'NR')}</b></div>
         <div><span>Código ECRI</span><b class="mono">${h(eq.hv?.ecri || 'Sin asignar')}</b></div>
