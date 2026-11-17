@@ -495,7 +495,7 @@ window.APP = (() => {
     const fila = (e) => `<button class="eq-row" data-act="abrirEq" data-id="${e.id}"><span class="cod">${e._n}. ${h(e.codigo_inv)}</span><span class="nm"><b>${h(e.nombre)}</b><small>${h([e.marca, e.modelo].filter(Boolean).join(' · '))}</small></span><span class="mm muted mono" style="font-size:.8rem">S/N ${h(e.serie || '—')}</span><span class="badges">${A.riesgo(e.clase_riesgo)}${A.estadoPill(e.estado)}</span></button>`;
     const filaEq = (e) => (esProp() ? `<div class="eq-wrap">${fila(e)}<button class="icon-btn eq-edit" data-act="editEqLista" data-id="${e.id}" title="Editar el nombre y los datos del equipo" aria-label="Editar ${h(e.nombre)}">${I.edit}</button><button class="icon-btn bad eq-del" data-act="borrarEqLista" data-id="${e.id}" title="Eliminar este equipo" aria-label="Eliminar ${h(e.nombre)} (${h(e.codigo_inv)})">${I.del}</button></div>` : fila(e));
     const sala = (c, lista) => `<section class="room"><header><h3>${c ? `${c._n}. ${h(c.nombre.toUpperCase())}` : 'SIN SERVICIO ASIGNADO'} ${c?.sede ? `<small class="muted" style="font-family:var(--f-body);font-weight:400;font-size:.85rem">${h(c.sede)}${c.servicio ? ' · ' + h(c.servicio) : ''}</small>` : ''}</h3>
-        <div class="actions"><span class="pill">${lista.length} equipo${lista.length === 1 ? '' : 's'}</span>${esProp() && c ? `<button class="icon-btn" data-act="editCons" data-id="${c.id}" aria-label="Editar área">${I.edit}</button><button class="btn sm" data-act="nuevoEq" data-cons="${c.id}">${I.mas} Equipo</button>` : ''}</div></header>
+        <div class="actions"><span class="pill">${lista.length} equipo${lista.length === 1 ? '' : 's'}</span>${esProp() && c ? `<button class="icon-btn" data-act="editCons" data-id="${c.id}" aria-label="Editar área">${I.edit}</button><button class="icon-btn bad" data-act="delCons" data-id="${c.id}" aria-label="Eliminar área" title="Eliminar esta área o consultorio (si tiene equipos, primero se pasan a otra área)">${I.del}</button><button class="btn sm" data-act="nuevoEq" data-cons="${c.id}">${I.mas} Equipo</button>` : ''}</div></header>
         <div class="eq-list">${lista.map(filaEq).join('') || '<div class="empty">Sin equipos registrados.</div>'}</div></section>`;
     // Carpetas de servicios (ej. EXTRAMURAL con KIT 1, KIT 2…): entidades.config.carpetas_serv = { consultorioId: 'EXTRAMURAL' }
     const mapaCarp = { ...(ent.config?.carpetas_serv || {}) };
@@ -576,6 +576,7 @@ window.APP = (() => {
       }),
       nuevoCons: () => A.formConsultorio(id, null, (sedeSel ? cons.filter((c) => sedeC(c) === sedeSel).length : cons.length) + 1, sedeSel || null),
       editCons: (d) => A.formConsultorio(id, cons.find((c) => c.id === d.id)),
+      delCons: (d) => A.eliminarArea(cons.find((c) => c.id === d.id)),
       carpNueva: (d) => formCarp(d.s),
       carpEditar: (d) => formCarp(d.s, d.n),
       carpQuitar: async (d) => {
@@ -589,11 +590,30 @@ window.APP = (() => {
     });
   };
 
+  // eliminar un área / consultorio (p. ej. carpetas sobrantes que quedaron al importar). Si tiene equipos, primero se pasan
+  // a otra área de la misma sede: ningún equipo queda sin área y sus documentos, reportes y cronogramas se conservan.
+  A.eliminarArea = async (c) => {
+    if (!c) return;
+    const [consT, eqsT] = await Promise.all([S.list('consultorios', { entidad_id: c.entidad_id }), S.list('equipos', { entidad_id: c.entidad_id })]);
+    const sedeDe = (x) => x.sede || 'Sede principal', dentro = A.ordenar(eqsT.filter((e) => e.consultorio_id === c.id));
+    const otras = A.ordenar(consT.filter((x) => x.id !== c.id && sedeDe(x) === sedeDe(c))), resto = A.ordenar(consT.filter((x) => x.id !== c.id && sedeDe(x) !== sedeDe(c)));
+    if (!dentro.length) { if (!(await confirmar(`¿Eliminar el área «${c.nombre}» (${sedeDe(c)})? Está vacía.`, 'Eliminar área'))) return; await S.remove('consultorios', c.id); toast('Área eliminada'); return A.recargar(); }
+    if (!otras.length && !resto.length) return toast('Es la única área de la entidad: cree otra antes de eliminarla', true);
+    modal({ titulo: `Eliminar «${c.nombre}»`, size: 'sm', cuerpo: `<form class="form" onsubmit="return false"><p>El área tiene <b>${dentro.length} equipo${dentro.length === 1 ? '' : 's'}</b>: ${dentro.map((e) => `<span class="mono">${h(e.codigo_inv || '')}</span> ${h(e.nombre)}`).join(', ')}.</p><p>Antes de eliminarla, los equipos se pasan a otra área (con sus documentos, reportes y cronogramas). Quedan al final de esa área.</p>
+      <div class="fields">${f.sel('destino', 'Pasar los equipos a', [...otras.map((x) => [x.id, `${x.nombre} · ${sedeDe(x)}`]), ...resto.map((x) => [x.id, `${x.nombre} · ${sedeDe(x)}`])], otras[0]?.id || resto[0]?.id, { full: true })}</div></form>`,
+      acciones: [{ t: 'Cancelar' }, { t: 'Pasar equipos y eliminar', cls: 'pri danger', fn: async (m) => {
+        const dest = consT.find((x) => x.id === leer(m.body).destino); if (!dest) return false;
+        let ord = eqsT.filter((e) => e.consultorio_id === dest.id).reduce((mx, e) => Math.max(mx, e.orden || 0), 0);
+        for (const e of dentro) await S.update('equipos', e.id, { consultorio_id: dest.id, orden: ++ord });
+        await S.remove('consultorios', c.id); toast(`${dentro.length} equipo${dentro.length === 1 ? '' : 's'} pasado${dentro.length === 1 ? '' : 's'} a ${dest.nombre} y área eliminada`); A.recargar();
+      } }] });
+  };
+
   A.formConsultorio = (entidad_id, c = null, ordenSug = 1, sedeSug = null) => modal({
     titulo: c ? 'Editar área / consultorio' : 'Nueva área / consultorio',
     cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('orden', 'N° (orden)', c?.orden ?? ordenSug, { type: 'number', attrs: 'min="0"' })}${f.input('nombre', 'Nombre del área o consultorio *', c?.nombre, { full: true, attrs: 'placeholder="ej: CONSULTORIO MÉDICO"' })}${f.input('sede', 'Sede', c?.sede || sedeSug || 'Sede principal')}${f.input('servicio', 'Servicio habilitado', c?.servicio)}</div></form>`,
     acciones: [
-      ...(c ? [{ t: `${I.del} Eliminar`, cls: 'danger', fn: async () => { if (!(await confirmar('¿Eliminar esta área? Sus equipos quedarán sin área asignada.'))) return false; await S.remove('consultorios', c.id); A.recargar(); } }] : []),
+      ...(c ? [{ t: `${I.del} Eliminar`, cls: 'danger', fn: () => { A.eliminarArea(c); } }] : []),
       { t: 'Cancelar' },
       { t: 'Guardar', cls: 'pri', fn: async (m) => { const d = leer(m.body); if (!d.nombre) { toast('Escriba el nombre', true); return false; } d.orden = d.orden === '' ? null : Number(d.orden); c ? await S.update('consultorios', c.id, d) : await S.insert('consultorios', { ...d, entidad_id }); toast('Área guardada'); A.recargar(); } },
     ],
