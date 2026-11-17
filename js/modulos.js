@@ -350,7 +350,7 @@
           ${F.mes ? `<div class="field"><select data-estado aria-label="Estado en el mes"><option value="">Cualquier estado</option><option value="P" ${F.estado === 'P' ? 'selected' : ''}>Programado</option><option value="E" ${F.estado === 'E' ? 'selected' : ''}>Ejecutado</option><option value="N" ${F.estado === 'N' ? 'selected' : ''}>No ejecutado</option></select></div>` : ''}
           <input type="search" data-q value="${h(F.qRaw || '')}" placeholder="Buscar código, equipo, serie…" aria-label="Buscar en el cronograma">
           <span class="muted">${visibles.length} de ${filas.length}</span>
-          ${esProp() && !cap ? `<span class="sp"></span><button class="btn" data-act="limpiarCrono" title="Quitar de una vez las marcas (P, E, N, G, C) de los equipos que se están viendo">✕ Desmarcar todo</button><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
+          ${esProp() && !cap ? `<span class="sp"></span><button class="btn" data-act="marcarCrono" title="Marcar de una vez una semana en uno o varios meses para todos los equipos que se están viendo">✓ Marcar todo</button><button class="btn" data-act="limpiarCrono" title="Quitar de una vez las marcas (P, E, N, G, C) de los equipos que se están viendo">✕ Desmarcar todo</button><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
         ${resumen}
         <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span><span><i style="background:#b9a3e3"></i>G · En garantía</span><span><i style="background:#7cc4e8"></i>C · Comodato</span>${esProp() ? `<span>Toque una semana para cambiar su estado (P → E → N → G → C)${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses · botón de anotaciones de cada fila para escribir, por mes, notas como “Equipo en garantía, mantenimiento a cargo del proveedor”'}.</span>` : ''}</div>
         ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
@@ -541,6 +541,41 @@
         // metrología paralela al mantenimiento: los meses programados del cronograma de mantenimiento pasan como "P" a metrología
         metroDatos: () => A.formMetroDatos(visibles, eqs, pintar),
         // quitar de una vez las marcas de las semanas (de los equipos visibles, en el periodo o en el mes elegido)
+        marcarCrono: () => {
+          if (!visibles.length) return toast('No hay equipos en la vista', true);
+          const ESTS = [['P', 'Programado'], ['E', 'Ejecutado'], ['N', 'No ejecutado'], ['G', 'Garantía'], ['C', 'Comodato']];
+          const mesesSel = new Set(F.mes ? [`${yDe(F.mes)}-${F.mes}`] : []);
+          modal({ titulo: 'Marcar el cronograma', size: 'sm',
+            cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Marca la misma semana en los meses elegidos para los <b>${visibles.length} equipos que se están viendo</b> (${h(periodoTxt)}${grupo ? ' · ' + h(grupo.nombre) : ''}${F.q ? ' · búsqueda «' + h(F.q) + '»' : ''}). Use el filtro de servicio, cronograma o búsqueda para marcar solo una parte.</p>
+              <fieldset class="field full" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><legend style="font-size:.85rem;font-weight:600;padding:0 4px">Meses</legend>
+                <div class="actions" style="margin-bottom:6px"><button type="button" class="btn sm" data-todos>Todo el periodo</button><button type="button" class="btn sm" data-ninguno>Ninguno</button></div>
+                <div class="crono-meses">${ventana.map((v) => `<label class="crono-opt"><input type="checkbox" data-mm="${v.y}-${v.m}" ${mesesSel.has(`${v.y}-${v.m}`) ? 'checked' : ''}><span>${CAT.MESES[v.m - 1].slice(0, 3)} ${v.y}</span></label>`).join('')}</div></fieldset>
+              <div class="fields">${f.sel('semana', 'Semana', [['1', 'Semana 1'], ['2', 'Semana 2'], ['3', 'Semana 3'], ['4', 'Semana 4']], '2')}${f.sel('estado', 'Marca', ESTS.map(([k, t]) => [k, `${k} · ${t}`]), 'P')}</div>
+              <label class="crono-opt" style="margin-top:6px"><input type="checkbox" name="reemplazar" data-single><span>Reemplazar las marcas que ya tenga ese mes (si no, solo se marcan los meses vacíos de cada equipo)</span></label></form>`,
+            alAbrir: (m) => { m.body.querySelector('[data-todos]').onclick = () => m.body.querySelectorAll('[data-mm]').forEach((c) => { c.checked = true; }); m.body.querySelector('[data-ninguno]').onclick = () => m.body.querySelectorAll('[data-mm]').forEach((c) => { c.checked = false; }); },
+            acciones: [{ t: 'Cancelar' }, { t: 'Marcar', cls: 'pri', fn: async (m) => {
+              const d = leer(m.body); const sel = [...m.body.querySelectorAll('[data-mm]:checked')].map((c) => c.dataset.mm);
+              if (!sel.length) { toast('Elija al menos un mes', true); return false; }
+              const porAnio = {}; sel.forEach((k) => { const [y, mm] = k.split('-').map(Number); (porAnio[y] = porAnio[y] || []).push(mm); });
+              let n = 0, celdas = 0, saltadas = 0;
+              for (const r of visibles) {
+                if (!r.equipo_id) continue;
+                for (const [yS, ms] of Object.entries(porAnio)) {
+                  const y = +yS, actual = r.cr[y]?.plan || {}; const plan = { ...actual }; let cambio = false;
+                  for (const mm of ms) {
+                    const tiene = [1, 2, 3, 4].some((sm) => plan[`${mm}-${sm}`]);
+                    if (tiene && !d.reemplazar) { saltadas++; continue; }
+                    [1, 2, 3, 4].forEach((sm) => { delete plan[`${mm}-${sm}`]; });
+                    plan[`${mm}-${d.semana}`] = d.estado; cambio = true; celdas++;
+                  }
+                  if (!cambio) continue;
+                  const c = await cronoDe(r, y); await S.update('cronogramas', c.id, { plan }); c.plan = plan; n++;
+                }
+              }
+              S.log('EDITAR', 'cronogramas', ent.id, `Marcar ${tipo} ${d.estado} semana ${d.semana} en ${sel.join(', ')}: ${celdas} meses en ${n} equipos`);
+              toast(celdas ? `${celdas} mes${celdas === 1 ? '' : 'es'} marcado${celdas === 1 ? '' : 's'} (${d.estado}, semana ${d.semana})${saltadas ? ` · ${saltadas} ya tenían marca y se dejaron igual` : ''}` : saltadas ? 'Todos esos meses ya tenían marca: active «Reemplazar» para cambiarlas' : 'Nada para marcar'); pintar();
+            } }] });
+        },
         limpiarCrono: () => {
           if (!visibles.length) return toast('No hay equipos en la vista', true);
           const ESTS = [['P', 'Programado'], ['E', 'Ejecutado'], ['N', 'No ejecutado'], ['G', 'Garantía'], ['C', 'Comodato']];
@@ -548,7 +583,7 @@
             cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Quita las marcas de las semanas de los <b>${visibles.length} equipos que se están viendo</b> (${h(periodoTxt)}${grupo ? ' · ' + h(grupo.nombre) : ''}${F.q ? ' · búsqueda «' + h(F.q) + '»' : ''}). Los equipos siguen en el cronograma; no se borran reportes ni documentos.</p>
               <div class="fields">${f.sel('mes', 'Meses', [['0', 'Todo el periodo'], ...ventana.map((v) => [`${v.y}-${v.m}`, `${CAT.MESES[v.m - 1]} ${v.y}`])], F.mes ? `${yDe(F.mes)}-${F.mes}` : '0', { full: true })}</div>
               <fieldset class="field full" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><legend style="font-size:.85rem;font-weight:600;padding:0 4px">Quitar estas marcas</legend>
-              ${ESTS.map(([k, t]) => `<label style="display:inline-flex;gap:6px;align-items:center;margin:4px 12px 4px 0"><input type="checkbox" data-est="${k}" ${k === 'E' ? '' : 'checked'}> ${k} · ${t}</label>`).join('')}</fieldset>
+              <div class="crono-opts">${ESTS.map(([k, t]) => `<label class="crono-opt"><input type="checkbox" data-est="${k}" ${k === 'E' ? '' : 'checked'}><span><b>${k}</b> · ${t}</span></label>`).join('')}</div></fieldset>
               <label class="checks"><input type="checkbox" name="notas" data-single> Quitar también las anotaciones de esos meses</label></form>`,
             acciones: [{ t: 'Cancelar' }, { t: 'Desmarcar', cls: 'pri', fn: async (m) => {
               const d = leer(m.body); const ests = new Set([...m.body.querySelectorAll('[data-est]:checked')].map((c) => c.dataset.est));
