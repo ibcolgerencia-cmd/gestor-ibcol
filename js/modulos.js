@@ -997,6 +997,29 @@
   };
 
   // ------------------------------------------------------------ Mantenimiento / metrología
+  // texto dictado → campos del reporte de mantenimiento
+  A.dictadoMto = (body, k, frase) => {
+    const t = UI.textoDictado(frase); if (!t) return;
+    const brillo = (el) => { el.classList.remove('mic-ok'); void el.offsetWidth; el.classList.add('mic-ok'); };
+    const agregar = (name, txt, lineas) => { const ta = body.querySelector(`[name="${name}"]`); if (!ta) return; const v = ta.value.replace(/\s+$/, ''); ta.value = !v ? txt : lineas || /\n$/.test(ta.value) ? `${v}\n${txt}` : `${v}${/[.:;,]$/.test(v) ? ' ' : '. '}${txt}`; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.scrollTop = ta.scrollHeight; brillo(ta); };
+    if (k === 'actividades') {
+      t.split('\n').forEach((x) => { const cks = [...body.querySelectorAll('[data-acts-box] input[name=actividades]')], i = UI.coincidencia(x, cks.map((c) => c.value));
+        if (i >= 0) { cks[i].checked = true; brillo(cks[i].closest('label') || cks[i]); toast(`Marcada: ${cks[i].value}`); } else agregar('otras_act', x.replace(/[.]$/, ''), true); });
+      return;
+    }
+    if (k === 'actividades_txt') { t.split('\n').forEach((x) => agregar('actividades_txt', x.replace(/[.]$/, ''), true)); return; }
+    if (k === 'repuestos') {
+      const box = body.querySelector('[data-rep="repuestos"]'); if (!box) return;
+      t.split(/\n|;|,\s*(?=(?:\d+|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s)/i).map((x) => x.trim()).filter(Boolean).forEach((x) => {
+        const p = UI.parteDictada(x); if (!p.d) return;
+        let ri = [...box.querySelectorAll('.ri')].find((r) => !r.querySelector('[data-k=d]').value.trim());
+        if (!ri) { box.querySelector('[data-addrep]').click(); ri = [...box.querySelectorAll('.ri')].pop(); }
+        ri.querySelector('[data-k=d]').value = p.d; if (p.c) ri.querySelector('[data-k=c]').value = p.c; brillo(ri);
+      });
+      return;
+    }
+    agregar(k, /[.!?:]$/.test(t) ? t : `${t}.`, false);
+  };
   A.formMto = async ({ eq, ent, cons, tipo, m = null, nota = null, fecha: fechaIni = null, pre = null, alGuardar = null }) => {
     const todos = await S.list('mantenimientos', { entidad_id: ent.id });
     // anotaciones hechas en el cronograma (mantenimiento o metrología) para este equipo
@@ -1034,16 +1057,16 @@
       ${tipo === 'preventivo' ? `<fieldset><legend>2. Puntos de inspección</legend>
         ${esProp() ? `<div class="ia-mto"><button type="button" class="btn" data-iamto>${I.ia} Completar con IA (manuales + Google)</button><span class="muted" data-iamto-est>${pm ? `Pre-llenado con el protocolo del equipo (${h(pm.origen || 'IA')}, ${UI.fecha(pm.fecha)}).` : 'Lee los manuales, fichas técnicas y guías del equipo y busca en Google para proponer pruebas, actividades y observaciones.'}</span></div>` : ''}
         <span class="lbl">Pruebas cualitativas (máximo 12 en el formato)</span><div data-pruebas-box>${rep('pruebas', [{ k: 'item', ph: 'Prueba', w: '3fr' }, { k: 'r', ph: 'Resultado', opts: ['Pasa', 'No pasa', 'N/A'] }], pruebasIni)}</div>
-        <div data-acts-box>${f.checks('actividades', 'Actividades de mantenimiento (máximo 12 en el formato)', actsTodas, actsSel)}</div>${f.area('otras_act', 'Otras actividades (una por línea)', '', { rows: 2 })}</fieldset>` : ''}
+        <div data-acts-box>${f.checks('actividades', 'Actividades de mantenimiento (máximo 12 en el formato)', actsTodas, actsSel)}</div>${f.area('otras_act', 'Otras actividades (una por línea)', '', { rows: 2 })}${UI.dictarBtn('actividades', 'Dictar actividades')}<p class="muted mic-ayuda">Al dictar, las actividades que coinciden con la lista se marcan solas; las demás se escriben en «Otras actividades». Diga «siguiente» para pasar a otra actividad.</p></fieldset>` : ''}
       ${tipo === 'correctivo' ? `<fieldset><legend>Falla y reparación</legend><div class="fields">${f.area('falla', 'Falla reportada *', d.falla, { rows: 2 })}${f.area('diagnostico', 'Diagnóstico', d.diagnostico, { rows: 2 })}${f.sel('causa', 'Causa', ['Desgaste', 'Mal uso', 'Falla eléctrica', 'Falla de fábrica', 'Accidente', 'Falta de mantenimiento', 'Otra'], d.causa)}
-        ${f.area('actividades_txt', 'Actividades realizadas (una por línea)', (d.actividades || []).join('\n'), { rows: 3 })}</div></fieldset>` : ''}
+        ${f.area('actividades_txt', 'Actividades realizadas (una por línea)', (d.actividades || []).join('\n'), { rows: 3 })}<div class="field full" style="display:flex;gap:8px;flex-wrap:wrap">${UI.dictarBtn('falla', 'Dictar falla')}${UI.dictarBtn('diagnostico', 'Dictar diagnóstico')}${UI.dictarBtn('actividades_txt', 'Dictar actividades')}</div></div></fieldset>` : ''}
       ${tipo === 'metrologia' ? `<fieldset><legend>Calibración</legend><div class="fields">${f.input('laboratorio', 'Laboratorio', d.laboratorio, { full: true })}${f.input('certificado', 'Certificado N°', d.certificado)}${f.input('magnitud', 'Magnitud', d.magnitud)}
         ${f.sel('resultado', 'Resultado', ['Conforme', 'No conforme'], d.resultado)}${f.area('mediciones', 'Resultados de la verificación / mediciones', d.mediciones, { rows: 3 })}${f.input('proxima', 'Próxima calibración', d.proxima || UI.sumarMeses(UI.hoy(), CAT.PERIODICIDAD[eq.periodicidad_metro] || 12), { type: 'date' })}
         <div class="field full"><span class="lbl">Adjuntar certificado (PDF) — se guarda en la carpeta Metrología con alerta de vencimiento</span><input type="file" accept="application/pdf,image/*" data-cert></div></div></fieldset>` : ''}
       ${tipo !== 'metrologia' ? `<fieldset><legend>3. Estado de valoración</legend>${f.checks('valoracion', '', CAT.VALORACION, val)}</fieldset>
-        <fieldset><legend>4. Herramienta, insumos y repuestos</legend>${tipo === 'preventivo' ? `<div data-herr-box>${f.checks('herramientas', 'Herramientas e insumos', fp.herramientas || [], herrSel)}</div>` : ''}<span class="lbl">Partes utilizadas (insumos o repuestos)</span>${rep('repuestos', [{ k: 'd', ph: 'Descripción', w: '3fr' }, { k: 'c', ph: 'Cant.', type: 'number' }], d.repuestos || [])}</fieldset>` : ''}
+        <fieldset><legend>4. Herramienta, insumos y repuestos</legend>${tipo === 'preventivo' ? `<div data-herr-box>${f.checks('herramientas', 'Herramientas e insumos', fp.herramientas || [], herrSel)}</div>` : ''}<span class="lbl">Partes utilizadas (insumos o repuestos)</span>${rep('repuestos', [{ k: 'd', ph: 'Descripción', w: '3fr' }, { k: 'c', ph: 'Cant.', type: 'number' }], d.repuestos || [])}${UI.dictarBtn('repuestos', 'Dictar partes')}<p class="muted mic-ayuda">Ejemplo: «dos fusibles de 2 amperios, un filtro de aire». Cada parte queda en una fila con su cantidad.</p></fieldset>` : ''}
       ${notasCr.length ? `<div class="notas-rep"><span class="lbl">Anotaciones del cronograma${notaAuto ? ` — la de ${CAT.MESES[notaAuto.mes - 1]} ${notaAuto.anio} ya se pasó a Observaciones` : ''}</span>${notasCr.map((n, i) => `<div class="nota-rep"><b>${CAT.MESES[n.mes - 1]} ${n.anio}:</b> <span>${h(n.texto)}</span> <button type="button" class="btn sm" data-addnota="${i}">Agregar a observaciones</button></div>`).join('')}</div>` : ''}
-      <div class="fields">${f.area('observaciones', '5. Observaciones generales', tipo !== 'correctivo' && !m ? obsIni : d.observaciones, { rows: 3 })}</div>
+      <div class="fields">${f.area('observaciones', '5. Observaciones generales', tipo !== 'correctivo' && !m ? obsIni : d.observaciones, { rows: 3 })}</div>${UI.dictarBtn('observaciones', 'Dictar observaciones')}${UI.dictadoSoportado ? '<p class="muted mic-ayuda">Dictado por voz: pulse el micrófono, hable y púlselo de nuevo para terminar. Diga «punto», «coma» o «siguiente» (nueva línea). Necesita internet y permiso del micrófono.</p>' : '<p class="muted mic-ayuda">Para dictar por voz abra el gestor en Chrome o Edge (o Safari en iPhone).</p>'}
       ${tipo !== 'metrologia' ? `<fieldset><legend>Firmas</legend><div class="fields">${f.input('recibe_nombre', 'Recibido a satisfacción: nombre', d.recibe_nombre)}${f.input('recibe_cargo', 'Cargo', d.recibe_cargo)}</div>
         <div class="grid2">${firmaBtn('Firma de quien recibe', fRecibe)}${firmaBtn(`Firma de quien realizó (${h(st.emp.responsable)})`, fRealizo)}</div>
         <label class="checks" style="margin-top:8px"><input type="checkbox" name="firmar_digital" data-single ${m && !d.firma_digital ? '' : 'checked'}> <b>Firmar digitalmente</b> <span class="muted">— estampa la firma en “REALIZÓ” y genera un código de verificación del reporte</span></label></fieldset>` : ''}
@@ -1052,6 +1075,7 @@
       titulo: `${titulo} · ${eq.nombre}`, size: 'wide', cuerpo,
       alAbrir: (mm) => {
         repBind(mm.body);
+        mm.body.querySelectorAll('[data-mic]').forEach((b) => { b.onclick = () => UI.dictar(b, (t) => A.dictadoMto(mm.body, b.dataset.mic, t), mm.body.querySelector(`[data-mic-prev="${b.dataset.mic}"]`)); });
         mm.body.querySelectorAll('[data-addnota]').forEach((b) => { b.onclick = () => { const t = notasCr[+b.dataset.addnota].texto; const ob = mm.body.querySelector('[name=observaciones]'); if (ob.value.includes(t)) return toast('Esa anotación ya está en Observaciones'); ob.value = [ob.value.trim(), t].filter(Boolean).join('\n'); toast('Anotación agregada a Observaciones'); }; });
         firmaBind(mm.body, null, (i, dd) => { if (i === 0) { fRecibe = dd; recibeNueva = true; } else fRealizo = dd; }, { titulos: ['Firma de quien recibe', 'Firma de quien realizó'], actual: [null, st.firma] });
         const c = mm.body.querySelector('[data-cert]'); if (c) c.onchange = (e) => { cert = e.target.files[0] || null; };
