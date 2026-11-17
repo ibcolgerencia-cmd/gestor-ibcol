@@ -300,6 +300,8 @@
         if (!mapa.has(key)) mapa.set(key, { key, equipo_id: c.equipo_id, tema: c.tema, cr: {} });
         const r = mapa.get(key); if (!r.cr[c.anio]) r.cr[c.anio] = c; if (!r.tema && c.tema) r.tema = c.tema;
       });
+      // enlazado con el inventario: todos los equipos activos aparecen (aunque aún no tengan programación), en el orden del inventario
+      if (!cap) eqs.filter((e) => e.estado !== 'Dado de baja' && !(A.esCarpetaDoc && A.esCarpetaDoc(e.nombre)) && (tipo !== 'metrologia' || e.periodicidad_metro !== 'No aplica')).forEach((e) => { const k = `e|${e.id}`; if (!mapa.has(k)) mapa.set(k, { key: k, equipo_id: e.id, tema: null, cr: {} }); });
       const filas = [...mapa.values()].sort((a, b) => (cap ? String(a.tema || '').localeCompare(String(b.tema || '')) : ordenEq(eqd(a.equipo_id), eqd(b.equipo_id))));
       const mesF = (r, m) => mesDe(r.cr[yDe(m)], m);
       const mesAct = new Date().getMonth() + 1;
@@ -506,7 +508,8 @@
         },
         quitar: async (d) => {
           const r = filas[+d.r]; const lista = Object.values(r.cr);
-          if (!(await confirmar(`¿Quitar esta fila del cronograma${lista.length > 1 ? ` (años ${Object.keys(r.cr).join(' y ')})` : ''}?`))) return;
+          if (!lista.length) return toast('Esta fila no tiene programación. El equipo aparece porque está en el inventario; si ya no existe, márquelo «Dado de baja» en su hoja de vida.', true);
+          if (!(await confirmar(`¿Borrar la programación de esta fila${lista.length > 1 ? ` (años ${Object.keys(r.cr).join(' y ')})` : ''}?${r.equipo_id && !cap ? ' El equipo sigue apareciendo vacío porque el cronograma está enlazado con el inventario.' : ''}`, 'Borrar programación'))) return;
           for (const c of lista) await S.remove('cronogramas', c.id); pintar();
         },
         grupoSel: (d) => { F.grupo = d.g; pintar(); },
