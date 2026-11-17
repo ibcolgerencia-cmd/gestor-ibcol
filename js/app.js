@@ -63,19 +63,19 @@ window.APP = (() => {
       <div class="lh-figura" aria-hidden="true">
         <svg viewBox="0 0 520 520">
           <defs>
-            <linearGradient id="lhG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1b6fe0"/><stop offset="1" stop-color="#0a2f8f"/></linearGradient>
-            <radialGradient id="lhR" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffffff"/><stop offset=".7" stop-color="#eef3fb"/><stop offset="1" stop-color="#d9e3f2"/></radialGradient>
+            <linearGradient id="lhG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#17b3d6"/><stop offset="1" stop-color="#075a75"/></linearGradient>
+            <radialGradient id="lhR" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffffff"/><stop offset=".7" stop-color="#eef8fb"/><stop offset="1" stop-color="#d6eaf0"/></radialGradient>
           </defs>
           <circle cx="260" cy="260" r="236" fill="url(#lhR)" />
           <g class="lh-r1"><circle cx="260" cy="260" r="214" fill="none" stroke="url(#lhG)" stroke-width="3" stroke-dasharray="2 10" /></g>
-          <g class="lh-r2"><circle cx="260" cy="260" r="186" fill="none" stroke="#1b6fe0" stroke-opacity=".55" stroke-width="10" stroke-dasharray="70 22 12 22" /></g>
-          <g class="lh-r3"><circle cx="260" cy="260" r="150" fill="none" stroke="url(#lhG)" stroke-width="2" /><circle cx="260" cy="110" r="7" fill="#1b6fe0"/><circle cx="410" cy="260" r="5" fill="#0a2f8f"/><circle cx="154" cy="366" r="6" fill="#17b3d6"/></g>
-          <g class="lh-r4"><circle cx="260" cy="260" r="118" fill="none" stroke="#0a2f8f" stroke-opacity=".35" stroke-width="18" stroke-dasharray="4 8" /></g>
+          <g class="lh-r2"><circle cx="260" cy="260" r="186" fill="none" stroke="#17b3d6" stroke-opacity=".55" stroke-width="10" stroke-dasharray="70 22 12 22" /></g>
+          <g class="lh-r3"><circle cx="260" cy="260" r="150" fill="none" stroke="url(#lhG)" stroke-width="2" /><circle cx="260" cy="110" r="7" fill="#17b3d6"/><circle cx="410" cy="260" r="5" fill="#075a75"/><circle cx="154" cy="366" r="6" fill="#17b3d6"/></g>
+          <g class="lh-r4"><circle cx="260" cy="260" r="118" fill="none" stroke="#075a75" stroke-opacity=".35" stroke-width="18" stroke-dasharray="4 8" /></g>
           <circle cx="260" cy="260" r="96" fill="url(#lhG)" />
           <circle cx="260" cy="260" r="96" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" />
           <path class="lh-ecg" d="M178 262 H218 L230 236 L244 300 L258 206 L272 286 L282 262 H342" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
-          <g class="lh-orb"><g transform="translate(260 260)"><g class="lh-sat"><rect x="-17" y="-236" width="34" height="42" rx="6" fill="#fff" stroke="#1b6fe0" stroke-width="2"/><path d="M-9 -224 H9 M-9 -216 H9 M-9 -208 H3" stroke="#1b6fe0" stroke-width="2.4" stroke-linecap="round"/></g></g></g>
-          <g class="lh-orb lh-orb2"><g transform="translate(260 260)"><g class="lh-sat"><circle cx="0" cy="-214" r="19" fill="#fff" stroke="#0a2f8f" stroke-width="2"/><path d="M-8 -214 L-2 -208 L9 -220" stroke="#0a2f8f" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g></g></g>
+          <g class="lh-orb"><g transform="translate(260 260)"><g class="lh-sat"><rect x="-17" y="-236" width="34" height="42" rx="6" fill="#fff" stroke="#17b3d6" stroke-width="2"/><path d="M-9 -224 H9 M-9 -216 H9 M-9 -208 H3" stroke="#17b3d6" stroke-width="2.4" stroke-linecap="round"/></g></g></g>
+          <g class="lh-orb lh-orb2"><g transform="translate(260 260)"><g class="lh-sat"><circle cx="0" cy="-214" r="19" fill="#fff" stroke="#075a75" stroke-width="2"/><path d="M-8 -214 L-2 -208 L9 -220" stroke="#075a75" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g></g></g>
         </svg>
       </div>
       <section class="login-form">
