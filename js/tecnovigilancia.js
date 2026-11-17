@@ -646,9 +646,11 @@
   // ================================================================== 7. ALERTAS E INFORMES DE SEGURIDAD (enlace a la carpeta 5. ALERTAS SANITARIAS)
   const vAlertas = async (box, ctx) => {
     const { ent } = ctx;
-    box.innerHTML = `<section class="panel"><header><div><h2>Alertas sanitarias e informes de seguridad</h2><span class="muted" style="font-size:.85rem">Consulta mensual de alertas, retiros de producto (recall) e informes de seguridad del INVIMA y agencias internacionales (RISARH). Esta información está enlazada con la carpeta “ALERTAS SANITARIAS” de la entidad y con el anexo de las actas de comité.</span></div>
-      <div class="actions"><a class="btn" href="https://app.invima.gov.co/alertas/" target="_blank" rel="noopener">Consultar alertas INVIMA</a><button class="btn pri" data-act="tvIrAlertas">${I.carpeta || ''} Abrir carpeta de alertas e informes</button></div></header></section><div data-al></div>`;
-    A.acts({ tvIrAlertas: () => A.go('carpeta', { ent: ent.id, k: 'alertas' }) });
+    box.innerHTML = `<section class="panel"><header><div><h2>Alertas sanitarias e informes de seguridad</h2><span class="muted" style="font-size:.85rem">Consulta mensual de alertas, retiros de producto (recall) e informes de seguridad del INVIMA y agencias internacionales (RISARH). La bitácora y sus soportes quedan aquí, dentro del programa de tecnovigilancia, y se anexan a las actas de comité.</span></div>
+      <div class="actions"><a class="btn" href="https://app.invima.gov.co/alertas/" target="_blank" rel="noopener">Consultar alertas INVIMA</a></div></header></section><div data-al></div>
+      <details class="plegable" data-al-docs><summary><span>Soportes: consultas, alertas e informes de seguridad</span><span class="muted">por año y mes</span></summary><section class="panel" data-al-arch></section></details>`;
     await A.G.alertas(box.querySelector('[data-al]'), ctx);
+    const subs = []; for (let a = new Date().getFullYear(); a >= new Date().getFullYear() - 3; a--) subs.push(String(a));
+    await A.archivos(box.querySelector('[data-al-arch]'), { entidad_id: ent.id, equipo_id: null, carpeta: 'alertas', titulo: 'Soportes de alertas e informes de seguridad', subs, subsFlex: true });
   };
 })();

@@ -855,27 +855,66 @@
     } }],
   });
 
-  // ------------------------------------------------------------ Alertas sanitarias
+  // ------------------------------------------------------------ Alertas sanitarias (bitácora FT-PGTV-015)
+  const nrmA = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  // periodo {anio, mes} de una consulta: "Marzo 2026", "03/2026", fecha de publicación o de registro
+  A.periodoAlerta = (a) => {
+    const t = nrmA(a.mes_consulta); const mi = CAT.MESES.findIndex((m) => t.includes(nrmA(m))); const y = (t.match(/(20\d\d)/) || [])[1];
+    if (mi >= 0 && y) return { anio: +y, mes: mi + 1 };
+    const m2 = t.match(/(\d{1,2})\s*[/-]\s*(20\d\d)/); if (m2) return { anio: +m2[2], mes: +m2[1] };
+    const f0 = a.fecha_publicacion || a.created_at; return f0 ? { anio: +String(f0).slice(0, 4), mes: +String(f0).slice(5, 7) } : { anio: 0, mes: 0 };
+  };
+  A.ordenarAlertas = (als) => [...als].sort((x, y) => { const a = A.periodoAlerta(x), b = A.periodoAlerta(y); return a.anio - b.anio || a.mes - b.mes || String(x.created_at || '').localeCompare(String(y.created_at || '')); });
+  const subAlerta = (anio, mes) => `${anio}/${String(mes).padStart(2, '0')}. ${CAT.MESES[mes - 1].toUpperCase()}`;
+  // soporte (PDF) de una consulta: el nombrado en el análisis o el de la carpeta de ese mes
+  const soporteDe = (a, docs) => {
+    const nom = (String(a.analisis || '').match(/Soporte:\s*([^·\n]+?\.(?:pdf|jpe?g|png))/i) || [])[1];
+    if (nom) { const d = docs.find((x) => nrmA(x.nombre) === nrmA(nom.trim())); if (d) return d; }
+    const p = A.periodoAlerta(a); if (!p.mes) return null;
+    return docs.find((x) => x.subcarpeta === subAlerta(p.anio, p.mes)) || null;
+  };
+  st.alAnioAbierto = st.alAnioAbierto || {};
   A.G.alertas = async (el, { ent }) => {
-    const als = await S.list('alertas', { entidad_id: ent.id }, 'created_at');
-    el.innerHTML = `<section class="panel"><header><h2>Bitácora de consulta de alertas sanitarias</h2><div class="actions">${esProp() && A.TV?.cargarAlertas ? `<button class="btn" data-act="alCarga">${I.subir} Cargar consultas realizadas (PDF)</button><button class="btn" data-act="alLeer" title="Lee los PDF que ya están en la carpeta de alertas">Organizar los PDF de la carpeta</button>` : ''}<button class="btn" data-act="alPDF">${I.pdf} PDF (${h(st.fmt.alertas.codigo)})</button>${esProp() ? `<button class="btn pri" data-act="nuevaAl">${I.mas} Registrar consulta</button>` : ''}</div></header>
+    const [als0, docs0] = await Promise.all([S.list('alertas', { entidad_id: ent.id }, 'created_at'), S.list('documentos', { entidad_id: ent.id }).catch(() => [])]);
+    const als = A.ordenarAlertas(als0), docs = docs0.filter((d) => d.carpeta === 'alertas');
+    const porAnio = {}; als.forEach((a) => { const p = A.periodoAlerta(a); (porAnio[p.anio] = porAnio[p.anio] || []).push(a); });
+    const anios = Object.keys(porAnio).map(Number).sort((a, b) => b - a), hoy = new Date();
+    const abierto = (y) => (st.alAnioAbierto[ent.id]?.[y] ?? (y === anios[0]));
+    const fila = (a, i) => { const sp = soporteDe(a, docs), ap = a.aplicabilidad || 'No aplica';
+      return `<tr><td class="num">${i + 1}</td><td><b>${h(a.mes_consulta || '')}</b></td><td>${h(a.tipo_notificacion || '')}${a.dispositivo ? `<div class="muted" style="font-size:.8rem">${h(a.dispositivo)}${a.registro_sanitario ? ` · <span class="mono">${h(a.registro_sanitario)}</span>` : ''}</div>` : ''}</td><td>${h(a.agencia || '')}</td><td class="num">${UI.fecha(a.fecha_publicacion) || '—'}</td><td>${h(a.responsable || '')}</td>
+        <td style="min-width:200px;font-size:.85rem">${h(String(a.analisis || '').replace(/\s*·?\s*Soporte:\s*[^·\n]+/i, '').trim() || '—')}</td><td><span class="pill ${/^aplica/i.test(ap) ? 'warn' : ''}">${h(ap)}</span></td>
+        <td>${sp ? `<button class="btn sm" data-act="verSop" data-id="${sp.id}" title="${h(sp.nombre)}">${I.pdf} Ver</button>` : `<span class="muted" style="font-size:.8rem">Sin soporte</span>`}</td>
+        <td>${esProp() ? `<div class="row-actions"><button class="icon-btn" data-act="editAl" data-id="${a.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-act="delAl" data-id="${a.id}" aria-label="Eliminar">${I.del}</button></div>` : ''}</td></tr>`; };
+    const bloque = (y) => { const l = porAnio[y], meses = new Set(l.map((a) => A.periodoAlerta(a).mes)), hasta = y < hoy.getFullYear() ? 12 : y === hoy.getFullYear() ? hoy.getMonth() + 1 : 0;
+      const faltan = Array.from({ length: hasta }, (_, i) => i + 1).filter((m) => !meses.has(m)), conAp = l.filter((a) => /^aplica/i.test(a.aplicabilidad || '')).length;
+      return `<details class="plegable al-anio" data-anio="${y}"${abierto(y) ? ' open' : ''}><summary><span>${y || 'Sin fecha'}</span><span class="muted">${l.length} consulta${l.length === 1 ? '' : 's'}${hasta ? ` · ${hasta - faltan.length} de ${hasta} meses` : ''}${conAp ? ` · <b style="color:var(--warn,#b7791f)">${conAp} aplican</b>` : ''}</span></summary>
+        ${faltan.length ? `<p class="muted" style="font-size:.85rem;margin:6px 0">Meses sin consulta registrada: <b>${faltan.map((m) => CAT.MESES[m - 1]).join(', ')}</b>.</p>` : hasta ? '<p class="muted" style="font-size:.85rem;margin:6px 0">✓ Todos los meses consultados.</p>' : ''}
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>No.</th><th>Mes de consulta</th><th>Tipo / dispositivo</th><th>Agencia</th><th>Publicación</th><th>Responsable</th><th>Análisis</th><th>Aplicabilidad</th><th>Soporte</th><th></th></tr></thead><tbody>${l.map(fila).join('')}</tbody></table></div></details>`; };
+    el.innerHTML = `<section class="panel"><header><div><h2>Bitácora de consulta de alertas sanitarias</h2><span class="muted" style="font-size:.85rem">Ordenada por año y mes. Cada consulta tiene su soporte en PDF.</span></div><div class="actions">${esProp() && A.TV?.cargarAlertas ? `<button class="btn" data-act="alCarga">${I.subir} Cargar consultas realizadas (PDF)</button><button class="btn" data-act="alLeer" title="Lee los PDF de alertas que estén en las carpetas de la entidad y los organiza por año y mes">Organizar los PDF</button>` : ''}<button class="btn" data-act="alPDF">${I.pdf} PDF (${h(st.fmt.alertas.codigo)})</button>${esProp() ? `<button class="btn pri" data-act="nuevaAl">${I.mas} Registrar consulta</button>` : ''}</div></header>
       <p class="muted">Registre cada mes la consulta de alertas, retiros de producto (recall) e informes de seguridad publicados por el INVIMA y agencias internacionales, y analice si aplican a los dispositivos del inventario.</p>
-      ${als.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>No.</th><th>Mes de consulta</th><th>Registro sanitario</th><th>Dispositivo</th><th>Tipo de notificación</th><th>Agencia</th><th>Publicación</th><th>Responsable</th><th>Análisis</th><th>Aplicabilidad</th><th></th></tr></thead><tbody>
-        ${[...als].reverse().map((a) => `<tr><td class="num">${als.indexOf(a) + 1}</td><td>${h(a.mes_consulta || '')}</td><td class="mono">${h(a.registro_sanitario || '')}</td><td>${h(a.dispositivo || '')}</td><td>${h(a.tipo_notificacion || '')}</td><td>${h(a.agencia || '')}</td><td class="num">${UI.fecha(a.fecha_publicacion)}</td><td>${h(a.responsable || '')}</td><td style="min-width:200px">${h(a.analisis || '')}</td><td><span class="pill ${/^aplica/i.test(a.aplicabilidad || '') ? 'warn' : ''}">${h(a.aplicabilidad || '')}</span></td>
-          <td>${esProp() ? `<div class="row-actions"><button class="icon-btn" data-act="editAl" data-id="${a.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-act="delAl" data-id="${a.id}" aria-label="Eliminar">${I.del}</button></div>` : ''}</td></tr>`).join('')}
-      </tbody></table></div>` : '<div class="empty">Sin consultas registradas.</div>'}</section>`;
-    const form = (a = null) => modal({
-      titulo: a ? 'Editar consulta de alerta' : 'Registrar consulta de alertas sanitarias',
-      cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('mes_consulta', 'Mes de consulta', a?.mes_consulta || `${CAT.MESES[new Date().getMonth()]} ${anioAct}`)}${f.input('registro_sanitario', 'Registro sanitario / permiso', a?.registro_sanitario)}
-        ${f.input('dispositivo', 'Nombre del dispositivo', a?.dispositivo, { full: true })}${f.sel('tipo_notificacion', 'Tipo de notificación', ['Consulta periódica', 'Alerta sanitaria', 'Retiro de producto (recall)', 'Informe de seguridad', 'Actualización de software'], a?.tipo_notificacion)}
-        ${f.input('agencia', 'Agencia sanitaria', a?.agencia || 'INVIMA')}${f.input('fecha_publicacion', 'Fecha de publicación', a?.fecha_publicacion, { type: 'date' })}${f.input('responsable', 'Responsable de la consulta', a?.responsable || 'Laura Pistala')}
-        ${f.area('analisis', 'Análisis', a?.analisis, { rows: 2 })}${f.sel('aplicabilidad', 'Aplicabilidad a dispositivos médicos', ['No aplica', 'Aplica - verificado', 'Aplica - en gestión'], a?.aplicabilidad)}</div></form>`,
-      acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { const d = leer(m.body); d.fecha_publicacion = d.fecha_publicacion || null; a ? await S.update('alertas', a.id, d) : await S.insert('alertas', { ...d, entidad_id: ent.id }); toast('Consulta guardada'); A.recargar(); } }],
-    });
+      ${als.length ? anios.map(bloque).join('') : '<div class="empty">Sin consultas registradas.</div>'}</section>`;
+    el.querySelectorAll('details.al-anio').forEach((d) => d.addEventListener('toggle', () => { st.alAnioAbierto[ent.id] = { ...(st.alAnioAbierto[ent.id] || {}), [d.dataset.anio]: d.open }; }));
+    const form = (a = null) => { let archivo = null; const p0 = a ? A.periodoAlerta(a) : { anio: anioAct, mes: new Date().getMonth() + 1 };
+      modal({
+        titulo: a ? 'Editar consulta de alerta' : 'Registrar consulta de alertas sanitarias',
+        cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.sel('mes', 'Mes de consulta', CAT.MESES.map((m, i) => [i + 1, m]), p0.mes || new Date().getMonth() + 1)}${f.input('anio', 'Año', p0.anio || anioAct, { type: 'number', attrs: 'min="2015" max="2100"' })}
+          ${f.input('registro_sanitario', 'Registro sanitario / permiso', a?.registro_sanitario)}${f.input('dispositivo', 'Nombre del dispositivo', a?.dispositivo)}${f.sel('tipo_notificacion', 'Tipo de notificación', ['Consulta periódica', 'Alerta sanitaria', 'Retiro de producto (recall)', 'Informe de seguridad', 'Actualización de software'], a?.tipo_notificacion)}
+          ${f.input('agencia', 'Agencia sanitaria', a?.agencia || 'INVIMA')}${f.input('fecha_publicacion', 'Fecha de publicación', a?.fecha_publicacion, { type: 'date' })}${f.input('responsable', 'Responsable de la consulta', a?.responsable || st.emp?.responsable || '')}
+          ${f.area('analisis', 'Análisis', a?.analisis, { rows: 2 })}${f.sel('aplicabilidad', 'Aplicabilidad a dispositivos médicos', ['No aplica', 'Aplica - verificado', 'Aplica - en gestión'], a?.aplicabilidad)}
+          <div class="field full"><span class="lbl">Soporte de la consulta (PDF o imagen) — se guarda en la carpeta del mes</span><input type="file" accept="application/pdf,image/*" data-sop></div></div></form>`,
+        alAbrir: (m) => { m.body.querySelector('[data-sop]').onchange = (e) => { archivo = e.target.files[0] || null; }; },
+        acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
+          const d = leer(m.body), mes = +d.mes, anio = +d.anio; if (!anio) { toast('Indique el año', true); return false; }
+          const reg = { mes_consulta: `${CAT.MESES[mes - 1]} ${anio}`, registro_sanitario: d.registro_sanitario, dispositivo: d.dispositivo, tipo_notificacion: d.tipo_notificacion, agencia: d.agencia, fecha_publicacion: d.fecha_publicacion || null, responsable: d.responsable, analisis: d.analisis, aplicabilidad: d.aplicabilidad };
+          if (archivo) { const path = `${ent.id}/general/alertas/${Date.now()}-${archivo.name.replace(/[^\w.-]+/g, '_')}`; await S.upload(path, archivo); await S.insert('documentos', { entidad_id: ent.id, equipo_id: null, carpeta: 'alertas', subcarpeta: subAlerta(anio, mes), nombre: archivo.name, archivo: path, mime: archivo.type, tamano: archivo.size, fecha_documento: UI.hoy(), visible_cliente: true, firmado: false }); if (!String(reg.analisis || '').includes(archivo.name)) reg.analisis = [reg.analisis || 'Consulta realizada.', `Soporte: ${archivo.name}`].join(' · '); }
+          a ? await S.update('alertas', a.id, reg) : await S.insert('alertas', { ...reg, entidad_id: ent.id }); toast('Consulta guardada'); A.recargar();
+        } }],
+      }); };
     A.acts({
       alCarga: () => A.TV.cargarAlertas(ent), alLeer: () => A.TV.cargarAlertas(ent, { existentes: true }),
       nuevaAl: () => form(), editAl: (d) => form(als.find((x) => x.id === d.id)),
-      delAl: async (d) => { if (await confirmar('¿Eliminar este registro?')) { await S.remove('alertas', d.id); A.recargar(); } },
+      verSop: (d) => A.abrirDoc(docs.find((x) => x.id === d.id)).catch((er) => toast(er.message, true)),
+      delAl: async (d) => { if (await confirmar('¿Eliminar este registro de la bitácora? El PDF de soporte no se borra.', 'Eliminar')) { await S.remove('alertas', d.id); A.recargar(); } },
       alPDF: async () => { const blob = await FMT.alertas({ ent, alertas: als, fmt: st.fmt.alertas }); UI.verPDF({ titulo: 'Bitácora de alertas sanitarias', blob, nombre: `Bitacora_alertas_${ent.razon_social}.pdf` }); },
     });
   };

@@ -147,9 +147,12 @@
   TV.cargarAlertas = async (ent, { existentes = false } = {}) => {
     let items = [];
     if (existentes) {
-      const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => /\.pdf$/i.test(d.nombre || '') && (d.carpeta === 'alertas' || (d.carpeta === 'tecnovigilancia' && !/ANEXOS/i.test(d.subcarpeta || '') && /alerta|pgtv-015/i.test((d.subcarpeta || '') + d.nombre))));
-      if (!docs.length) { toast('No hay PDF de alertas cargados', true); return; }
-      items = docs.map((d) => ({ doc: d, nombre: d.nombre }));
+      // PDF de alertas en la carpeta de alertas, en el programa de tecnovigilancia o en carpetas creadas a mano
+      const todos = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => !d.equipo_id && /\.pdf$/i.test(d.nombre || '') && (d.carpeta === 'alertas' || ((d.carpeta === 'tecnovigilancia' || /^x_/.test(d.carpeta || '')) && !/ANEXOS/i.test(d.subcarpeta || '') && /alerta|pgtv[\s_-]*0?15/i.test((d.subcarpeta || '') + d.nombre))));
+      if (!todos.length) { toast('No hay PDF de alertas cargados', true); return; }
+      // el mismo archivo repetido (mismo nombre y tamaño) se deja una sola vez, preferiblemente el que ya está en la carpeta de alertas
+      const grupos = new Map(); todos.forEach((d) => { const k = `${nrm(d.nombre)}|${d.tamano || ''}`; (grupos.get(k) || grupos.set(k, []).get(k)).push(d); });
+      for (const g of grupos.values()) { g.sort((x, y) => (y.carpeta === 'alertas') - (x.carpeta === 'alertas')); items.push({ doc: g[0], nombre: g[0].nombre, dups: g.slice(1) }); }
     } else {
       const fl = await elegirPDFs(); if (!fl.length) return;
       items = fl.map((f) => ({ file: f, nombre: f.name, blob: f }));
@@ -164,7 +167,7 @@
       <td><select data-k="mes" aria-label="Mes">${opt([['', '— Elija —'], ...MES.map((m, k) => [k + 1, CAT.MESES[k]]), ['x', 'Omitir']], it.det.mes || '')}</select></td><td><select data-k="anio" aria-label="Año">${opt(anios(), it.det.anio)}</select></td>
       <td><select data-k="aplica" aria-label="Aplicabilidad">${opt([['No aplica', 'No aplica'], ['Aplica - verificado', 'Aplica - verificado'], ['Aplica - en gestión', 'Aplica - en gestión']], 'No aplica')}</select></td>
       <td>${it.det.seguro ? '<span class="pill ok">Detectado</span>' : '<span class="pill warn">Revisar</span>'}</td></tr>`;
-    modal({ titulo: `Consultas de alertas cargadas (${items.length})`, size: 'wide', cuerpo: `<p class="muted" style="font-size:.85rem">Revise el mes de cada soporte. Al guardar, cada PDF queda en la carpeta de alertas en "AÑO/MES" y la consulta de ese mes queda registrada en la bitácora (si ya existe, se le agrega el soporte).</p>
+    modal({ titulo: `Consultas de alertas cargadas (${items.length})`, size: 'wide', cuerpo: `<p class="muted" style="font-size:.85rem">Revise el mes de cada soporte.${items.some((x) => x.dups?.length) ? ` Los archivos repetidos (${items.reduce((n, x) => n + (x.dups?.length || 0), 0)}) quedan una sola vez.` : ''} Al guardar, cada PDF queda en la carpeta de alertas en "AÑO/MES" y la consulta de ese mes queda registrada en la bitácora (si ya existe, se le agrega el soporte).</p>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Archivo</th><th>Mes de consulta</th><th>Año</th><th>Aplicabilidad</th><th></th></tr></thead><tbody>${items.map(fila).join('')}</tbody></table></div>`,
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar y organizar', cls: 'pri', fn: async (m) => {
         const vals = [...m.body.querySelectorAll('tr[data-i]')].map((tr) => { const o = {}; tr.querySelectorAll('[data-k]').forEach((x) => { o[x.dataset.k] = x.value; }); return { it: items[+tr.dataset.i], ...o }; });
@@ -174,7 +177,7 @@
           if (v.mes === 'x') continue;
           const mes = +v.mes, anio = +v.anio, nomMes = CAT.MESES[mes - 1], subcarpeta = `${anio}/${String(mes).padStart(2, '0')}. ${nomMes.toUpperCase()}`;
           let doc = v.it.doc;
-          if (doc) { if (doc.carpeta === 'alertas' && doc.subcarpeta !== subcarpeta) await S.update('documentos', doc.id, { subcarpeta }); }
+          if (doc) { if (doc.carpeta !== 'alertas' || doc.subcarpeta !== subcarpeta) await S.update('documentos', doc.id, { carpeta: 'alertas', subcarpeta }); for (const du of v.it.dups || []) { await S.remove('documentos', du.id); if (du.archivo && du.archivo !== doc.archivo) await S.removeFile(du.archivo).catch(() => {}); } }
           else doc = await subirArchivo({ blob: v.it.blob, nombre: v.it.nombre, ent, carpeta: 'alertas', subcarpeta });
           const etiqueta = `${nomMes} ${anio}`;
           const ya = als.find((a) => nrm(a.mes_consulta) === nrm(etiqueta));
