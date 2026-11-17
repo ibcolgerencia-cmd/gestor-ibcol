@@ -606,7 +606,7 @@ window.APP = (() => {
     const c = A.numerado(cons).find((x) => x.id === eq.consultorio_id);
         const tipoMto = { mto_preventivo: 'preventivo', mto_correctivo: 'correctivo', metrologia: 'metrologia' };
     const cnt = (k) => docs.filter((d) => d.carpeta === k).length + (tipoMto[k] ? mtos.filter((m) => m.tipo === tipoMto[k]).length : 0);
-    const dd = (iso) => { const n = UI.diasHasta(iso); return iso ? `${UI.fecha(iso)} ${n !== null && n <= 30 ? `<span class="pill ${n < 0 ? 'bad' : n <= 7 ? 'warn' : 'acc'}">${n < 0 ? 'vencido' : n + ' d'}</span>` : ''}` : '—'; };
+    const dd = (iso0) => { const iso = iso0 && +String(iso0).slice(0, 4) >= 1900 ? iso0 : null; const n = UI.diasHasta(iso); return iso ? `${UI.fecha(iso)} ${n !== null && n <= 30 ? `<span class="pill ${n < 0 ? 'bad' : n <= 7 ? 'warn' : 'acc'}">${n < 0 ? 'vencido' : n + ' d'}</span>` : ''}` : '—'; };
     content().innerHTML = `
       ${migas([...A.rutaEnt(ent), [A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], `${c ? c._n + '. ' + c.nombre.toUpperCase() + ' / ' : ''}${eq.nombre.toUpperCase()}`])}
       <div class="page-head"><div><span class="eyebrow">${h(c?.nombre || 'Sin área')} · ${h(eq.ubicacion || '')}</span><h1>${h(eq.nombre)} ${A.riesgo(eq.clase_riesgo)}${esProp() ? ` <button class="icon-btn" data-act="editEqRapido" title="Cambiar el nombre y los datos del equipo" aria-label="Editar el nombre del equipo">${I.edit}</button>` : ''}</h1>
@@ -623,7 +623,7 @@ window.APP = (() => {
         <div><span>Mantenimiento</span><b>${h(eq.periodicidad_mto || '—')}</b></div>
         <div><span>Próximo mantenimiento</span><b>${dd(eq.fecha_prox_mto)}</b></div>
         <div><span>Metrología</span><b>${h(eq.periodicidad_metro || '—')}</b></div>
-        <div><span>Próxima calibración</span><b>${eq.periodicidad_metro === 'No aplica' ? 'No aplica' : dd(eq.fecha_prox_metro)}</b></div>
+        <div><span>Próxima calibración</span><b>${eq.periodicidad_metro === 'No aplica' ? 'No aplica' : dd(eq.fecha_prox_metro)}${esProp() && (eq.periodicidad_metro !== 'No aplica' || eq.fecha_prox_metro) ? ` <button class="btn sm" data-act="sinMetro" title="Si el equipo no requiere calibración o se marcó por equivocación">No requiere</button>` : ''}</b></div>
         <div><span>Garantía hasta</span><b>${dd(eq.fecha_fin_garantia)}</b></div>
       </div></div></section>
       <section class="folder-group"><span class="eyebrow">Carpeta del equipo</span><div class="folders">
@@ -637,6 +637,17 @@ window.APP = (() => {
     A.acts({
       carpeta: (d) => go('carpeta', { ent: eq.entidad_id, eq: id, k: d.k }),
       quitarCarp: (d) => A.quitarCarpeta(ent, 'eq', d.k, cnt(d.k), eq),
+      sinMetro: async () => {
+        const anio = new Date().getFullYear(), crs = (await S.list('cronogramas', { entidad_id: eq.entidad_id, equipo_id: eq.id, tipo: 'metrologia' })).filter((c) => c.anio >= anio);
+        modal({ titulo: 'El equipo no requiere calibración', size: 'sm', cuerpo: `<form class="form" onsubmit="return false"><p>Se deja la metrología de <b>${h(eq.nombre)}</b> en <b>No aplica</b> y se borra la fecha de próxima calibración${eq.fecha_prox_metro ? ` (${h(+String(eq.fecha_prox_metro).slice(0, 4) >= 1900 ? UI.fecha(eq.fecha_prox_metro) : eq.fecha_prox_metro)})` : ''}. Deja de aparecer en las alertas de vencimiento y en los indicadores de metrología.</p>
+          ${crs.length ? `<label class="checks"><input type="checkbox" name="crono" data-single checked> Quitarlo también del cronograma de metrología (${crs.map((c) => c.anio).join(', ')})</label>` : ''}<p class="muted" style="font-size:.85rem">Los reportes y certificados de metrología que ya existan no se borran. Si más adelante requiere calibración, cambie la periodicidad en «Editar» de la hoja de vida.</p></form>`,
+          acciones: [{ t: 'Cancelar' }, { t: 'Dejar en No aplica', cls: 'pri', fn: async (m) => {
+            const quitar = m.body.querySelector('[name=crono]')?.checked;
+            await S.update('equipos', eq.id, { periodicidad_metro: 'No aplica', fecha_prox_metro: null });
+            if (quitar) for (const c of crs) await S.remove('cronogramas', c.id);
+            toast(`Metrología en No aplica${quitar && crs.length ? ' y retirado del cronograma de metrología' : ''}`); A.recargar();
+          } }] });
+      },
       mostrarCarpEq: async () => { const act = await S.get('equipos', eq.id); await S.update('equipos', eq.id, { hv: { ...(act.hv || {}), ocultas: [] } }); toast('Carpetas visibles de nuevo en este equipo'); A.recargar(); },
       renCarp: (d) => A.renombrarCarpeta(ent, 'eq', d.k, eq),
       nuevaCarpetaEq: () => A.nuevaCarpeta(ent, eq),
