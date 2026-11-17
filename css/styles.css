@@ -742,3 +742,8 @@ h1 .icon-btn { vertical-align: middle; }
 .mic-ok { animation: micOk 1.2s ease-out; }
 @keyframes micOk { 0% { background-color: rgba(23, 179, 214, .28); } 100% { background-color: transparent; } }
 @media (prefers-reduced-motion: reduce) { .btn.mic.grabando, .mic-ok { animation: none; } }
+/* ===== Marcar / desmarcar cronograma (v154) ===== */
+.crono-opts, .crono-meses { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px 12px; }
+.crono-meses { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.crono-opt { display: flex; align-items: center; gap: 8px; margin: 2px 0; font-weight: 400; cursor: pointer; }
+.crono-opt input { margin: 0; flex: 0 0 auto; width: auto; }
