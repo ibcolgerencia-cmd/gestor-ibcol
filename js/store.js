@@ -91,36 +91,52 @@ window.Store = (() => {
       const j = await r.json().catch(() => ({}));
       throw new Error(j.error === 'Sin permiso' ? 'Su usuario no tiene permiso para este archivo' : j.error || `Error de almacenamiento (${r.status})`);
     }
+    // ---- caché en memoria de las lecturas (ahorra transferencia de Supabase): la misma consulta dentro de
+    //      90 s se responde desde la memoria; cualquier cambio (crear, editar, borrar, rpc) la invalida.
+    const CACHE = new Map(), TTL = 90000;
+    const ckey = (...a) => JSON.stringify(a);
+    const copia = (x) => (x == null ? x : JSON.parse(JSON.stringify(x)));
+    const deCache = async (tabla, k, fn) => {
+      const c = CACHE.get(k); if (c && Date.now() - c.at < TTL) return copia(await c.p);
+      const p = fn(); CACHE.set(k, { t: tabla, at: Date.now(), p });
+      try { return copia(await p); } catch (e) { CACHE.delete(k); throw e; }
+    };
+    async function listRed(t, filtros, orden, limite = 100000) {
+      const out = [], key = KEYS[t] || 'id';
+      for (let desde = 0; desde < limite; desde += 1000) {
+        let q = aplicar(sb.from(t).select('*'), filtros);
+        if (orden) q = q.order(orden.replace('-', ''), { ascending: !orden.startsWith('-') });
+        if (!orden || orden.replace('-', '') !== key) q = q.order(key, { ascending: true });
+        const hasta = Math.min(desde + 999, limite - 1);
+        const r = chk(await q.range(desde, hasta));
+        out.push(...r);
+        if (r.length < hasta - desde + 1) break;
+      }
+      return out;
+    }
+    const limpiar = (tabla = null) => { if (!tabla) return CACHE.clear(); for (const [k, v] of CACHE) if (v.t === tabla) CACHE.delete(k); };
+    window.addEventListener('ibcol-sesion-cambio', () => limpiar());
     return {
       modo: 'nube',
+      limpiarCache: () => limpiar(),
       get perfil() { return perfil; },
       async sesion() { try { return await cargarPerfil(); } catch { return null; } },
       async login(usuario, clave) {
+        limpiar();
         chk(await sb.auth.signInWithPassword({ email: aCorreo(usuario), password: clave }));
         const p = await cargarPerfil();
         this.log('LOGIN', 'perfiles', p.id, 'Ingreso al sistema');
         return p;
       },
-      async logout() { try { await this.log('LOGOUT', 'perfiles', perfil?.id, 'Salida'); } catch {} perfil = null; await sb.auth.signOut(); },
+      async logout() { limpiar(); try { await this.log('LOGOUT', 'perfiles', perfil?.id, 'Salida'); } catch {} perfil = null; await sb.auth.signOut(); },
       // Supabase entrega máximo 1000 filas por consulta: se pide por páginas hasta traer todo
-      async list(t, filtros, orden, limite = 100000) {
-        const out = [], key = KEYS[t] || 'id';
-        for (let desde = 0; desde < limite; desde += 1000) {
-          let q = aplicar(sb.from(t).select('*'), filtros);
-          if (orden) q = q.order(orden.replace('-', ''), { ascending: !orden.startsWith('-') });
-          if (!orden || orden.replace('-', '') !== key) q = q.order(key, { ascending: true });
-          const hasta = Math.min(desde + 999, limite - 1);
-          const r = chk(await q.range(desde, hasta));
-          out.push(...r);
-          if (r.length < hasta - desde + 1) break;
-        }
-        return out;
-      },
-      async get(t, id) { return chk(await sb.from(t).select('*').eq(KEYS[t] || 'id', id).maybeSingle()); },
-      async insert(t, o) { return chk(await sb.from(t).insert(sinExcel(t, o)).select().single()); },
-      async update(t, id, o) { return chk(await sb.from(t).update(sinExcel(t, o)).eq(KEYS[t] || 'id', id).select().single()); },
-      async upsert(t, o) { return chk(await sb.from(t).upsert(o).select().single()); },
-      async remove(t, id) { chk(await sb.from(t).delete().eq(KEYS[t] || 'id', id)); },
+      async list(t, filtros, orden, limite = 100000) { return deCache(t, ckey('l', t, filtros || {}, orden || '', limite), () => listRed(t, filtros, orden, limite)); },
+      async get(t, id) { return deCache(t, ckey('g', t, id), async () => chk(await sb.from(t).select('*').eq(KEYS[t] || 'id', id).maybeSingle())); },
+      async insert(t, o) { limpiar(t); try { return chk(await sb.from(t).insert(sinExcel(t, o)).select().single()); } finally { limpiar(t); } },
+      async update(t, id, o) { limpiar(t); try { return chk(await sb.from(t).update(sinExcel(t, o)).eq(KEYS[t] || 'id', id).select().single()); } finally { limpiar(t); } },
+      async upsert(t, o) { limpiar(t); try { return chk(await sb.from(t).upsert(o).select().single()); } finally { limpiar(t); } },
+      // al borrar se limpia todo: la base puede borrar en cascada registros de otras tablas
+      async remove(t, id) { limpiar(); try { chk(await sb.from(t).delete().eq(KEYS[t] || 'id', id)); } finally { limpiar(); } },
       claveDebil: IBCOL_SEG.claveDebil,
       // ---- ARCHIVOS: Cloudflare R2 (guardián en cloudflare/worker.js); Supabase Storage solo como respaldo
       //      mientras se pasan los archivos antiguos (lectura: primero R2, si no está, Supabase).
@@ -163,7 +179,7 @@ window.Store = (() => {
       async supaBlob(path) { return chk(await sb.storage.from('documentos').download(path)); },
       async supaBorrar(paths) { if (paths?.length) chk(await sb.storage.from('documentos').remove(paths)); },
       async log(accion, tabla, registro, detalle) {
-        try { await sb.rpc('registrar_evento', { p_accion: accion, p_tabla: tabla, p_registro: String(registro || ''), p_detalle: detalle || '' }); } catch {}
+        limpiar('auditoria'); try { await sb.rpc('registrar_evento', { p_accion: accion, p_tabla: tabla, p_registro: String(registro || ''), p_detalle: detalle || '' }); } catch {}
       },
       async crearUsuarioCliente({ usuario, clave, nombre, entidad_id, rol = 'cliente', sede = null }) {
         const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil);
@@ -175,18 +191,18 @@ window.Store = (() => {
         if (r.user.identities && r.user.identities.length === 0) throw new Error('Ese usuario ya existe');
         const args = { p_user: r.user.id, p_entidad: entidad_id, p_nombre: nombre, p_usuario: usuario };
         if (rol === 'calidad' && sede) args.p_sede = sede;
-        const rr = await sb.rpc(rol === 'calidad' ? 'asignar_perfil_calidad' : 'asignar_perfil', args);
+        limpiar('perfiles'); const rr = await sb.rpc(rol === 'calidad' ? 'asignar_perfil_calidad' : 'asignar_perfil', args);
         if (rr.error && sede && /function|schema cache|p_sede/i.test(rr.error.message)) throw new Error('Falta activar los usuarios de calidad por sede en la base de datos (supabase/calidad_sedes.sql). El usuario quedó creado sin sede: asígnela después de ejecutar el SQL.');
         chk(rr);
         return r.user.id;
       },
       async eliminarUsuario(id) {
-        const r = await sb.rpc('eliminar_usuario', { p_user: id });
+        limpiar('perfiles'); const r = await sb.rpc('eliminar_usuario', { p_user: id });
         if (r.error && /eliminar_usuario|function|schema cache/i.test(r.error.message) && !/propietario|trabajando/i.test(r.error.message)) throw new Error('Falta activar la opción de eliminar usuarios en la base de datos (supabase/eliminar_usuario.sql).');
         chk(r);
       },
       async cambiarClave(id, clave) { const debil = IBCOL_SEG.claveDebil(clave); if (debil) throw new Error(debil); chk(await sb.rpc('cambiar_clave', { p_user: id, p_clave: clave })); },
-      async rpc(fn, args) { return chk(await sb.rpc(fn, args)); },
+      async rpc(fn, args) { limpiar(); try { return chk(await sb.rpc(fn, args)); } finally { limpiar(); } },
       async ia(body) {
         const { data, error } = await sb.functions.invoke('asistente-ia', { body });
         if (error) {
