@@ -112,6 +112,7 @@
             const clave = sede || sedeC(cons.find((c) => c.id === eqs.find((e) => e.id === r.ids[0])?.consultorio_id));
             porT[clave] = { ids: r.ids, solo: g('solo').checked, orden: g('orden').checked, archivo: file.name, fecha: UI.hoy() };
             co[tipo] = porT; cfg.crono_orden = co;
+            if (cfg.crono_fuera?.[tipo]) cfg.crono_fuera = { ...cfg.crono_fuera, [tipo]: cfg.crono_fuera[tipo].filter((x) => !r.ids.includes(x)) };
             await S.update('entidades', ent.id, { config: cfg }); ent.config = cfg;
           }
           if (g('guardar').checked) {

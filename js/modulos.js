@@ -310,7 +310,10 @@
       const sedeEq = (e) => sedeC(cons.find((c) => c.id === e?.consultorio_id));
       const enLista = (sd, id) => !!co[sd]?.ids?.includes(id);
       if (!cap) Object.values(co).forEach((o) => (o.ids || []).forEach((id) => { const k = `e|${id}`; if (!mapa.has(k) && eqs.some((e) => e.id === id)) mapa.set(k, { key: k, equipo_id: id, tema: null, cr: {} }); }));
-      let ocultosCO = 0;
+      let ocultosCO = 0, ocultosFuera = 0;
+      // equipos quitados solo de este cronograma (config.crono_fuera[tipo]); siguen en el inventario y en los demás programas
+      const fuera = new Set(cap ? [] : (ent.config?.crono_fuera?.[tipo] || []));
+      if (!cap && !F.todosEq) [...mapa.values()].forEach((r) => { if (fuera.has(r.equipo_id)) { mapa.delete(r.key); ocultosFuera++; } });
       if (!cap && !F.todosEq) [...mapa.values()].forEach((r) => { const e = eqd(r.equipo_id); const sd = sedeEq(e); const o = co[sd]; if (o?.solo && !enLista(sd, e.id) && (!sedeVista || sedeVista === sd)) { mapa.delete(r.key); ocultosCO++; } });
       const ordBase = cap ? null : new Map([...eqs].sort(ordenEq).map((e, i) => [e.id, i]));
       const llaveEq = (e) => {
@@ -367,7 +370,7 @@
           <span class="muted">${visibles.length} de ${filas.length}</span>
           ${esProp() && !cap ? `<button class="btn" data-act="cargarCrono" title="Cargar un cronograma en Excel o PDF (mantenimiento o metrología, con semanas o CP / CE): programa cada equipo en el mismo orden del archivo">${I.subir} Cargar Excel / PDF</button>` : ''}${esProp() && !cap ? `<span class="sp"></span><button class="btn" data-act="marcarCrono" title="Marcar de una vez una semana en uno o varios meses para todos los equipos que se están viendo">✓ Marcar todo</button><button class="btn danger" data-act="eliminarCrono" title="Eliminar el cronograma de una sede o de toda la entidad (las demás sedes no se tocan)">🗑 Eliminar cronograma</button><button class="btn" data-act="limpiarCrono" title="Quitar de una vez las marcas (P, E, N, G, C) de los equipos que se están viendo">✕ Desmarcar todo</button><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
         ${resumen}
-        ${ocultosCO || F.todosEq ? `<p class="muted" style="margin:4px 0">${F.todosEq ? 'Mostrando todos los equipos.' : Object.values(co).some((o) => o.solo && !o.vacio) ? `Cronograma cargado del archivo «${h(Object.values(co).find((o) => o.solo && !o.vacio)?.archivo || '')}»: ${ocultosCO} equipo${ocultosCO === 1 ? '' : 's'} de la sede que no ${ocultosCO === 1 ? 'está' : 'están'} en el archivo no se muestra${ocultosCO === 1 ? '' : 'n'}.` : `Cronograma eliminado: ${ocultosCO} equipo${ocultosCO === 1 ? '' : 's'} de la sede no se muestra${ocultosCO === 1 ? '' : 'n'} hasta que cargue el cronograma con «Cargar Excel / PDF».`} <button class="btn sm" data-act="todosEq">${F.todosEq ? 'Ver solo los del archivo' : 'Mostrar todos'}</button></p>` : ''}
+        ${ocultosCO || ocultosFuera || F.todosEq ? `<p class="muted" style="margin:4px 0">${F.todosEq ? 'Mostrando todos los equipos (los quitados de este cronograma tienen el botón ↺ para volver a incluirlos).' : !ocultosCO ? '' : Object.values(co).some((o) => o.solo && !o.vacio) ? `Cronograma cargado del archivo «${h(Object.values(co).find((o) => o.solo && !o.vacio)?.archivo || '')}»: ${ocultosCO} equipo${ocultosCO === 1 ? '' : 's'} de la sede que no ${ocultosCO === 1 ? 'está' : 'están'} en el archivo no se muestra${ocultosCO === 1 ? '' : 'n'}.` : `Cronograma eliminado: ${ocultosCO} equipo${ocultosCO === 1 ? '' : 's'} de la sede no se muestra${ocultosCO === 1 ? '' : 'n'} hasta que cargue el cronograma con «Cargar Excel / PDF».`}${!F.todosEq && ocultosFuera ? ` ${ocultosCO ? '·' : ''} ${ocultosFuera} equipo${ocultosFuera === 1 ? '' : 's'} quitado${ocultosFuera === 1 ? '' : 's'} de este cronograma.` : ''} <button class="btn sm" data-act="todosEq">${F.todosEq ? 'Ver solo los del archivo' : 'Mostrar todos'}</button></p>` : ''}
         <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span><span><i style="background:#b9a3e3"></i>G · En garantía</span><span><i style="background:#7cc4e8"></i>C · Comodato</span>${esProp() ? `<span>Toque una semana para cambiar su estado (P → E → N → G → C)${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses · botón de anotaciones de cada fila para escribir, por mes, notas como “Equipo en garantía, mantenimiento a cargo del proveedor”'}.</span>` : ''}</div>
         ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
         ${A.datalistNR}
@@ -377,7 +380,7 @@
           <tr>${vis.map((v) => [1, 2, 3, 4].map((s) => `<th class="${F.mes === v.m ? 'mes-sel' : ''}" style="font-size:.66rem;padding:2px">${s}</th>`).join('')).join('')}</tr></thead><tbody>
           ${visibles.map((r) => { const e = eqd(r.equipo_id); const i = filas.indexOf(r); const nn = grupo ? visibles.indexOf(r) : i; return `<tr>${cap ? `<td class="num">${nn + 1}</td><td>${h(r.tema || '')}</td><td>${h(e.nombre || '—')}</td>` : colsInfo.map((col) => `<td class="${col.mono && !editar ? 'mono' : ''}">${e.id ? (editar ? A.celdaEdit(e, col.k, nn, cons) : A.celdaVer(e, col.k, nn, cons)) : ''}</td>`).join('')}
             ${vis.map((v) => { const pl = r.cr[v.y]?.plan || {}; const nt = pl.notas?.[v.m] || ''; const sNt = nt ? ([1, 2, 3, 4].find((s) => pl[`${v.m}-${s}`]) || 1) : 0; return [1, 2, 3, 4].map((s) => { const val = pl[`${v.m}-${s}`] || ''; return `<td class="w ${val} ${s === sNt ? 'nt' : ''} ${v.y === anioAct && v.m === mesAct ? 'now' : ''} ${F.mes === v.m ? 'mes-sel' : ''} ${dosAnios && v.p === 12 - F.mesIni + 1 && s === 1 ? 'y-ini' : ''}" ${esProp() ? `data-act="celda" data-r="${i}" data-y="${v.y}" data-k="${v.m}-${s}"` : ''} title="${CAT.MESES[v.m - 1]} ${v.y} · semana ${s}${nt ? ' · Nota: ' + h(nt) : ''}">${val}</td>`; }).join(''); }).join('')}
-            ${esProp() ? `<td style="white-space:nowrap">${cap ? '' : `<button class="icon-btn ${anios.some((y) => Object.values(r.cr[y]?.plan?.notas || {}).some(Boolean)) ? 'con-nota' : ''}" data-act="notas" data-r="${i}" aria-label="Anotaciones" title="Anotaciones de la fila (pasan al reporte)">${I.nota}</button>`}${cap || !grupos.length ? '' : `<button class="icon-btn" data-act="moverCrono" data-r="${i}" aria-label="Pasar a otro cronograma" title="Pasar a otro cronograma (${h(grupos.map((g) => g.nombre).join(', '))})">${I.carpeta}</button>`}${cap ? '' : `<button class="icon-btn" data-act="meses" data-r="${i}" aria-label="Cambiar meses" title="Cambiar meses">${I.edit}</button>`}<button class="icon-btn bad" data-act="quitar" data-r="${i}" aria-label="Quitar fila">${I.del}</button></td>` : ''}</tr>`; }).join('')}
+            ${esProp() ? `<td style="white-space:nowrap">${cap ? '' : `<button class="icon-btn ${anios.some((y) => Object.values(r.cr[y]?.plan?.notas || {}).some(Boolean)) ? 'con-nota' : ''}" data-act="notas" data-r="${i}" aria-label="Anotaciones" title="Anotaciones de la fila (pasan al reporte)">${I.nota}</button>`}${cap || !grupos.length ? '' : `<button class="icon-btn" data-act="moverCrono" data-r="${i}" aria-label="Pasar a otro cronograma" title="Pasar a otro cronograma (${h(grupos.map((g) => g.nombre).join(', '))})">${I.carpeta}</button>`}${cap ? '' : `<button class="icon-btn" data-act="meses" data-r="${i}" aria-label="Cambiar meses" title="Cambiar meses">${I.edit}</button>`}${!cap && fuera.has(r.equipo_id) ? `<button class="icon-btn" data-act="incluir" data-r="${i}" aria-label="Volver a incluir" title="Volver a incluir en este cronograma">↺</button>` : `<button class="icon-btn bad" data-act="quitar" data-r="${i}" aria-label="Quitar del cronograma" title="${cap ? 'Quitar fila' : 'Quitar solo de este cronograma (no del inventario ni de los demás programas)'}">${I.del}</button>`}</td>` : ''}</tr>`; }).join('')}
           </tbody></table></div>` : `<div class="empty">${filas.length ? 'Ningún registro coincide con la búsqueda o el servicio elegido.' : `No hay cronograma para ${periodoTxt}.${esProp() && !cap ? ' Use “Generar desde periodicidad” para crearlo automáticamente con la frecuencia de cada equipo.' : ''}`}</div>`}</section>`;
       el.querySelector('[data-mes]').onchange = (ev) => { F.mes = +ev.target.value; if (!F.mes) F.estado = ''; pintar(); };
       el.querySelector('[data-serv]').onchange = (ev) => { F.serv = ev.target.value; pintar(); };
@@ -525,10 +528,31 @@
           toast(`Programación movida a ${CAT.MESES[destino - 1]}`); F.mes = destino; pintar();
         },
         quitar: async (d) => {
-          const r = filas[+d.r]; const lista = Object.values(r.cr);
+          const r = filas[+d.r];
+          if (!cap && r.equipo_id) {
+            const e = eqd(r.equipo_id); const nom = tipo === 'metrologia' ? 'metrología' : 'mantenimiento';
+            if (!(await confirmar(`¿Quitar ${e.codigo_inv || ''} ${e.nombre || ''} del cronograma de ${nom}? Se borra su programación de ${nom} (todos los años) y deja de aparecer en este cronograma. NO se quita del inventario, de la hoja de vida, del cronograma de ${tipo === 'metrologia' ? 'mantenimiento' : 'metrología'} ni de los demás programas. Se puede volver a incluir con «Mostrar todos» → ↺.`, 'Quitar'))) return;
+            for (const c of await S.list('cronogramas', { entidad_id: ent.id, tipo, equipo_id: e.id })) await S.remove('cronogramas', c.id);
+            const fresh = (await S.get('entidades', ent.id)) || ent; const cfg = { ...(fresh.config || {}) };
+            const cf = { ...(cfg.crono_fuera || {}) }; cf[tipo] = [...new Set([...(cf[tipo] || []), e.id])]; cfg.crono_fuera = cf;
+            if (cfg.crono_orden?.[tipo]) { const co2 = { ...cfg.crono_orden }; const pt = { ...co2[tipo] }; Object.keys(pt).forEach((sd) => { pt[sd] = { ...pt[sd], ids: (pt[sd].ids || []).filter((x) => x !== e.id) }; }); co2[tipo] = pt; cfg.crono_orden = co2; }
+            await S.update('entidades', ent.id, { config: cfg }); ent.config = cfg;
+            S.log('EDITAR', 'cronogramas', ent.id, `Quitar ${e.codigo_inv || e.nombre} del cronograma de ${tipo}`);
+            toast(`${e.codigo_inv || e.nombre} quitado del cronograma de ${nom}`); return A.recargar();
+          }
+          const lista = Object.values(r.cr);
           if (!lista.length) return toast('Esta fila no tiene programación. El equipo aparece porque está en el inventario; si ya no existe, márquelo «Dado de baja» en su hoja de vida.', true);
           if (!(await confirmar(`¿Borrar la programación de esta fila${lista.length > 1 ? ` (años ${Object.keys(r.cr).join(' y ')})` : ''}?${r.equipo_id && !cap ? ' El equipo sigue apareciendo vacío porque el cronograma está enlazado con el inventario.' : ''}`, 'Borrar programación'))) return;
           for (const c of lista) await S.remove('cronogramas', c.id); pintar();
+        },
+        incluir: async (d) => {
+          const e = eqd(filas[+d.r].equipo_id);
+          const fresh = (await S.get('entidades', ent.id)) || ent; const cfg = { ...(fresh.config || {}) };
+          const cf = { ...(cfg.crono_fuera || {}) }; cf[tipo] = (cf[tipo] || []).filter((x) => x !== e.id); cfg.crono_fuera = cf;
+          const sd = sedeVista || sedeEq(e); if (cfg.crono_orden?.[tipo]?.[sd]?.solo) { const co2 = { ...cfg.crono_orden }; const pt = { ...co2[tipo] }; pt[sd] = { ...pt[sd], ids: [...(pt[sd].ids || []), e.id] }; co2[tipo] = pt; cfg.crono_orden = co2; }
+          await S.update('entidades', ent.id, { config: cfg }); ent.config = cfg;
+          S.log('EDITAR', 'cronogramas', ent.id, `Volver a incluir ${e.codigo_inv || e.nombre} en el cronograma de ${tipo}`);
+          toast(`${e.codigo_inv || e.nombre} incluido de nuevo`); A.recargar();
         },
         grupoSel: (d) => { F.grupo = d.g; pintar(); },
         grupoNuevo: () => A.formGrupoCrono(ent, null, { cons, sedeCtx, tipo, alGuardar: (g) => { F.grupo = g?.id || ''; pintar(); } }),
