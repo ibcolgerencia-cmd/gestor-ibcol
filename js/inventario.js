@@ -400,7 +400,7 @@
     const rgb = String(c?.rgb || '').slice(-6); if (!/^[0-9A-F]{6}$/i.test(rgb)) return '';
     const r = parseInt(rgb.slice(0, 2), 16), g = parseInt(rgb.slice(2, 4), 16), b = parseInt(rgb.slice(4, 6), 16);
     if (r > 235 && g > 235 && b > 235) return ''; // blanco
-    if (Math.abs(r - g) < 12 && Math.abs(g - b) < 12) return ''; // grises de la cuadrícula
+    if (Math.abs(r - g) < 12 && Math.abs(g - b) < 12) return r < 190 ? 'P' : ''; // gris oscuro (ej. A5A5A5) = programado; grises claros = cuadrícula
     if (g > r + 30 && g > b) return 'E';
     if (r > g + 60 && r > b + 40) return 'N';
     return 'P';
@@ -417,7 +417,7 @@
     const ex = ds.find((d) => d.m === mesIni); if (ex) return ex.y;
     const d = ds[0]; return d.m >= mesIni ? d.y : d.y - 1;
   };
-  const marcaDe = (t, rol) => { t = norm(t).trim(); if (!t || /^(NA|N\/A|-)$/.test(t)) return ''; if (rol === 'E') return 'E'; if (rol === 'P') return /^N\b|^NO\b/.test(t) ? 'N' : /^G$/.test(t) ? 'G' : /^C$/.test(t) ? 'C' : 'P'; return /^E/.test(t) ? 'E' : /^N/.test(t) ? 'N' : /^G$/.test(t) ? 'G' : /^C$/.test(t) ? 'C' : 'P'; };
+  const marcaDe = (t, rol) => { t = norm(t).trim(); if (!t || /^(NA|N\/A|-)$/.test(t)) return ''; if (/GARANT/.test(t)) return 'G'; if (/COMODATO/.test(t)) return 'C'; if (rol === 'E') return 'E'; if (rol === 'P') return /^N\b|^NO\b/.test(t) ? 'N' : /^G$/.test(t) ? 'G' : /^C$/.test(t) ? 'C' : 'P'; return /^E/.test(t) ? 'E' : /^N/.test(t) ? 'N' : /^G$/.test(t) ? 'G' : /^C$/.test(t) ? 'C' : 'P'; };
   const esCodigo = (t) => /^[A-Z0-9]{1,6}(-[A-Z0-9]{1,8}){1,4}$/i.test(String(t || '').trim()) && /\d/.test(t) && /[A-Z]/i.test(t);
   const FIN_BLOQUE = /CONVEN[SC]ION|ELABORADO POR|REVISADO POR|APROBADO POR/;
   const SALTAR = /PRESTADOR|\bREPS\b|FECHA ACTUALIZACI|^SERVICIO$|^EQUIPO$/;
