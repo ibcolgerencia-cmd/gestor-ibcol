@@ -25,6 +25,8 @@
       const toma = (e) => { if (e) usados.add(e.id); return e || null; };
       for (const k of [r.codigo, r.af]) { const c = comp(k); if (c.length >= 4) { const e = libres.find((x) => comp(x.codigo_inv) === c) || libres.find((x) => comp(x.activo_fijo) === c); if (e) return toma(e); } }
       const sr = comp(r.serie); if (sr.length >= 4 && !/^(NR|NOREGISTRA|NA)$/.test(sr)) { const e = libres.find((x) => comp(x.serie) === sr); if (e) return toma(e); }
+      // si la fila trae código y no existe, no se adivina por nombre (evita tomar otro equipo del mismo tipo)
+      if (comp(r.codigo).length >= 4 && /\d/.test(r.codigo) && /[A-Z]/i.test(r.codigo)) return null;
       const n = comp(r.nombre), mo = comp(r.modelo), ma = comp(r.marca);
       const cand = libres.filter((x) => comp(x.nombre) === n);
       const e = cand.find((x) => mo && comp(x.modelo) === mo) || cand.find((x) => ma && comp(x.marca) === ma) || (cand.length === 1 ? cand[0] : null);
