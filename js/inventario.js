@@ -571,8 +571,6 @@
         if (r.proveedor && hv.met_proveedor !== r.proveedor) { hv.met_proveedor = r.proveedor; ch = true; }
         if (r.metTipo && hv.met_tipo !== r.metTipo) { hv.met_tipo = r.metTipo; ch = true; }
         if (ch) cambios.hv = hv;
-        const nMarcas = Object.values(planes).reduce((a, p) => a + Object.keys(p).length, 0);
-        if (nMarcas && (!e.periodicidad_metro || e.periodicidad_metro === 'No aplica')) cambios.periodicidad_metro = 'Anual';
         if (Object.keys(cambios).length) { const u = await S.update('equipos', e.id, cambios); Object.assign(e, u || cambios); }
       }
       let tocado = false;
