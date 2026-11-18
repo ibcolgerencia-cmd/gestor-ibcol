@@ -1058,16 +1058,20 @@
 
   // =================================================================== FORMULARIOS
   // ------------------------------------------------------------ Equipo nuevo
+  // periodicidad escrita de otra forma (NO APLICA, NA, anual…) → la opción exacta de la lista
+  const perNorm = (v) => { const t = String(v || '').trim(); if (!t) return ''; if (/^(n\/?a|no aplica|no registra|nr)$/i.test(t)) return 'No aplica'; return Object.keys(CAT.PERIODICIDAD).find((p) => p.toLowerCase() === t.toLowerCase()) || t; };
   const camposEquipo = (e, cons) => `
     ${f.input('orden', 'N° (orden en el área)', e.orden ?? '', { type: 'number', attrs: 'min="0"' })}${f.input('nombre', 'Nombre del equipo *', e.nombre)}${f.input('codigo_inv', 'Código de inventario *', e.codigo_inv)}${f.input('activo_fijo', 'N° activo fijo', e.activo_fijo)}
     ${f.sel('consultorio_id', 'Área / consultorio', [['', '— Sin asignar —'], ...A.ordenar(cons).map((c, i) => [c.id, `${i + 1}. ${c.nombre}`])], e.consultorio_id)}${f.input('ubicacion', 'Ubicación física', e.ubicacion)}
     ${f.input('marca', 'Marca', e.marca)}${f.input('modelo', 'Modelo', e.modelo)}${f.input('serie', 'Serie', e.serie)}${f.input('fabricante', 'Fabricante', e.fabricante)}
     ${f.sel('clase_riesgo', 'Clasificación de riesgo', [['', '— Seleccione —'], ...Object.entries(CAT.RIESGO)], e.clase_riesgo)}${f.input('registro_sanitario', 'Registro sanitario / permiso', e.registro_sanitario)}${f.input('fecha_venc_rs', 'Vencimiento registro sanitario', e.fecha_venc_rs, { type: 'date' })}
-    ${f.sel('periodicidad_mto', 'Periodicidad mantenimiento', Object.keys(CAT.PERIODICIDAD), e.periodicidad_mto || 'Semestral')}${f.sel('periodicidad_metro', 'Periodicidad metrología', Object.keys(CAT.PERIODICIDAD), e.periodicidad_metro || 'No aplica')}
+    ${f.sel('periodicidad_mto', 'Periodicidad mantenimiento', Object.keys(CAT.PERIODICIDAD), perNorm(e.periodicidad_mto) || 'Semestral')}${f.sel('periodicidad_metro', 'Periodicidad metrología', Object.keys(CAT.PERIODICIDAD), perNorm(e.periodicidad_metro) || 'No aplica')}
     ${f.input('fecha_prox_mto', 'Próximo mantenimiento', e.fecha_prox_mto, { type: 'date' })}${f.input('fecha_prox_metro', 'Próxima calibración', e.fecha_prox_metro, { type: 'date' })}${f.input('fecha_fin_garantia', 'Garantía hasta', e.fecha_fin_garantia, { type: 'date' })}
     ${f.sel('estado', 'Estado', CAT.ESTADOS, e.estado || 'Activo')}`;
   const limpiarEquipo = (d) => { if ('orden' in d) d.orden = d.orden === '' ? null : Number(d.orden); ['fecha_venc_rs', 'fecha_prox_mto', 'fecha_prox_metro', 'fecha_fin_garantia', 'fecha_ult_mto', 'fecha_ult_metro', 'consultorio_id', 'clase_riesgo'].forEach((k) => { if (k in d && !d[k]) d[k] = null; }); return d; };
 
+  // listas con «No aplica» propio: se guardan tal cual (no como marca NR/NA), para que la lista muestre la opción elegida
+  const SIN_NR = ['periodicidad_mto', 'periodicidad_metro', 'estado'];
   A.formEquipo = (base, cons) => modal({
     titulo: 'Nuevo equipo biomédico',
     cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${camposEquipo(base, cons)}</div><p class="muted">Después podrá completar toda la hoja de vida (datos técnicos, adquisición, accesorios y anexos).</p></form>`,
@@ -1094,7 +1098,7 @@
     modal({
       titulo: `Hoja de vida · ${eq.codigo_inv}`, size: 'wide',
       cuerpo: `<form class="form" onsubmit="return false">${tabs(T)}
-        <div data-panel="0"><div class="fields">${camposEquipo({ ...eq, ...Object.fromEntries(Object.keys(hv.nr || {}).filter((k) => hv.nr[k] && !['item', 'clase_riesgo'].includes(k)).map((k) => [k, FMT.marca(eq, k)])) }, cons)}<div class="field full"><span class="lbl">1.1 Registro sanitario o permiso de comercialización: marque una opción</span><div class="actions" style="gap:6px;flex-wrap:wrap">${[['RS', 'Registro sanitario'], ['PC', 'Permiso de comercialización'], ['NA', 'No aplica'], ['NR', 'No registra']].map(([v, t]) => `<label class="btn sm" style="gap:6px;cursor:pointer"><input type="radio" name="${x('tipo_registro')}" value="${v}" ${(hv.tipo_registro || (eq.registro_sanitario ? 'RS' : 'NR')) === v ? 'checked' : ''}> <b>${v}</b> <span class="muted">${t}</span></label>`).join('')}</div></div>
+        <div data-panel="0"><div class="fields">${camposEquipo({ ...eq, ...Object.fromEntries(Object.keys(hv.nr || {}).filter((k) => hv.nr[k] && !['item', 'clase_riesgo', ...SIN_NR].includes(k)).map((k) => [k, FMT.marca(eq, k)])) }, cons)}<div class="field full"><span class="lbl">1.1 Registro sanitario o permiso de comercialización: marque una opción</span><div class="actions" style="gap:6px;flex-wrap:wrap">${[['RS', 'Registro sanitario'], ['PC', 'Permiso de comercialización'], ['NA', 'No aplica'], ['NR', 'No registra']].map(([v, t]) => `<label class="btn sm" style="gap:6px;cursor:pointer"><input type="radio" name="${x('tipo_registro')}" value="${v}" ${(hv.tipo_registro || (eq.registro_sanitario ? 'RS' : 'NR')) === v ? 'checked' : ''}> <b>${v}</b> <span class="muted">${t}</span></label>`).join('')}</div></div>
           <div class="field full"><label for="f_hv_ecri">1.2 Código ECRI (UMDNS)</label><div class="actions" style="gap:6px;flex-wrap:nowrap"><input id="f_hv_ecri" name="${x('ecri')}" value="${h(hv.ecri || '')}" placeholder="ej: 12-853 Oxímetros" style="flex:1"><button type="button" class="btn sm" data-ecri>Buscar en listado ECRI</button></div><div class="actions" data-ecri-sug style="gap:6px;margin-top:6px"></div></div>
           ${f.input(x('distintivo'), '1.4 Distintivo de habilitación', hv.distintivo)}${f.input(x('funcion'), '2.1 Función del equipo', hv.funcion)}${f.sel(x('movil'), '2.9 / 2.10 Tipo', ['Móvil', 'Fijo'], hv.movil || 'Móvil')}
           <div class="field"><span class="lbl">Foto del equipo (sale en la hoja de vida)</span><div class="actions" style="align-items:center"><img data-fprev src="${hv.foto || ''}" alt="" style="max-height:60px;${hv.foto ? '' : 'display:none'}"><label class="btn sm">${I.subir} Cargar foto<input type="file" accept="image/*" hidden data-foto></label></div></div></div></div>
@@ -1150,8 +1154,8 @@
         if (!(Array.isArray(nhv.fuente) ? nhv.fuente : [nhv.fuente]).includes('Otro')) nhv.fuente_cual = '';
         nhv.accesorios = repLeer(m.body, 'acc'); if ('foto' in eq) { delete nhv.foto; cols.foto = foto; } else nhv.foto = foto; nhv.mediciones_tabla = nhv.mediciones_aplica === 'No aplica' ? [] : repLeer(m.body, 'med');
         if (!cols.nombre || !cols.codigo_inv) { toast('Nombre y código de inventario son obligatorios', true); return false; }
-        nhv.nr = { ...(hv.nr || {}) }; Object.keys(nhv.nr).forEach((k) => { if (k in cols && cols[k] && !/^(no registra|nr|no aplica)$/i.test(cols[k]) && cols[k] !== eq[k]) delete nhv.nr[k]; });
-        Object.keys(cols).forEach((k) => { if (/^(no registra|no aplica)$/i.test(cols[k] || '') && !['codigo_inv', 'nombre'].includes(k)) { nhv.nr[k] = /aplica/i.test(cols[k]) ? 'NA' : true; cols[k] = ''; } });
+        nhv.nr = { ...(hv.nr || {}) }; SIN_NR.forEach((k) => delete nhv.nr[k]); Object.keys(nhv.nr).forEach((k) => { if (k in cols && cols[k] && !/^(no registra|nr|no aplica)$/i.test(cols[k]) && cols[k] !== eq[k]) delete nhv.nr[k]; });
+        Object.keys(cols).forEach((k) => { if (/^(no registra|no aplica)$/i.test(cols[k] || '') && !['codigo_inv', 'nombre', ...SIN_NR].includes(k)) { nhv.nr[k] = /aplica/i.test(cols[k]) ? 'NA' : true; cols[k] = ''; } });
         await S.update('equipos', eq.id, { ...limpiarEquipo(cols), hv: nhv }); toast('Hoja de vida actualizada'); A.recargar();
       } }],
     });
