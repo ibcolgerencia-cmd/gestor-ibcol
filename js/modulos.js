@@ -304,16 +304,16 @@
       if (!cap) eqs.filter((e) => e.estado !== 'Dado de baja' && !(A.esCarpetaDoc && A.esCarpetaDoc(e.nombre)) && (tipo !== 'metrologia' || e.periodicidad_metro !== 'No aplica')).forEach((e) => { const k = `e|${e.id}`; if (!mapa.has(k)) mapa.set(k, { key: k, equipo_id: e.id, tema: null, cr: {} }); });
       // cronograma cargado desde un archivo (Excel / PDF): mismo orden y solo sus equipos en esa sede (config.crono_orden[tipo][sede])
       const co = cap ? {} : (ent.config?.crono_orden?.[tipo] || {});
-      // cronograma cargado desde un archivo (Excel / PDF): es independiente del inventario. En la sede donde se cargó se ven
-      // los equipos del archivo (aunque estén en otra sede o no tengan periodicidad), en su orden, y solo esos.
+      // cronograma cargado desde un archivo (Excel / PDF): cada sede es independiente. En la sede donde se cargó se ven
+      // solo los equipos de esa sede que trae el archivo, en su orden.
       const sedeVista = sedeCtx || (F.serv.startsWith('sede:') ? F.serv.slice(5) : '');
       const sedeEq = (e) => sedeC(cons.find((c) => c.id === e?.consultorio_id));
       const enLista = (sd, id) => !!co[sd]?.ids?.includes(id);
-      if (!cap) Object.values(co).forEach((o) => (o.ids || []).forEach((id) => { const k = `e|${id}`; if (!mapa.has(k) && eqs.some((e) => e.id === id)) mapa.set(k, { key: k, equipo_id: id, tema: null, cr: {} }); }));
+      if (!cap) Object.entries(co).forEach(([sd, o]) => (o.ids || []).forEach((id) => { const k = `e|${id}`; const e = eqs.find((x) => x.id === id); if (!mapa.has(k) && e && sedeEq(e) === sd) mapa.set(k, { key: k, equipo_id: id, tema: null, cr: {} }); }));
       let ocultosCO = 0, ocultosFuera = 0;
       // equipos quitados solo de este cronograma (config.crono_fuera[tipo]); siguen en el inventario y en los demás programas
       const fuera = new Set(cap ? [] : (ent.config?.crono_fuera?.[tipo] || []));
-      if (!cap && !F.todosEq) [...mapa.values()].forEach((r) => { if (fuera.has(r.equipo_id)) { mapa.delete(r.key); ocultosFuera++; } });
+      if (!cap && !F.todosEq) [...mapa.values()].forEach((r) => { if (fuera.has(r.equipo_id)) { mapa.delete(r.key); if (!sedeVista || sedeEq(eqd(r.equipo_id)) === sedeVista) ocultosFuera++; } });
       if (!cap && !F.todosEq) [...mapa.values()].forEach((r) => { const e = eqd(r.equipo_id); const sd = sedeEq(e); const o = co[sd]; if (o?.solo && !enLista(sd, e.id) && (!sedeVista || sedeVista === sd)) { mapa.delete(r.key); ocultosCO++; } });
       const ordBase = cap ? null : new Map([...eqs].sort(ordenEq).map((e, i) => [e.id, i]));
       const llaveEq = (e) => {
@@ -325,7 +325,7 @@
       const mesAct = new Date().getMonth() + 1;
       const consDe = (r) => cons.find((x) => x.id === eqd(r.equipo_id).consultorio_id);
       const texto = (r) => { const e = eqd(r.equipo_id), c = consDe(r); return nrmQ([r.tema, e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, e.ubicacion, e.registro_sanitario, c?.nombre, c?.sede].join(' ')); };
-      const enServ = (r) => { if (!F.serv) return true; const c = consDe(r); if (F.serv.startsWith('sede:')) return (!!c && sedeC(c) === F.serv.slice(5)) || (!cap && enLista(F.serv.slice(5), r.equipo_id)); return c?.id === F.serv; };
+      const enServ = (r) => { if (!F.serv) return true; const c = consDe(r); if (F.serv.startsWith('sede:')) return !!c && sedeC(c) === F.serv.slice(5); return c?.id === F.serv; };
       const consSel0 = F.serv && !F.serv.startsWith('sede:') ? cons.find((c) => c.id === F.serv) : F.serv ? { sede: F.serv.slice(5), nombre: '' } : null;
       // Cronogramas separados (ej. GENERAL, EXTRAMURAL, CENTRÍFUGA ALMACÉN): cada uno con los servicios elegidos
       const grupos = (ent.config?.crono_grupos || []).filter((g) => !sedeCtx || g.sede === sedeCtx || (!g.sede && (g.cons || []).some((id) => sedeC(cons.find((c) => c.id === id)) === sedeCtx)));

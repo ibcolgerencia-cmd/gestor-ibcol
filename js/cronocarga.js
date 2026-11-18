@@ -21,12 +21,12 @@
     const usados = new Set();
     const enSede = (e) => !sede || sedeC(cons.find((c) => c.id === e.consultorio_id)) === sede;
     return (r) => {
-      const libres = eqs.filter((e) => !usados.has(e.id) && e.estado !== 'Dado de baja');
+      const libres = eqs.filter((e) => !usados.has(e.id) && e.estado !== 'Dado de baja' && enSede(e));
       const toma = (e) => { if (e) usados.add(e.id); return e || null; };
       for (const k of [r.codigo, r.af]) { const c = comp(k); if (c.length >= 4) { const e = libres.find((x) => comp(x.codigo_inv) === c) || libres.find((x) => comp(x.activo_fijo) === c); if (e) return toma(e); } }
       const sr = comp(r.serie); if (sr.length >= 4 && !/^(NR|NOREGISTRA|NA)$/.test(sr)) { const e = libres.find((x) => comp(x.serie) === sr); if (e) return toma(e); }
       const n = comp(r.nombre), mo = comp(r.modelo), ma = comp(r.marca);
-      const cand = libres.filter((x) => enSede(x) && comp(x.nombre) === n);
+      const cand = libres.filter((x) => comp(x.nombre) === n);
       const e = cand.find((x) => mo && comp(x.modelo) === mo) || cand.find((x) => ma && comp(x.marca) === ma) || (cand.length === 1 ? cand[0] : null);
       return toma(e);
     };
@@ -47,14 +47,15 @@
       const cuenta = {}; prev0.filter(Boolean).forEach((e) => { const sd = sedeC(cons.find((c) => c.id === e.consultorio_id)); cuenta[sd] = (cuenta[sd] || 0) + 1; });
       const sedeMas = Object.entries(cuenta).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
       const sedeSug = sede0 || sedeMas;
+      const otraSede = (r) => { const e = buscador(eqs, cons, null)(r); return e ? sedeC(cons.find((c) => c.id === e.consultorio_id)) : ''; };
       const base = plan.anio || new Date().getFullYear();
       const pinta = (m, sede) => {
         const bus = buscador(eqs, cons, sede || null); const res = plan.filas.map((r) => ({ r, e: bus(r) }));
         const nOk = res.filter((x) => x.e).length;
-        const fuera = sede ? res.filter((x) => x.e && sedeC(cons.find((c) => c.id === x.e.consultorio_id)) !== sede).length : 0;
-        m.body.querySelector('[data-res]').innerHTML = `${fuera ? `<p class="muted" style="background:#eef7fb;border-radius:8px;padding:8px 10px">${fuera} equipo${fuera === 1 ? '' : 's'} del archivo ${fuera === 1 ? 'está' : 'están'} registrado${fuera === 1 ? '' : 's'} en otra sede del inventario (${h(sedeMas)}). Igual quedarán en el cronograma de <b>${h(sede)}</b>, en el orden del archivo: el cronograma cargado es independiente del inventario.</p>` : ''}<p><b>${nOk} de ${plan.filas.length}</b> equipos encontrados en el inventario${nOk < plan.filas.length ? ` · <span class="pill warn">${plan.filas.length - nOk} sin encontrar</span> (no se programan; revise el código o créelos en el inventario)` : ''}.</p>
+        const fuera = sede ? res.filter((x) => !x.e && otraSede(x.r)).length : 0;
+        m.body.querySelector('[data-res]').innerHTML = `${fuera ? `<p class="pill bad" style="display:block;white-space:normal;padding:8px 10px">${fuera} equipo${fuera === 1 ? '' : 's'} del archivo ${fuera === 1 ? 'pertenece' : 'pertenecen'} a otra sede (${h(sedeMas)}) y no se ${fuera === 1 ? 'carga' : 'cargan'} en ${h(sede)}: cada sede tiene su propio cronograma. Si el archivo es de esa sede, elíjala arriba.</p>` : ''}<p><b>${nOk} de ${plan.filas.length}</b> equipos encontrados en el inventario${nOk < plan.filas.length ? ` · <span class="pill warn">${plan.filas.length - nOk} sin encontrar</span> (no se programan; revise el código o créelos en el inventario)` : ''}.</p>
           <div class="tbl-wrap" style="max-height:330px;overflow:auto"><table class="tbl"><thead><tr><th>#</th><th>Servicio</th><th>Equipo</th><th>Código / A.F.</th><th>Serie</th>${plan.filas.some((r) => r.metTipo) ? '<th>Tipo</th>' : ''}${plan.filas.some((r) => r.proveedor) ? '<th>Proveedor</th>' : ''}<th>Programación</th><th>En el gestor</th></tr></thead><tbody>
-          ${res.map(({ r, e }, i) => { const c = e && cons.find((x) => x.id === e.consultorio_id); return `<tr><td class="num">${i + 1}</td><td>${h(r.servicio || '')}</td><td><b>${h(r.nombre)}</b></td><td class="mono">${h(r.codigo || r.af || '')}</td><td class="mono">${h(r.serie || '')}</td>${plan.filas.some((x) => x.metTipo) ? `<td>${h(r.metTipo || '')}</td>` : ''}${plan.filas.some((x) => x.proveedor) ? `<td>${h(r.proveedor || '')}</td>` : ''}<td>${marcasTxt(r) || '<span class="muted">—</span>'}</td><td>${e ? `<span class="pill ok">✓</span> ${h(e.codigo_inv || '')} <small class="muted">${h(sedeC(c))} · ${h(c?.nombre || '')}</small>` : '<span class="pill bad">No está</span>'}</td></tr>`; }).join('')}
+          ${res.map(({ r, e }, i) => { const c = e && cons.find((x) => x.id === e.consultorio_id); return `<tr><td class="num">${i + 1}</td><td>${h(r.servicio || '')}</td><td><b>${h(r.nombre)}</b></td><td class="mono">${h(r.codigo || r.af || '')}</td><td class="mono">${h(r.serie || '')}</td>${plan.filas.some((x) => x.metTipo) ? `<td>${h(r.metTipo || '')}</td>` : ''}${plan.filas.some((x) => x.proveedor) ? `<td>${h(r.proveedor || '')}</td>` : ''}<td>${marcasTxt(r) || '<span class="muted">—</span>'}</td><td>${e ? `<span class="pill ok">✓</span> ${h(e.codigo_inv || '')} <small class="muted">${h(sedeC(c))} · ${h(c?.nombre || '')}</small>` : (otraSede(r) ? `<span class="pill warn">De otra sede: ${h(otraSede(r))}</span>` : '<span class="pill bad">No está</span>')}</td></tr>`; }).join('')}
           </tbody></table></div>`;
         return res;
       };
@@ -83,6 +84,7 @@
           // si el usuario corrigió el periodo, se recalcula el año de cada mes
           if (mesIni !== plan.mesIni || anio !== base) plan.filas.forEach((r) => { const pl = {}; Object.values(r.planes || {}).forEach((p) => Object.entries(p).forEach(([k, v]) => { const y = +k.split('-')[0] < mesIni ? anio + 1 : anio; (pl[y] = pl[y] || {})[k] = v; })); r.planes = pl; });
           const plan2 = { ...plan, anio, mesIni };
+          { const b0 = buscador(eqs, cons, sede); if (!plan.filas.some((x) => b0(x))) { toast(`Ningún equipo del archivo pertenece a ${sede || 'la entidad'}. Elija la sede a la que corresponde el archivo.`, true); return false; } }
           const bus = buscador(eqs, cons, sede);
           // eliminar todo y cargar de cero: se quitan las marcas (y notas) de los 12 meses del periodo en los equipos de la sede
           if (g('borrar').checked) {
