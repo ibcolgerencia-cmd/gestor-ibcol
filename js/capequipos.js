@@ -242,7 +242,7 @@
     const enInv = P.CAP_EQ.filter((c) => enInvDe(ctx, c).length);
     const fila = (s) => { const d = s.datos || {}, pr = TV.prom(tDe(s, 'pre')), po = TV.prom(tDe(s, 'post')), nA = (d.asistentes || []).filter((a) => a.nombre).length;
       return `<tr><td class="num">${fF(s.fecha)}</td><td><b>${h(d.equipo || '')}</b>${d.clase ? ` <span class="pill">Clase ${h(d.clase)}</span>` : ''}<div class="muted" style="font-size:.8rem">${h(d.tema || '')}${d.capacitador ? ' · ' + h(d.capacitador) : ''}</div></td>
-        <td><span class="pill ${d.estado === 'Ejecutada' ? 'ok' : d.estado === 'Cancelada' ? 'bad' : s.fecha < UI.hoy() ? 'warn' : ''}">${h(d.estado || 'Programada')}</span></td><td class="num">${nA}</td><td class="num">${pr === null ? '' : pr + '%'}</td><td class="num">${po === null ? '' : po + '%'}</td>
+        <td><span class="pill ${d.estado === 'Ejecutada' ? 'ok' : d.estado === 'Cancelada' ? 'bad' : s.fecha < UI.hoy() ? 'warn' : ''}">${h(d.estado || 'Programada')}</span>${d.acta_pdf ? ' <span class="pill ok" title="Acta cargada en PDF">Acta PDF</span>' : ''}</td><td class="num">${nA}</td><td class="num">${pr === null ? '' : pr + '%'}</td><td class="num">${po === null ? '' : po + '%'}</td>
         <td><div class="row-actions" style="flex-wrap:wrap"><button class="btn sm" data-ce="pres" data-id="${s.id}">Presentación</button>${esProp() ? `<button class="btn sm ${d.enlace?.abierto ? 'pri' : ''}" data-ce="enlace" data-id="${s.id}" title="Enlace para que cada persona responda el pre y post test desde su celular">Enlace pre / post test${d.enlace?.abierto ? ' · abierto' : ''}</button><button class="btn sm" data-ce="aplicar" data-id="${s.id}" title="Diligenciar un test en esta pantalla">Aplicar test</button><button class="btn sm" data-ce="preg" data-id="${s.id}">Preguntas</button>` : ''}<button class="btn sm" data-ce="res" data-id="${s.id}">Resultados</button><button class="btn sm" data-ce="test" data-id="${s.id}">${I.pdf} Test en blanco</button><button class="btn sm" data-ce="asis" data-id="${s.id}">${I.pdf} Asistencia</button><button class="btn sm ${d.estado === 'Ejecutada' ? 'pri' : ''}" data-ce="acta" data-id="${s.id}">${I.pdf} Acta${(d.fotos || []).length ? ` · ${d.fotos.length} foto${d.fotos.length === 1 ? '' : 's'}` : ''}</button>
           ${esProp() ? `<button class="icon-btn" data-ce="edit" data-id="${s.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-ce="del" data-id="${s.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`; };
     body.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between;align-items:flex-start"><div><h3 style="margin:0">Capacitaciones en equipos biomédicos · ${anio}</h3><span class="muted" style="font-size:.85rem">Por cada equipo: presentación, pre y post test (en pantalla o por enlace al celular), lista de asistencia y acta con resultados y evidencia fotográfica. Ejecutadas ${ej} de ${ses.length}${ses.length ? ` (${Math.round((ej / ses.length) * 100)} %)` : ''}.</span></div>
@@ -267,6 +267,7 @@
         if (acc === 'test') return modal({ titulo: 'Test en blanco', cuerpo: '<p>¿Qué desea generar?</p>', acciones: [{ t: 'Pre test', fn: () => verDoc(TV.pdfTest(ent, { ses: s, preguntas: s.datos.preguntas, fase: 'pre' }), 'Pre test en blanco', `Pre_test_${slug(s.datos?.equipo)}.pdf`) }, { t: 'Post test', fn: () => verDoc(TV.pdfTest(ent, { ses: s, preguntas: s.datos.preguntas, fase: 'post' }), 'Post test en blanco', `Post_test_${slug(s.datos?.equipo)}.pdf`) }, ...(esProp() ? [{ t: 'Clave de respuestas', cls: 'pri', fn: () => UI.verPDF({ titulo: 'Clave de respuestas', blob: TV.pdfClave(ent, { ses: s, preguntas: s.datos.preguntas }).output('blob'), nombre: `Clave_${slug(s.datos?.equipo)}.pdf` }) }] : [])] });
         if (acc === 'asis') { const doc = await TV.pdfAsistencia(ent, { ses: s, asistentes: (s.datos?.asistentes || []).filter((a) => a.nombre), tests: tDe(s) }); return verDoc(doc, `Lista de asistencia · ${s.datos?.equipo}`, `Asistencia_${slug(s.datos?.equipo)}_${s.fecha}.pdf`); }
         if (acc === 'preg') return formPreg(ent, s, tDe(s));
+        if (acc === 'acta' && !esProp() && s.datos?.acta_pdf) { const doc = await S.get('documentos', s.datos.acta_pdf.doc_id); if (doc) return A.abrirDoc(doc); }
         if (acc === 'acta') return esProp() ? formActa(ent, ctx, s, tDe(s), verDoc) : verDoc(await P.pdfActaCap(ent, s, tDe(s), ctx), `Acta · ${s.datos?.equipo}`, `Acta_capacitacion_${slug(s.datos?.equipo)}_${s.fecha}.pdf`);
       } catch (er) { console.error(er); toast('Error: ' + er.message, true); }
     };
@@ -333,15 +334,34 @@
 
   // acta: contenido, conclusiones, compromisos, fotos y firma de quien recibe
   const formActa = (ent, ctx, s, tests, verDoc) => {
-    const d = s.datos || {}, a = d.acta || {}, cap = P.capDe(d); let fotos = [...(d.fotos || [])], firma = a.firma_recibe || null;
+    const d = s.datos || {}, a = d.acta || {}, cap = P.capDe(d); let fotos = [...(d.fotos || [])], firma = a.firma_recibe || null, actaPdf = d.acta_pdf || null;
+    const pintarPdf = (m) => { m.body.querySelector('[data-apdf]').innerHTML = actaPdf ? `<span class="pill ok">✓ ${h(actaPdf.nombre)}</span> <button type="button" class="btn sm" data-apdfver>Ver</button> <button type="button" class="btn sm" data-apdfq>Quitar</button>` : '<span class="muted">No se ha cargado un acta en PDF.</span>'; };
     const pintarFotos = (m) => { m.body.querySelector('[data-fotos]').innerHTML = fotos.length ? fotos.map((x, i) => `<span class="pill" style="display:inline-flex;gap:6px;align-items:center">${h(x.nombre)}<button type="button" class="icon-btn bad" data-rmf="${i}" aria-label="Quitar foto">${I.x}</button></span>`).join(' ') : '<span class="muted">Sin fotos.</span>'; };
     modal({ titulo: `Acta de capacitación · ${d.equipo || ''}`, size: 'wide', cuerpo: `<form class="form" onsubmit="return false"><p class="muted" style="font-size:.85rem">El acta incluye los datos de la capacitación, los asistentes con sus resultados del pre y post test (${tests.filter((t) => t.datos.fase === 'pre').length} pre · ${tests.filter((t) => t.datos.fase === 'post').length} post), el consolidado con gráfica y la evidencia fotográfica.</p>
       <div class="fields">${f.area('contenido', 'Contenido desarrollado (un tema por línea)', a.contenido || cap.diapos.map(([t]) => t).join('\n'), { rows: 6 })}${f.area('conclusiones', 'Conclusiones (vacío = se redactan con los resultados)', a.conclusiones || '', { rows: 3 })}${f.area('compromisos', 'Compromisos (uno por línea)', a.compromisos || '', { rows: 3 })}
         ${f.input('recibe', 'Recibe · nombre (responsable de la entidad)', a.recibe || '')}${f.input('cargo_recibe', 'Recibe · cargo', a.cargo_recibe || '')}</div>
       <div class="actions" style="margin:6px 0"><button type="button" class="btn sm" data-firma>${I.firma} Firma de quien recibe</button><span data-fprev class="muted">${firma ? '✓ Firmada' : 'Sin firma'}</span></div>
+      <fieldset><legend>Acta ya realizada (PDF)</legend><div data-apdf></div><label class="btn sm" style="margin-top:6px">${I.subir} Cargar acta en PDF<input type="file" accept="application/pdf,.pdf" hidden data-apdfsub></label><p class="muted" style="font-size:.8rem">Si el acta ya se hizo (firmada en papel o en otro formato), cárguela aquí: queda en la carpeta de capacitaciones y es la que se abre con el botón «Acta» de esta capacitación. Si no se carga, el gestor genera el acta con los datos de arriba.</p></fieldset>
       <fieldset><legend>Evidencia fotográfica</legend><div data-fotos></div><label class="btn sm" style="margin-top:6px">${I.subir} Agregar fotos<input type="file" accept="image/*" multiple hidden data-subir></label><p class="muted" style="font-size:.8rem">Las fotos se reducen y se guardan también en la carpeta de la entidad (evidencias de la capacitación).</p></fieldset></form>`,
       alAbrir: (m) => {
-        pintarFotos(m);
+        pintarFotos(m); pintarPdf(m);
+        m.body.querySelector('[data-apdf]').onclick = async (e) => {
+          if (e.target.closest('[data-apdfver]')) { const doc = await S.get('documentos', actaPdf.doc_id); if (doc) A.abrirDoc(doc); else toast('No se encontró el archivo del acta', true); }
+          if (e.target.closest('[data-apdfq]')) { actaPdf = null; pintarPdf(m); toast('Pulse Guardar para quitar el acta cargada (el archivo sigue en la carpeta)'); }
+        };
+        m.body.querySelector('[data-apdfsub]').onchange = async (e) => {
+          const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+          if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') return toast('El acta debe ser un archivo PDF', true);
+          try {
+            toast('Subiendo el acta…');
+            const sub = await P.subDestino(ent, '4. CAPACITACIÓN - EDUCACIÓN CONTINUA');
+            const nombre = /^acta/i.test(file.name) ? file.name : `Acta capacitación ${d.equipo || ''} ${fF(d.fecha_ejec || s.fecha)} - ${file.name}`;
+            const path = `${ent.id}/general/protocolos/${Date.now()}-${slug(file.name.replace(/\.pdf$/i, ''))}.pdf`;
+            await S.upload(path, file);
+            const doc = await S.insert('documentos', { entidad_id: ent.id, equipo_id: null, carpeta: 'protocolos', subcarpeta: `${sub}/CAPACITACIONES EN EQUIPOS ${s.anio}`, nombre, archivo: path, mime: 'application/pdf', tamano: file.size, fecha_documento: d.fecha_ejec || s.fecha || UI.hoy(), visible_cliente: true, firmado: false });
+            actaPdf = { doc_id: doc.id, nombre, archivo: path }; pintarPdf(m); toast('Acta cargada (pulse Guardar)');
+          } catch (er) { toast('No se pudo cargar el acta: ' + er.message, true); }
+        };
         m.body.querySelector('[data-fotos]').onclick = (e) => { const b = e.target.closest('[data-rmf]'); if (b) { fotos.splice(+b.dataset.rmf, 1); pintarFotos(m); } };
         m.body.querySelector('[data-firma]').onclick = async () => { const r = await UI.pedirFirma({ titulo: 'Firma de quien recibe la capacitación', actual: firma }); if (r) { firma = r; m.body.querySelector('[data-fprev]').textContent = '✓ Firmada'; } };
         m.body.querySelector('[data-subir]').onchange = async (e) => {
@@ -355,8 +375,9 @@
       },
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', fn: (m) => guardar(m, false) }, { t: 'Guardar y ver acta (PDF)', cls: 'pri', fn: (m) => guardar(m, true) }] });
     async function guardar(m, ver) {
-      const v = leer(m.body); const nd = { ...d, fotos, acta: { contenido: v.contenido, conclusiones: v.conclusiones, compromisos: v.compromisos, recibe: v.recibe, cargo_recibe: v.cargo_recibe, firma_recibe: firma } };
+      const v = leer(m.body); const nd = { ...d, fotos, acta_pdf: actaPdf, acta: { contenido: v.contenido, conclusiones: v.conclusiones, compromisos: v.compromisos, recibe: v.recibe, cargo_recibe: v.cargo_recibe, firma_recibe: firma } };
       await S.update(TB, s.id, { datos: nd }); s.datos = nd; toast('Acta guardada');
+      if (ver && actaPdf) { const doc = await S.get('documentos', actaPdf.doc_id); if (doc) return A.abrirDoc(doc); }
       if (ver) { const doc = await P.pdfActaCap(ent, s, tests, ctx); verDoc(doc, `Acta de capacitación · ${d.equipo}`, `Acta_capacitacion_${slug(d.equipo)}_${d.fecha_ejec || s.fecha}.pdf`); }
       else A.recargar();
     }
