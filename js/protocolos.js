@@ -73,6 +73,61 @@
     return l.map((t) => ({ ...t, meses: [] }));
   };
 
+  // ---------- ANEXOS: los formatos que nombra la sección «Anexos» del documento, en blanco con el encabezado de la entidad
+  const TPL_ANEXO = [['inventario', /inventario/], ['hoja_vida', /hoja de vida/], ['mto_preventivo', /reporte.*preventiv|preventiv.*reporte|lista de chequeo.*mant/], ['mto_correctivo', /correctiv/],
+    ['metrologia', /reporte.*metrolog|metrolog.*reporte/], ['cronograma', /cronograma/], ['acta_baja', /acta de baja/], ['acta_entrega', /acta de entrega/], ['alertas', /alerta/]];
+  P.anexosDe = (d) => {
+    const sec = (d.secciones || []).find((x) => /anexo/i.test(x.t || '')); if (!sec) return [];
+    return String(sec.x || '').split('\n').map((l) => l.replace(/^\s*[-•*·]\s*/, '').trim()).filter((l) => l && /anexo|formato|\b(FMB|FT|FHVEB|FAR|GT|PG|PR|PL)[- ]?[A-Z]*-?\d{2,}/i.test(l) && !/resoluci[oó]n|decreto|ley \d|\bISO\b|\bNTC\b|gu[ií]a de/i.test(l));
+  };
+  P.plantillaAnexo = (linea) => {
+    const t = linea.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    for (const k of Object.keys(st.fmt || {})) { const c = st.fmt[k]?.codigo; if (c && t.includes(String(c).toLowerCase()) && TPL_ANEXO.some(([x]) => x === k)) return k; }
+    if (/metrolog/.test(t) && /cronograma/.test(t)) return null; // el cronograma metrológico (FMB-003) no tiene plantilla de fondo
+    const m = TPL_ANEXO.find(([, re]) => re.test(t)); return m ? m[0] : null;
+  };
+  const claveAnexo = (l) => l.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 80);
+  P.vistaAnexos = (body, { ent, d, reg, k, guardarReg }) => {
+    const lista = P.anexosDe(d), subidos = { ...(reg?.datos?.anexos || {}) };
+    const nombreArch = (l) => `${l.replace(/^anexo\s*\d+\.?\s*/i, '').replace(/[\\/:*?"<>|.]+/g, ' ').trim()} (vacío).pdf`;
+    const blobDe = async (l) => { const c = claveAnexo(l); if (subidos[c]) { const doc = await S.get('documentos', subidos[c].doc_id); if (doc) return { blob: await S.fileBlob(doc.archivo), nombre: doc.nombre }; }
+      const t = P.plantillaAnexo(l); if (!t) return null; return { blob: await FMT.vacio(t, ent, st.fmt[t] || {}), nombre: nombreArch(l) }; };
+    const pint = () => {
+      body.innerHTML = !lista.length ? '<div class="empty">La sección «Anexos» de este documento no nombra formatos. Escríbalos en Contenido › Anexos (uno por línea, ej. «- Anexo 1. FMB-001 Inventario de equipos biomédicos.»).</div>'
+        : `<p class="muted" style="font-size:.85rem">Los formatos que nombra la sección «Anexos», en blanco con el encabezado de ${h(ent.razon_social)}. ${esProp() ? 'Si un anexo no tiene formato en el gestor, o quiere usar el suyo, cárguelo en PDF.' : ''}</p>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Anexo</th><th>Formato</th><th></th></tr></thead><tbody>${lista.map((l, i) => { const c = claveAnexo(l), t = P.plantillaAnexo(l), up = subidos[c];
+          return `<tr><td>${h(l)}</td><td>${up ? `<span class="pill ok">PDF cargado</span> <span class="muted" style="font-size:.8rem">${h(up.nombre)}</span>` : t ? `<span class="pill">Formato vacío del gestor</span>` : '<span class="pill warn">Sin formato</span>'}</td>
+          <td><div class="row-actions">${up || t ? `<button class="btn sm" data-an="ver" data-i="${i}">${I.pdf} Ver</button>` : ''}${esProp() ? `<label class="btn sm">${I.subir} ${up ? 'Cambiar' : 'Cargar'} PDF<input type="file" accept="application/pdf,.pdf" hidden data-an-sub="${i}"></label>${up ? `<button class="icon-btn bad" data-an="quitar" data-i="${i}" title="Quitar el PDF cargado (vuelve al formato del gestor)">${I.x}</button>` : ''}` : ''}</div></td></tr>`; }).join('')}</tbody></table></div>
+        <div class="actions" style="margin-top:8px"><button class="btn pri" data-an="todos">${I.pdf} Todos los anexos en un PDF</button></div>`;
+    };
+    pint();
+    body.onclick = async (e) => {
+      const b = e.target.closest('[data-an]'); if (!b) return; const l = lista[+b.dataset.i];
+      try {
+        if (b.dataset.an === 'ver') { const r = await blobDe(l); if (!r?.blob) return toast('No se encontró el archivo', true); return UI.verPDF({ titulo: l, blob: r.blob, nombre: r.nombre, extras: esProp() ? [{ t: 'Guardar en la carpeta', fn: async () => { const p0 = P.ref(k); await A.guardarPDF({ blob: r.blob, nombre: r.nombre, entidad_id: ent.id, equipo_id: null, carpeta: 'protocolos', subcarpeta: `${p0.sub}/ANEXOS` }); toast('Guardado en la carpeta'); return false; } }] : [] }); }
+        if (b.dataset.an === 'quitar') { delete subidos[claveAnexo(l)]; await guardarReg(ent, k, reg, { anexos: subidos }); toast('PDF quitado (el archivo sigue en la carpeta)'); return A.recargar(); }
+        if (b.dataset.an === 'todos') {
+          toast('Armando los anexos…'); const out = await PDFLib.PDFDocument.create(); let n = 0;
+          for (const x of lista) { const r = await blobDe(x).catch(() => null); if (!r?.blob) continue; const src = await PDFLib.PDFDocument.load(await r.blob.arrayBuffer(), { ignoreEncryption: true }); (await out.copyPages(src, src.getPageIndices())).forEach((pg) => out.addPage(pg)); n++; }
+          if (!n) return toast('Ningún anexo tiene formato todavía', true);
+          const blob = new Blob([await out.save()], { type: 'application/pdf' }), nombre = `Anexos ${d.codigo || ''} ${d.titulo || ''}.pdf`.replace(/\s+/g, ' ');
+          return UI.verPDF({ titulo: `Anexos · ${d.titulo}`, blob, nombre, extras: esProp() ? [{ t: 'Guardar en la carpeta', fn: async () => { const p0 = P.ref(k); await A.guardarPDF({ blob, nombre, entidad_id: ent.id, equipo_id: null, carpeta: 'protocolos', subcarpeta: `${p0.sub}/ANEXOS` }); toast('Guardado en la carpeta'); return false; } }] : [] });
+        }
+      } catch (er) { console.error(er); toast('No se pudo abrir el anexo: ' + er.message, true); }
+    };
+    body.onchange = async (e) => {
+      const inp = e.target.closest('[data-an-sub]'); if (!inp) return; const file = inp.files[0]; inp.value = ''; if (!file) return; const l = lista[+inp.dataset.anSub];
+      if (!/\.pdf$/i.test(file.name)) return toast('El anexo debe ser un PDF', true);
+      try {
+        toast('Subiendo el anexo…'); const p0 = P.ref(k);
+        const path = `${ent.id}/general/protocolos/${Date.now()}-${file.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.-]+/g, '_')}`;
+        await S.upload(path, file);
+        const doc = await S.insert('documentos', { entidad_id: ent.id, equipo_id: null, carpeta: 'protocolos', subcarpeta: `${p0.sub}/ANEXOS`, nombre: file.name, archivo: path, mime: 'application/pdf', tamano: file.size, fecha_documento: UI.hoy(), visible_cliente: true, firmado: false });
+        subidos[claveAnexo(l)] = { doc_id: doc.id, nombre: file.name }; await guardarReg(ent, k, reg, { anexos: subidos }); toast('Anexo cargado'); A.recargar();
+      } catch (er) { toast('No se pudo cargar: ' + er.message, true); }
+    };
+  };
+
   // marcadores {ENTIDAD}, {NIT}…
   P.valores = (ctx) => {
     const ent = ctx.ent, emp = st.emp || {};
@@ -380,7 +435,7 @@
     const esCapDoc = () => sel.k === 'capacitacion';
     const pintar = () => {
       const reg = regDe(sel.k), d = P.doc(sel.k, reg), dr = borrador(); d.secciones = dr.secciones;
-      const subs = [['contenido', 'Contenido'], ...(def(sel.k).datos.length ? [['tablas', 'Tablas de la entidad']] : []), ...(esCapDoc() && P.capEquipos ? [['sesiones', 'Capacitaciones por equipo']] : []), ['datos', 'Datos y firmas'], ['cambios', 'Control de cambios']];
+      const subs = [['contenido', 'Contenido'], ...(def(sel.k).datos.length ? [['tablas', 'Tablas de la entidad']] : []), ...(esCapDoc() && P.capEquipos ? [['sesiones', 'Capacitaciones por equipo']] : []), ['datos', 'Datos y firmas'], ['cambios', 'Control de cambios'], ['anexos', `Anexos${P.anexosDe(d).length ? ` (${P.anexosDe(d).length})` : ''}`]];
       if (!subs.some(([k]) => k === sel.sub)) sel.sub = 'contenido';
       panel.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between">
           <div><h3 style="margin:0">${h(d.titulo)}</h3><div class="muted" style="font-size:.85rem">${h(d.codigo)} · Versión ${h(d.version)} · ${fF(d.fecha)} · ${d.secciones.length} secciones · ${d.propio ? '<span class="pill ok">Texto propio de la entidad</span>' : '<span class="pill">Texto de referencia IBCOL</span>'}${dr.dirty ? ' <span class="pill warn">Cambios sin guardar</span>' : ''}</div></div>
@@ -388,6 +443,7 @@
         ${esProp() ? `<div class="tabs" role="tablist" style="margin-top:10px">${subs.map(([k, t]) => `<button type="button" role="tab" class="${k === sel.sub ? 'on' : ''}" data-sub="${k}">${t}</button>`).join('')}</div><div data-sub-body style="margin-top:12px"></div>`
         : `<ol style="margin:12px 0 0 18px;columns:2;font-size:.9rem">${d.secciones.map((s) => `<li>${h(P.reemplazar(s.t, P.valores(ctx)))}</li>`).join('')}</ol>`}`;
       panel.querySelector('[data-x=pdf]').onclick = async () => { try { await verPDF(ent, d, ctx); } catch (er) { console.error(er); toast('No se pudo generar el PDF: ' + er.message, true); } };
+      if (!esProp() && P.anexosDe(d).length) { const ab = document.createElement('div'); ab.style.marginTop = '16px'; panel.appendChild(ab); P.vistaAnexos(ab, { ent, d, reg, k: sel.k, guardarReg }); }
       if (!esProp()) { if (esCapDoc() && P.capEquipos) { const cb = document.createElement('div'); cb.style.marginTop = '16px'; panel.appendChild(cb); P.capEquipos(cb, { ent, ctx }); } return; }
       panel.querySelectorAll('[data-sub]').forEach((b) => { b.onclick = () => { sel.sub = b.dataset.sub; pintar(); }; });
       panel.querySelector('[data-x=ref]')?.addEventListener('click', async () => { if (!(await confirmar('¿Volver al texto de referencia de IBCOL? Se pierde el texto propio de esta entidad para este documento.', 'Usar texto de referencia'))) return; await guardarReg(ent, sel.k, reg, { secciones: [] }); delete st.protDraft[clave()]; toast('Documento con el texto de referencia'); A.recargar(); });
@@ -402,7 +458,7 @@
         } catch (er) { console.error(er); toast('No se pudo leer el documento: ' + er.message, true); }
       };
       const body = panel.querySelector('[data-sub-body]');
-      ({ contenido: subContenido, tablas: subTablas, datos: subDatos, cambios: subCambios, sesiones: (b) => P.capEquipos(b, { ent, ctx }) }[sel.sub])(body, d, reg, dr);
+      ({ contenido: subContenido, tablas: subTablas, datos: subDatos, cambios: subCambios, anexos: (b) => P.vistaAnexos(b, { ent, d, reg, k: sel.k, guardarReg }), sesiones: (b) => P.capEquipos(b, { ent, ctx }) }[sel.sub])(body, d, reg, dr);
     };
 
     // ---------- Contenido: pestañas por sección

@@ -394,5 +394,12 @@ window.FMT = (() => {
     return render(k, hojas);
   }
 
-  return { acta, val, marca, NOAPL, NOREG, textoMediciones, render, cuentaCobro, hojaVida, mtoPreventivo, mtoCorrectivo, metrologia, cronograma, inventario, alertas, cargar };
+  // ------------------------------------------------------------------ FORMATO VACÍO (anexos de protocolos y programas)
+  // la plantilla con el encabezado de la entidad (logo, nombre, NIT, REPS) y el código / versión del formato; el resto en blanco
+  async function vacio(k, ent, fmt = {}) {
+    const v = { ...cabEntidad(ent), reps: ent?.reps || '', fmt_codigo: fmt.codigo ? `CÓDIGO ${fmt.codigo}` : undefined, fmt_version: fmt.version ? `VERSIÓN  ${fmt.version}` : undefined, fmt_fecha: fmt.fecha ? fUS(fmt.fecha) : undefined };
+    return render(k, [v]);
+  }
+
+  return { acta, val, marca, NOAPL, NOREG, textoMediciones, render, cuentaCobro, hojaVida, mtoPreventivo, mtoCorrectivo, metrologia, cronograma, inventario, alertas, cargar, vacio };
 })();
