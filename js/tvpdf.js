@@ -11,7 +11,9 @@
   const AZ = [0, 150, 190], GR = [217, 217, 217], CL = [221, 243, 250], NG = [0, 0, 0];
   const nuevo = (o = 'p') => new window.jspdf.jsPDF({ unit: 'mm', format: 'letter', orientation: o });
   const img = (doc, src, x, y, mw, mh) => { if (!src) return; try { const p = doc.getImageProperties(src); const r = Math.min(mw / p.width, mh / p.height); doc.addImage(src, /^data:image\/png/i.test(src) ? 'PNG' : 'JPEG', x + (mw - p.width * r) / 2, y + (mh - p.height * r) / 2, p.width * r, p.height * r); } catch (e) { console.warn(e); } };
-  const fF = (s) => (s ? UI.fecha(String(s).slice(0, 10)) : '');
+  // acepta AAAA-MM-DD, DD-MM-AAAA o DD/MM/AAAA
+  const isoF = (s) => { s = String(s || '').trim(); let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`; m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/); if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; return ''; };
+  const fF = (s) => { if (!s) return ''; const i = isoF(s); return i ? UI.fecha(i) : String(s); };
   const dma = (s) => { if (!s) return ['', '', '']; const d = new Date(String(s).slice(0, 10) + 'T12:00:00'); return isNaN(d) ? ['', '', ''] : [String(d.getDate()).padStart(2, '0'), String(d.getMonth() + 1).padStart(2, '0'), String(d.getFullYear())]; };
   const X = (b) => (b ? 'X' : '');
   const sn = (t) => String(t ?? '').replace(/\u2264/g, '<=').replace(/\u2265/g, '>=');

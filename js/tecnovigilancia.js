@@ -193,7 +193,7 @@
       }),
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
         const v = leer(m.body); v.firma_reviso = firmas.reviso || null; v.firma_aprobo = firmas.aprobo || null;
-        v.cambios = String(v.cambios || '').split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((x) => x[0]).map(([version, fecha, desc, resp]) => ({ version, fecha, desc, resp }));
+        v.cambios = String(v.cambios || '').split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((x) => x[0]).map(([version, fecha, desc, resp]) => { const m = String(fecha || '').match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/); return { version, fecha: m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : fecha, desc, resp }; });
         await guardarCfg(ent, v); toast('Datos del programa guardados'); A.recargar();
       } }] });
   };
