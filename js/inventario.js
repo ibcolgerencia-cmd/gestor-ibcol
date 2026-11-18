@@ -486,11 +486,12 @@
           out.push(f);
         }
       }
-      if (out.length) break; // una hoja basta (las demás suelen ser copias o años anteriores)
+      // se leen todas las hojas (ej. «General» y «Extramural»); las filas repetidas en otra hoja no se duplican
     }
     if (!out.length) return null;
-    out.forEach((f) => { f.plan = f.planes[anio] || Object.values(f.planes)[0] || {}; });
-    return { anio, mesIni: mesIni || 1, filas: out, meta };
+    const visto = new Set(); const unicas = out.filter((f) => { const k = [comp(f.codigo || f.af), comp(f.nombre), comp(f.serie)].join('|'); if (visto.has(k)) return false; visto.add(k); return true; });
+    unicas.forEach((f) => { f.plan = f.planes[anio] || Object.values(f.planes)[0] || {}; });
+    return { anio, mesIni: mesIni || 1, filas: unicas, meta };
   }
   // Cronograma en PDF (exportado del Excel): se ubica cada texto por su posición en la tabla
   async function leerPlanPDF(file) {
