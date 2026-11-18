@@ -360,7 +360,7 @@
           <span class="muted">${visibles.length} de ${filas.length}</span>
           ${esProp() && !cap ? `<button class="btn" data-act="cargarCrono" title="Cargar un cronograma en Excel o PDF (mantenimiento o metrología, con semanas o CP / CE): programa cada equipo en el mismo orden del archivo">${I.subir} Cargar Excel / PDF</button>` : ''}${esProp() && !cap ? `<span class="sp"></span><button class="btn" data-act="marcarCrono" title="Marcar de una vez una semana en uno o varios meses para todos los equipos que se están viendo">✓ Marcar todo</button><button class="btn danger" data-act="eliminarCrono" title="Eliminar el cronograma de una sede o de toda la entidad (las demás sedes no se tocan)">🗑 Eliminar cronograma</button><button class="btn" data-act="limpiarCrono" title="Quitar de una vez las marcas (P, E, N, G, C) de los equipos que se están viendo">✕ Desmarcar todo</button><button class="btn ${editar ? 'pri' : ''}" data-act="editTabla">${I.edit} Modificar datos</button><button class="btn" data-act="llenarArch">${I.subir} Llenar con archivos cargados</button><button class="btn" data-act="llenarNR">Completar vacíos con NO REGISTRA</button>` : ''}</div>
         ${resumen}
-        ${ocultosCO || F.todosEq ? `<p class="muted" style="margin:4px 0">${F.todosEq ? 'Mostrando todos los equipos.' : `Cronograma cargado del archivo «${h(Object.values(co).find((o) => o.solo)?.archivo || '')}»: ${ocultosCO} equipo${ocultosCO === 1 ? '' : 's'} de la sede que no ${ocultosCO === 1 ? 'está' : 'están'} en el archivo no se muestra${ocultosCO === 1 ? '' : 'n'}.`} <button class="btn sm" data-act="todosEq">${F.todosEq ? 'Ver solo los del archivo' : 'Mostrar todos'}</button></p>` : ''}
+        ${ocultosCO || F.todosEq ? `<p class="muted" style="margin:4px 0">${F.todosEq ? 'Mostrando todos los equipos.' : Object.values(co).some((o) => o.solo && !o.vacio) ? `Cronograma cargado del archivo «${h(Object.values(co).find((o) => o.solo && !o.vacio)?.archivo || '')}»: ${ocultosCO} equipo${ocultosCO === 1 ? '' : 's'} de la sede que no ${ocultosCO === 1 ? 'está' : 'están'} en el archivo no se muestra${ocultosCO === 1 ? '' : 'n'}.` : `Cronograma eliminado: ${ocultosCO} equipo${ocultosCO === 1 ? '' : 's'} de la sede no se muestra${ocultosCO === 1 ? '' : 'n'} hasta que cargue el cronograma con «Cargar Excel / PDF».`} <button class="btn sm" data-act="todosEq">${F.todosEq ? 'Ver solo los del archivo' : 'Mostrar todos'}</button></p>` : ''}
         <div class="legend"><span><i style="background:#f6cf5e"></i>Programado</span><span><i style="background:#5dbb7a"></i>Ejecutado</span><span><i style="background:#e5705f"></i>No ejecutado / reprogramado</span><span><i style="background:#b9a3e3"></i>G · En garantía</span><span><i style="background:#7cc4e8"></i>C · Comodato</span>${esProp() ? `<span>Toque una semana para cambiar su estado (P → E → N → G → C)${cap ? '' : ' · botón ✎ de cada fila para cambiar los meses · botón de anotaciones de cada fila para escribir, por mes, notas como “Equipo en garantía, mantenimiento a cargo del proveedor”'}.</span>` : ''}</div>
         ${editar ? '<p class="muted edit-hint">Modo edición: los cambios de Ítem, código, A.F., equipo, marca, modelo, serie, ubicación, riesgo y registro sanitario se guardan en el equipo (también cambian en el inventario y la hoja de vida). Escriba o elija <b>NO REGISTRA</b> cuando el dato no exista o <b>NO APLICA</b> cuando no corresponda (ej. equipos sin registro sanitario).</p>' : ''}
         ${A.datalistNR}
@@ -596,7 +596,7 @@
             cuerpo: `<form class="form" onsubmit="return false"><p class="muted">Borra la programación (P, E, N, G, C) y las anotaciones del cronograma de ${nom} solo en la sede elegida. Las demás sedes, los equipos, los reportes y los certificados no se tocan. Después puede cargar de nuevo el cronograma con «Cargar Excel / PDF».</p>
               <div class="fields">${f.sel('sede', 'Sede', [...lista.map((sd) => [sd, sd]), ...(sedeCtx || lista.length < 2 ? [] : [['*', 'Toda la entidad (todas las sedes)']])], sedeAct || lista[0], { full: true })}
               ${f.sel('alcance', 'Periodo', [['periodo', `El periodo que se está viendo (${periodoTxt})`], ['todo', 'Todos los años']], 'periodo', { full: true })}</div>
-              <label class="crono-opt"><input type="checkbox" name="orden" data-single checked><span>Quitar también el orden y la lista de equipos del archivo cargado para esa sede</span></label></form>`,
+              <label class="crono-opt"><input type="checkbox" name="vaciar" data-single checked><span><b>Quitar también los equipos de la tabla</b>: el cronograma de esa sede queda vacío hasta que cargue el Excel / PDF (los equipos siguen en el inventario; se pueden ver con «Mostrar todos»)</span></label></form>`,
             acciones: [{ t: 'Cancelar' }, { t: 'Eliminar', cls: 'danger', fn: async (m) => {
               const d = leer(m.body); const todas = d.sede === '*';
               const ids = new Set(eqs.filter((e) => todas || sedeC(cons.find((c) => c.id === e.consultorio_id)) === d.sede).map((e) => e.id));
@@ -618,10 +618,11 @@
                 if (Object.keys(pl).length) await S.update('cronogramas', c.id, { plan: pl }); else await S.remove('cronogramas', c.id);
                 n++;
               }
-              if (d.orden && ent.config?.crono_orden?.[tipo]) {
+              {
                 const fresh = (await S.get('entidades', ent.id)) || ent; const cfg = { ...(fresh.config || {}) }; const co = { ...(cfg.crono_orden || {}) }; const porT = { ...(co[tipo] || {}) };
-                if (todas) Object.keys(porT).forEach((k) => delete porT[k]); else delete porT[d.sede];
-                co[tipo] = porT; cfg.crono_orden = co; await S.update('entidades', ent.id, { config: cfg }); ent.config = cfg;
+                const sedesAf = todas ? sedes : [d.sede];
+                sedesAf.forEach((sd) => { if (d.vaciar) porT[sd] = { ids: [], solo: true, orden: true, archivo: '', vacio: true, fecha: UI.hoy() }; else delete porT[sd]; });
+                co[tipo] = porT; cfg.crono_orden = co; await S.update('entidades', ent.id, { config: cfg }); ent.config = cfg; F.todosEq = false;
               }
               S.log('ELIMINAR', 'cronogramas', ent.id, `Eliminar cronograma de ${tipo} · ${donde} · ${cuando}: ${nEq} equipos`);
               toast(`Cronograma de ${nom} eliminado en ${donde}: ${nEq} equipos`); A.recargar();
