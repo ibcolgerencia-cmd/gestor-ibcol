@@ -109,7 +109,7 @@
     };
     const tabla = (head, body, o = {}) => {
       salto(18);
-      doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, top: TOP, bottom: BOT }, styles: { fontSize: 7.8, cellPadding: 1.1, lineColor: NG, lineWidth: 0.2, textColor: NG, valign: 'middle', halign: 'left' }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold', halign: 'center' }, head: head ? [head.map(sn)] : undefined, body: body.map((r) => r.map((c) => (typeof c === 'object' && c ? { ...c, content: sn(c.content) } : sn(c)))), ...o });
+      doc.autoTable({ startY: y, theme: 'grid', rowPageBreak: 'avoid', margin: { left: M, right: M, top: TOP, bottom: BOT }, styles: { fontSize: 7.8, cellPadding: 1.1, lineColor: NG, lineWidth: 0.2, textColor: NG, valign: 'middle', halign: 'left' }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold', halign: 'center' }, head: head ? [head.map(sn)] : undefined, body: body.map((r) => r.map((c) => (typeof c === 'object' && c ? { ...c, content: sn(c.content) } : sn(c)))), ...o });
       y = doc.lastAutoTable.finalY + 5;
     };
     const nota = (t) => { doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(90); const ls = doc.splitTextToSize(sn(t), ancho); salto(ls.length * 3.6 + 2); doc.text(ls, M, y); y += ls.length * 3.6 + 3; doc.setTextColor(...NG); };
@@ -135,7 +135,7 @@
         const tn = { ambiente: 'Temperatura ambiente y humedad relativa', refrigeracion: 'Refrigeración', congelacion: 'Congelación' };
         const rg = (p) => { const r = { ambiente: [15, 25, 30, 70], refrigeracion: [2, 8], congelacion: [-25, -10] }[p.tipo] || [15, 25, 30, 70]; const t1 = p.tmin ?? r[0], t2 = p.tmax ?? r[1]; return `${t1} a ${t2} °C${p.tipo === 'ambiente' ? ` · ${p.hmin ?? r[2]} a ${p.hmax ?? r[3]} %HR` : ''}`; };
         if (!l.length) { nota('Las condiciones ambientales se registran en la carpeta 12. TEMPERATURA Y HUMEDAD cuando la entidad tiene áreas, neveras o congeladores que lo requieren.'); return; }
-        tabla(['Punto de control', 'Sede', 'Formato', 'Rango aceptable'], l.map((p) => [p.nombre || '', p.sede || '', `${tn[p.tipo] || ''}${p.codigo ? ` (${p.codigo})` : ''}`, rg(p)]));
+        tabla(['Punto de control', 'Sede', 'Formato', 'Rango aceptable'], l.map((p) => [p.nombre || '', p.sede || '', `${tn[p.tipo] || ''}${p.codigo ? ` (${p.codigo})` : ''}`, rg(p)]), { columnStyles: { 3: { cellWidth: 38 } } });
       },
       LIMPIEZA_EQUIPOS: () => {
         const body = P.filasEq(ctx, 'limpieza').map(([n]) => { const x = P.limpiezaDe(ctx, n); return [P.nomTabla(ctx, 'limpieza', n), x.proc, x.agente, x.frec]; });
