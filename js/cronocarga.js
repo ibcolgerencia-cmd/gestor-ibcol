@@ -46,12 +46,13 @@
       const pre = buscador(eqs, cons, null); const prev0 = plan.filas.map((r) => pre(r));
       const cuenta = {}; prev0.filter(Boolean).forEach((e) => { const sd = sedeC(cons.find((c) => c.id === e.consultorio_id)); cuenta[sd] = (cuenta[sd] || 0) + 1; });
       const sedeMas = Object.entries(cuenta).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
-      const sedeSug = sede0 || sedeMas;
+      const sedeSug = sedeMas && (cuenta[sede0] || 0) < cuenta[sedeMas] ? sedeMas : (sede0 || sedeMas);
       const base = plan.anio || new Date().getFullYear();
       const pinta = (m, sede) => {
         const bus = buscador(eqs, cons, sede || null); const res = plan.filas.map((r) => ({ r, e: bus(r) }));
         const nOk = res.filter((x) => x.e).length;
-        m.body.querySelector('[data-res]').innerHTML = `<p><b>${nOk} de ${plan.filas.length}</b> equipos encontrados en el inventario${nOk < plan.filas.length ? ` · <span class="pill warn">${plan.filas.length - nOk} sin encontrar</span> (no se programan; revise el código o créelos en el inventario)` : ''}.</p>
+        const fuera = sede ? res.filter((x) => x.e && sedeC(cons.find((c) => c.id === x.e.consultorio_id)) !== sede).length : 0;
+        m.body.querySelector('[data-res]').innerHTML = `${fuera ? `<p class="pill bad" style="display:block;white-space:normal;padding:8px 10px">${fuera} equipo${fuera === 1 ? '' : 's'} del archivo ${fuera === 1 ? 'está' : 'están'} en otra sede (${h(sedeMas)}). El cronograma de cada equipo se ve en la sede donde está el equipo; elija esa sede.</p>` : ''}<p><b>${nOk} de ${plan.filas.length}</b> equipos encontrados en el inventario${nOk < plan.filas.length ? ` · <span class="pill warn">${plan.filas.length - nOk} sin encontrar</span> (no se programan; revise el código o créelos en el inventario)` : ''}.</p>
           <div class="tbl-wrap" style="max-height:330px;overflow:auto"><table class="tbl"><thead><tr><th>#</th><th>Servicio</th><th>Equipo</th><th>Código / A.F.</th><th>Serie</th>${plan.filas.some((r) => r.metTipo) ? '<th>Tipo</th>' : ''}${plan.filas.some((r) => r.proveedor) ? '<th>Proveedor</th>' : ''}<th>Programación</th><th>En el gestor</th></tr></thead><tbody>
           ${res.map(({ r, e }, i) => { const c = e && cons.find((x) => x.id === e.consultorio_id); return `<tr><td class="num">${i + 1}</td><td>${h(r.servicio || '')}</td><td><b>${h(r.nombre)}</b></td><td class="mono">${h(r.codigo || r.af || '')}</td><td class="mono">${h(r.serie || '')}</td>${plan.filas.some((x) => x.metTipo) ? `<td>${h(r.metTipo || '')}</td>` : ''}${plan.filas.some((x) => x.proveedor) ? `<td>${h(r.proveedor || '')}</td>` : ''}<td>${marcasTxt(r) || '<span class="muted">—</span>'}</td><td>${e ? `<span class="pill ok">✓</span> ${h(e.codigo_inv || '')} <small class="muted">${h(sedeC(c))} · ${h(c?.nombre || '')}</small>` : '<span class="pill bad">No está</span>'}</td></tr>`; }).join('')}
           </tbody></table></div>`;
@@ -68,6 +69,7 @@
             <label class="field"><span>Primer mes del periodo</span><select name="mesIni">${optsMes}</select></label>
             <label class="field"><span>Año del primer mes</span><input name="anio" type="number" min="2015" max="2040" value="${base}"></label>
           </div>
+          <label class="crono-opt" style="border:1px solid #e5705f;border-radius:8px;padding:6px 8px"><input type="checkbox" name="borrar"><span><b>Eliminar todo y cargar de cero:</b> antes de cargar, borra la programación de este cronograma (todos los equipos de la sede elegida) en los 12 meses del periodo, y deja solo lo del archivo, en su orden.</span></label>
           <label class="crono-opt"><input type="checkbox" name="reemplazar" checked><span>Dejar los meses del periodo <b>exactamente como en el archivo</b> (quita las marcas que el archivo no tiene). Si no, solo se llenan los meses vacíos.</span></label>
           <label class="crono-opt"><input type="checkbox" name="orden" checked><span>Mostrar el cronograma <b>en el mismo orden</b> del archivo</span></label>
           <label class="crono-opt"><input type="checkbox" name="solo" checked><span>Mostrar en el cronograma de la sede <b>solo los equipos del archivo</b> (los demás no se borran; se ven con «Mostrar todos»)</span></label>
@@ -82,6 +84,26 @@
           if (mesIni !== plan.mesIni || anio !== base) plan.filas.forEach((r) => { const pl = {}; Object.values(r.planes || {}).forEach((p) => Object.entries(p).forEach(([k, v]) => { const y = +k.split('-')[0] < mesIni ? anio + 1 : anio; (pl[y] = pl[y] || {})[k] = v; })); r.planes = pl; });
           const plan2 = { ...plan, anio, mesIni };
           const bus = buscador(eqs, cons, sede);
+          // eliminar todo y cargar de cero: se quitan las marcas (y notas) de los 12 meses del periodo en los equipos de la sede
+          if (g('borrar').checked) {
+            const ventana = [...Array(12).keys()].map((i) => { const abs = mesIni - 1 + i; return { y: anio + Math.floor(abs / 12), m: (abs % 12) + 1 }; });
+            const idsArch = new Set(plan.filas.map((x) => buscador(eqs, cons, sede)(x)?.id).filter(Boolean));
+            const deSede = new Set(eqs.filter((e) => !sede || sedeC(cons.find((c) => c.id === e.consultorio_id)) === sede).map((e) => e.id));
+            const ys = [...new Set(ventana.map((v) => v.y))];
+            const filasCr = (await Promise.all(ys.map((y) => S.list('cronogramas', { entidad_id: ent.id, tipo, anio: y })))).flat().filter((c) => c.equipo_id && (deSede.has(c.equipo_id) || idsArch.has(c.equipo_id)));
+            const conMarcas = filasCr.filter((c) => Object.keys(c.plan || {}).some((k) => k !== 'notas' && ventana.some((v) => v.y === c.anio && v.m === +k.split('-')[0])));
+            const per = `${M3(mesIni)} ${anio} – ${M3(ventana[11].m)} ${ventana[11].y}`;
+            if (!(await UI.confirmar(`Se borrará la programación de ${tipo === 'metrologia' ? 'metrología' : 'mantenimiento'} de ${conMarcas.length} equipo${conMarcas.length === 1 ? '' : 's'}${sede ? ' de ' + sede : ''} en ${per}, y luego se cargará el archivo con sus ${plan.filas.length} equipos. Los reportes y certificados no se tocan. ¿Continuar?`, 'Eliminar y cargar'))) return false;
+            let n = 0;
+            for (const c of filasCr) {
+              const ms = new Set(ventana.filter((v) => v.y === c.anio).map((v) => v.m)); const pl = { ...(c.plan || {}) }; let ch = false;
+              Object.keys(pl).forEach((k) => { if (k !== 'notas' && ms.has(+k.split('-')[0])) { delete pl[k]; ch = true; } });
+              if (pl.notas) { const nt = { ...pl.notas }; ms.forEach((mm) => { if (nt[mm]) { delete nt[mm]; ch = true; } }); if (Object.keys(nt).length) pl.notas = nt; else delete pl.notas; }
+              if (!ch) continue; pr.textContent = `Borrando… ${++n}`;
+              if (Object.keys(pl).length) await S.update('cronogramas', c.id, { plan: pl }); else await S.remove('cronogramas', c.id);
+            }
+            S.log('ELIMINAR', 'cronogramas', ent.id, `Eliminar ${tipo} ${per}${sede ? ' · ' + sede : ''} antes de cargar «${file.name}»: ${n} equipos`);
+          }
           const r = await A.aplicarPlan(ent, plan2, tipo, { buscar: bus, reemplazar: g('reemplazar').checked, datosMetro: g('datos').checked, prog: (t) => { pr.textContent = t; } });
           // orden y cantidad del cronograma (por tipo y sede)
           if (g('orden').checked || g('solo').checked) {
