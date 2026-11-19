@@ -66,18 +66,18 @@
     const { ent, s } = ctx; const d = s.datos || {}, v = d.virtual || {};
     const tema = ctx.tema || d.tema || d.equipo || 'Capacitación';
     const hora = v.hora || '08:00', dur = v.duracion || 60;
-    const texto = (meet, fecha, hh, du) => {
+    const texto = (meet, fecha, hh, du, capa) => {
       const tu = ctx.testUrl(s, meet);
       return [`${ent.razon_social} · Capacitación virtual: ${tema}`, `Fecha: ${fLarga(fecha)}${hh ? ' · ' + hh : ''}${du ? ` (${du} min)` : ''}`,
         tu ? `1) Antes de iniciar responda el PRE-TEST (no necesita usuario): ${tu}` : '', meet ? `${tu ? '2' : '1'}) Únase por Google Meet: ${meet}` : '',
-        tu ? `${meet ? '3' : '2'}) Al terminar responda el POST-TEST en el mismo enlace del test.` : '', `Capacitador: ${d.capacitador || st.emp?.responsable || 'IBCOL Ingeniería Biomédica'}`].filter(Boolean).join('\n');
+        tu ? `${meet ? '3' : '2'}) Al terminar responda el POST-TEST en el mismo enlace del test.` : '', `Capacitador: ${(capa ?? d.capacitador ?? '').trim() || st.emp?.responsable || 'IBCOL Ingeniería Biomédica'}`].filter(Boolean).join('\n');
     };
     const m = modal({
       titulo: `Capacitación virtual · Google Meet`, size: 'wide',
       cuerpo: `<form class="form" onsubmit="return false">
         <p class="muted" style="font-size:.86rem"><b>${h(tema)}</b> · ${h(ent.razon_social)}. El gestor solo guarda el enlace de la reunión (no guarda video), así que no ocupa almacenamiento. Las fotos de evidencia son capturas livianas (unos 150 KB cada una).</p>
         <fieldset><legend>1. Programar la reunión</legend>
-          <div class="fields">${f.input('fecha', 'Fecha', s.fecha || UI.hoy(), { type: 'date' })}${f.input('hora', 'Hora de inicio', hora, { type: 'time' })}${f.sel('duracion', 'Duración', [[30, '30 minutos'], [45, '45 minutos'], [60, '1 hora'], [90, '1 hora 30 min'], [120, '2 horas']], dur)}</div>
+          <div class="fields">${f.input('fecha', 'Fecha', s.fecha || UI.hoy(), { type: 'date' })}${f.input('hora', 'Hora de inicio', hora, { type: 'time' })}${f.sel('duracion', 'Duración', [[30, '30 minutos'], [45, '45 minutos'], [60, '1 hora'], [90, '1 hora 30 min'], [120, '2 horas']], dur)}${f.input('capacitador', 'Capacitador(a)', d.capacitador || st.emp?.responsable || '', { attrs: 'placeholder="Nombre de quien dicta la capacitación"' })}</div>
           <div class="actions" style="margin-top:6px"><button type="button" class="btn pri" data-vx="cal">📅 Programar en Google Calendar</button><button type="button" class="btn" data-vx="nueva">${ICO_MEET} Crear reunión ahora</button></div>
           <p class="muted" style="font-size:.8rem;margin:6px 0">En Google Calendar revise que diga «Unirse con Google Meet» (si no, pulse «Agregar videoconferencia de Google Meet»), guarde y copie el enlace de la reunión aquí. Con la cuenta gratuita de Google las reuniones de 3 o más personas duran máximo 60 minutos.</p>
           <div class="fields">${f.input('meet', 'Enlace de Google Meet', v.meet || '', { full: true, attrs: 'placeholder="https://meet.google.com/abc-defg-hij" inputmode="url"' })}</div>
@@ -102,7 +102,7 @@
           const tu = ctx.testUrl(s, meetV());
           mm.body.querySelector('[data-vx-test]').innerHTML = tu ? `<p style="font-size:.85rem;margin:0">Enlace del pre / post test: <a href="${h(tu)}" target="_blank" rel="noopener">${h(tu)}</a> <span class="muted">(al abrirlo también aparece el botón «Entrar a Google Meet»)</span></p>`
             : `<p class="muted" style="font-size:.85rem;margin:0">Aún no hay enlace del pre / post test. <button type="button" class="btn sm" data-vx="test">Crear enlace del test</button></p>`;
-          mm.body.querySelector('[data-vx-msg]').value = texto(meetV(), g('fecha').value, g('hora').value, g('duracion').value);
+          mm.body.querySelector('[data-vx-msg]').value = texto(meetV(), g('fecha').value, g('hora').value, g('duracion').value, g('capacitador').value);
           const nf = (s.datos?.fotos || []).filter((x) => x.virtual).length;
           mm.body.querySelector('[data-vx-nf]').textContent = nf ? `${nf} foto${nf === 1 ? '' : 's'} de evidencia virtual guardada${nf === 1 ? '' : 's'}.` : '';
         };
@@ -113,7 +113,7 @@
             const fe = g('fecha').value || UI.hoy(), [hh, mi] = (g('hora').value || '08:00').split(':').map(Number), du = +g('duracion').value || 60;
             const ini = new Date(`${fe}T00:00:00`); ini.setHours(hh, mi); const fin = new Date(ini.getTime() + du * 60000);
             const fx = (x) => `${x.getFullYear()}${String(x.getMonth() + 1).padStart(2, '0')}${String(x.getDate()).padStart(2, '0')}T${String(x.getHours()).padStart(2, '0')}${String(x.getMinutes()).padStart(2, '0')}00`;
-            const det = `${texto('', fe, g('hora').value, du)}\n\nCapacitación del programa de ${ent.razon_social}. La asistencia queda registrada con el pre y post test.`;
+            const det = `${texto('', fe, g('hora').value, du, g('capacitador').value)}\n\nCapacitación del programa de ${ent.razon_social}. La asistencia queda registrada con el pre y post test.`;
             window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Capacitación: ${tema} · ${ent.razon_social}`)}&dates=${fx(ini)}/${fx(fin)}&ctz=America/Bogota&details=${encodeURIComponent(det)}&vcon=meet`, '_blank', 'noopener');
           }
           if (k === 'nueva') window.open('https://meet.google.com/new', '_blank', 'noopener');
@@ -131,7 +131,7 @@
     async function guardar(mm, cerrar) {
       const x = leer(mm.body); const meet = A.meetUrl(x.meet);
       if (x.meet && !meet) { toast('El enlace de Google Meet no es válido (debe ser como https://meet.google.com/abc-defg-hij)', true); return false; }
-      const nd = { ...(s.datos || {}), modalidad: meet ? 'Virtual (Google Meet)' : (s.datos?.modalidad || ''), lugar: meet && !s.datos?.lugar ? 'Google Meet' : (s.datos?.lugar || ''), virtual: { meet, hora: x.hora, duracion: +x.duracion || 60, cada: +x.cada || 0, grabacion: (x.grabacion || '').trim() } };
+      const nd = { ...(s.datos || {}), modalidad: meet ? 'Virtual (Google Meet)' : (s.datos?.modalidad || ''), lugar: meet && !s.datos?.lugar ? 'Google Meet' : (s.datos?.lugar || ''), capacitador: (x.capacitador || '').trim() || s.datos?.capacitador || '', virtual: { meet, hora: x.hora, duracion: +x.duracion || 60, cada: +x.cada || 0, grabacion: (x.grabacion || '').trim() } };
       const cambios = { datos: nd }; if (x.fecha && x.fecha !== s.fecha) cambios.fecha = x.fecha;
       await S.update(ctx.tb, s.id, cambios); s.datos = nd; if (cambios.fecha) s.fecha = cambios.fecha;
       if (cerrar) { toast('Capacitación virtual guardada'); A.recargar(); } return cerrar ? undefined : false;
