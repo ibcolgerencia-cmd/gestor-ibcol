@@ -59,6 +59,9 @@
   const app = $('#app');
   const msg = (t, cls = '') => { app.innerHTML = `<div class="card ${cls}">${t}</div>`; };
   const token = new URLSearchParams(location.search).get('t') || '';
+  // capacitación virtual: código de la reunión de Google Meet (solo el formato abc-defg-hij)
+  const meetC = (new URLSearchParams(location.search).get('m') || '').toLowerCase(); const meet = /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(meetC) ? `https://meet.google.com/${meetC}` : '';
+  const cardMeet = () => meet ? `<div class="card" style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div><b>Capacitación virtual</b><br><span class="muted">Responda el pre-test, entre a la reunión y al terminar vuelva a este enlace para el post-test.</span></div><a class="pri" href="${meet}" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;padding:12px 16px;border-radius:12px;width:auto">Entrar a Google Meet</a></div>` : '';
   const C = window.IBCOL_CONFIG || {};
   if (!token || !C.SUPABASE_URL || !window.supabase) { $('#tema').textContent = 'Enlace no válido'; msg('Este enlace no es válido. Pida al capacitador un enlace nuevo.', 'err'); return; }
   const sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -85,9 +88,9 @@
     $('#tema').textContent = info.tema || 'Capacitación';
     $('#sub').textContent = [fFecha(info.fecha), info.capacitador].filter(Boolean).join(' · ');
     document.title = `Test · ${info.tema || ''}`;
-    if (!info.abierto || !(info.fases || []).length) { msg('Este test está cerrado en este momento. Cuando el capacitador lo habilite, vuelva a abrir este mismo enlace.'); return; }
+    if (!info.abierto || !(info.fases || []).length) { msg('Este test está cerrado en este momento. Cuando el capacitador lo habilite, vuelva a abrir este mismo enlace.'); if (meet) app.insertAdjacentHTML('afterbegin', cardMeet()); return; }
     const fases = info.fases; const preg = info.preguntas || [];
-    app.innerHTML = `<form id="fm" class="" novalidate>
+    app.innerHTML = cardMeet() + `<form id="fm" class="" novalidate>
       <div class="card"><b>¿Qué test va a responder?</b><div class="fases" style="margin-top:8px">
         ${fases.includes('pre') ? `<label><input type="radio" name="fase" value="pre" ${fases.length === 1 || fases[0] === 'pre' ? 'checked' : ''}>PRE-TEST<br><span class="muted">antes de la capacitación</span></label>` : ''}
         ${fases.includes('post') ? `<label><input type="radio" name="fase" value="post" ${fases.length === 1 && fases[0] === 'post' ? 'checked' : ''}>POST-TEST<br><span class="muted">después de la capacitación</span></label>` : ''}</div></div>
