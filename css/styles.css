@@ -747,3 +747,9 @@ h1 .icon-btn { vertical-align: middle; }
 .crono-meses { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
 .crono-opt { display: flex; align-items: center; gap: 8px; margin: 2px 0; font-weight: 400; cursor: pointer; }
 .crono-opt input { margin: 0; flex: 0 0 auto; width: auto; }
+
+/* v172: capacitación virtual · barra de fotos de evidencia */
+.vir-barra { position: fixed; right: 16px; bottom: 16px; z-index: 9000; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: calc(100vw - 32px); background: #fff; color: #0b3b5c; border: 2px solid #0a7da0; border-radius: 14px; padding: 8px 12px; box-shadow: 0 8px 28px rgba(7, 90, 117, .25); font-size: .88rem; }
+.vir-barra .vir-rec { width: 10px; height: 10px; border-radius: 50%; background: #e24b4b; animation: virPulso 1.2s infinite; }
+@keyframes virPulso { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .vir-barra .vir-rec { animation: none; } }
