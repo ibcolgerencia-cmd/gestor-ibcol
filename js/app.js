@@ -203,7 +203,12 @@ window.APP = (() => {
     document.querySelectorAll('.nav [data-nav]').forEach((b) => b.classList.toggle('on', b.dataset.nav === (st.pila[0]?.vista)));
     const c = content(); c.innerHTML = '<div class="loading">Cargando…</div>';
     try { await V[vista](params); } catch (e) { console.error(e); c.innerHTML = `<div class="panel"><b>No se pudo cargar esta sección.</b><span class="muted">${h(e.message)}</span></div>`; }
-    window.scrollTo(0, 0);
+    // al volver a una lista de equipos se queda en el último equipo abierto (no regresa al primero)
+    const ult = vista !== 'equipo' && st.ultEq ? c.querySelector(`[data-act="abrirEq"][data-id="${st.ultEq}"]`) : null;
+    if (ult) { ult.closest('details')?.setAttribute('open', ''); ult.classList.add('eq-ultimo'); requestAnimationFrame(() => ult.scrollIntoView({ block: 'center' })); setTimeout(() => ult.classList.remove('eq-ultimo'), 2600); }
+    else window.scrollTo(0, 0);
+    if (vista === 'equipo') st.ultEq = params?.id || null;
+    if (vista === 'areas') st.areasParams = params;
   }
   A.recargar = render;
   A.atras = () => { if (st.pila.length > 1) { st.pila.pop(); render(); } };
@@ -628,7 +633,7 @@ window.APP = (() => {
     const cnt = (k) => docs.filter((d) => d.carpeta === k).length + (tipoMto[k] ? mtos.filter((m) => m.tipo === tipoMto[k]).length : 0);
     const dd = (iso0) => { const iso = iso0 && +String(iso0).slice(0, 4) >= 1900 ? iso0 : null; const n = UI.diasHasta(iso); return iso ? `${UI.fecha(iso)} ${n !== null && n <= 30 ? `<span class="pill ${n < 0 ? 'bad' : n <= 7 ? 'warn' : 'acc'}">${n < 0 ? 'vencido' : n + ' d'}</span>` : ''}` : '—'; };
     content().innerHTML = `
-      ${migas([...A.rutaEnt(ent), [A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', { id: ent.id }], `${c ? c._n + '. ' + c.nombre.toUpperCase() + ' / ' : ''}${eq.nombre.toUpperCase()}`])}
+      ${migas([...A.rutaEnt(ent), [A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', st.areasParams?.id === ent.id ? st.areasParams : { id: ent.id }], `${c ? c._n + '. ' + c.nombre.toUpperCase() + ' / ' : ''}${eq.nombre.toUpperCase()}`])}
       <div class="page-head"><div><span class="eyebrow">${h(c?.nombre || 'Sin área')} · ${h(eq.ubicacion || '')}</span><h1>${h(eq.nombre)} ${A.riesgo(eq.clase_riesgo)}${esProp() ? ` <button class="icon-btn" data-act="editEqRapido" title="Cambiar el nombre y los datos del equipo" aria-label="Editar el nombre del equipo">${I.edit}</button>` : ''}</h1>
         <span class="muted"><span class="mono">${h(eq.codigo_inv)}</span> · ${h([eq.marca, eq.modelo].filter(Boolean).join(' · '))} · S/N <span class="mono">${h(eq.serie || '—')}</span></span></div>
         <div class="actions">${A.estadoPill(eq.estado)}${esProp() ? `<button class="btn" data-act="fotoEq">${I.subir} Imagen del equipo</button>` : ''}<button class="btn" data-act="pdfHV">${I.pdf} Hoja de vida PDF</button>${esProp() ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button><button class="btn pri" data-act="editHV">${I.edit} Editar hoja de vida</button>` : ''}</div></div>
