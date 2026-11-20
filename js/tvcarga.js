@@ -209,6 +209,9 @@
     }
     return filas;
   };
+  // el formato PDF (fuentes estándar) solo admite caracteres WinAnsi: μ → µ, comillas tipográficas se conservan, lo demás se quita
+  const W1252 = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
+  const winAnsi = (t) => String(t ?? '').normalize('NFC').replace(/μ/g, 'µ').replace(/[\u2010-\u2012]/g, '-').replace(/[^\n\x20-\x7E\xA0-\xFF]/g, (c) => (W1252.includes(c) ? c : ''));
   const nrmRS = (t) => String(t || '').toUpperCase().replace(/REGISTRO\s*SANITARIO|INVIMA|RS\b/g, '').replace(/[^A-Z0-9]/g, '');
   const isoDMY = (t) => { const m = String(t || '').match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; };
   TV.compartirAlertas = async (ent) => {
@@ -240,7 +243,8 @@
               const rows = filas.map((r) => { const q = r.rs && rsEq.get(nrmRS(r.rs)); if (q) ap++;
                 return { mes_consulta: r.mes || '', registro_sanitario: r.rs || '', dispositivo: r.dispositivo || '', tipo_notificacion: r.tipo || '', agencia: r.agencia || 'INVIMA', fecha_publicacion: isoDMY(r.fecha), responsable: r.responsable || st.emp?.responsable || '',
                   analisis: q ? `APLICA: ${q.nombre || 'equipo'} ${q.codigo_inv || ''}`.trim() : (r.analisis || 'NO APLICA'), aplicabilidad: q ? 'APLICA - VERIFICAR' : (r.aplica || 'NO APLICA') }; });
-              const blob = await FMT.alertas({ ent: e, alertas: rows, fmt: st.fmt.alertas || {} });
+              rows.forEach((r) => Object.keys(r).forEach((k) => { if (typeof r[k] === 'string') r[k] = winAnsi(r[k]); }));
+              let blob; try { blob = await FMT.alertas({ ent: e, alertas: rows, fmt: st.fmt.alertas || {} }); } catch (er) { res.sinFilas.push(`${etq(d)} · ${e.razon_social} (${er.message})`); continue; }
               await subirArchivo({ blob, nombre: d.nombre, ent: e, carpeta: 'alertas', subcarpeta: d.subcarpeta });
               const [anio, mm] = d.subcarpeta.split('/'), etiqueta = `${CAT.MESES[+mm.slice(0, 2) - 1]} ${anio}`, ya = alE.find((a) => nrm(a.mes_consulta) === nrm(etiqueta));
               const reg = { analisis: `Consulta realizada (${rows.length} alerta${rows.length === 1 ? '' : 's'} revisada${rows.length === 1 ? '' : 's'}${ap ? `, ${ap} con registro sanitario del inventario` : ''}). Soporte: ${d.nombre}`, aplicabilidad: ap ? 'Aplica - en gestión' : 'No aplica' };
@@ -251,7 +255,7 @@
           }
         } catch (er) { pg.cerrar(); toast('Error: ' + er.message, true); return; }
         pg.cerrar();
-        modal({ titulo: 'Bitácoras generadas', cuerpo: `<p><b>${res.hechas}</b> bitácora(s) generadas con el logo y el nombre de cada entidad.${res.ya ? ` ${res.ya} mes(es) ya tenían soporte y no se tocaron.` : ''}</p>${res.aplican ? `<p class="pill warn">${res.aplican} bitácora(s) tienen alertas con registro sanitario de equipos del inventario: revíselas («APLICA - VERIFICAR»).</p>` : ''}${res.sinFilas.length ? `<p class="muted">No se pudieron leer las filas de: ${h(res.sinFilas.join(', '))}.</p>` : ''}`, acciones: [{ t: 'Cerrar', cls: 'pri' }] });
+        modal({ titulo: 'Bitácoras generadas', cuerpo: `<p><b>${res.hechas}</b> bitácora(s) generadas con el logo y el nombre de cada entidad.${res.ya ? ` ${res.ya} mes(es) ya tenían soporte y no se tocaron.` : ''}</p>${res.aplican ? `<p class="pill warn">${res.aplican} bitácora(s) tienen alertas con registro sanitario de equipos del inventario: revíselas («APLICA - VERIFICAR»).</p>` : ''}${res.sinFilas.length ? `<p class="muted">No se pudieron leer o generar: ${h(res.sinFilas.join(', '))}.</p>` : ''}`, acciones: [{ t: 'Cerrar', cls: 'pri' }] });
       } }] });
   };
 

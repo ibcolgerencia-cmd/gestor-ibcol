@@ -87,6 +87,7 @@
   P.esActaTV = (d) => (d?.programa || '') !== 'equipos';
   P.TV_CONTENIDO = ['Marco normativo: Decreto 4725 de 2005 y Resolución 4816 de 2008 (Programa Nacional de Tecnovigilancia)', 'Qué es un evento y un incidente adverso, serio y no serio, con casos reales', 'Cómo y cuándo reportar: formato FT-PGTV-016, reporte inmediato (72 horas) y reporte trimestral', 'Responsabilidades del personal, del referente y del comité de tecnovigilancia', 'Alertas sanitarias del INVIMA y su gestión en la institución', 'Cultura del reporte no punitivo e incentivos al reporte'];
   P.contenidoActa = (d) => (P.esActaTV(d) ? P.TV_CONTENIDO : P.capDe(d).diapos.map(([t]) => t)).join('\n');
+  const nrmN = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 2).join(' ');
   P.pdfActaCap = async (ent, ses, tests, ctx) => {
     const d = ses.datos || {}, esTV = P.esActaTV(d), cap = P.capDe(d), fmt = fmtDe('acta_cap_eq'), doc = nuevo('p'), W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 16, ancho = W - 2 * M;
     const tituloA = esTV ? 'ACTA DE CAPACITACIÓN EN TECNOVIGILANCIA' : fmt.titulo;
@@ -135,7 +136,7 @@
     }
     // firmas
     salto(36); y += 4; const bw = (ancho - 10) / 2;
-    [[sn(d.capacitador || st.emp?.responsable || ''), 'Capacitador(a) · ' + sn(st.emp?.cargo || 'Ingeniería biomédica'), st.firma], [sn(d.acta?.recibe || ''), sn(d.acta?.cargo_recibe || `Responsable · ${ent.razon_social || ''}`), d.acta?.firma_recibe]].forEach(([n, c, fi], i) => {
+    [[sn(d.capacitador || st.emp?.responsable || ''), 'Capacitador(a) · ' + sn(d.acta?.cargo_capacitador || st.emp?.cargo || 'Ingeniería biomédica'), (!d.capacitador || nrmN(d.capacitador) === nrmN(st.emp?.responsable)) ? st.firma : (d.acta?.firma_capacitador || null)], [sn(d.acta?.recibe || ''), sn(d.acta?.cargo_recibe || `Responsable · ${ent.razon_social || ''}`), d.acta?.firma_recibe]].forEach(([n, c, fi], i) => {
       const x = M + i * (bw + 10); if (fi) img(doc, fi, x + 10, y, bw - 20, 16); doc.line(x, y + 18, x + bw, y + 18); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.6); doc.text(n || ' ', x + bw / 2, y + 22, { align: 'center' }); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.text(doc.splitTextToSize(c, bw)[0], x + bw / 2, y + 26, { align: 'center' }); });
     TV.pie(doc, fmt, { elaboro: false }); return doc;
   };
@@ -344,13 +345,14 @@
   const formActa = P.formActaCap = (ent, ctx, s, tests, verDoc) => {
     const d = s.datos || {}, a = d.acta || {}, esTV = P.esActaTV(d), nomA = esTV ? (d.tema || 'Tecnovigilancia') : (d.equipo || '');
     // destino de los archivos: tecnovigilancia → 6. Capacitaciones / AÑO; equipos → 4. Capacitación / CAPACITACIONES EN EQUIPOS AÑO
-    const destino = async (evid) => esTV ? { carpeta: 'tecnovigilancia', ruta: 'tecnovigilancia', sub: `${await TV.subDestino(ent, 5)}/${s.anio}${evid ? '/EVIDENCIAS' : ''}` } : { carpeta: 'protocolos', ruta: 'protocolos', sub: `${await P.subDestino(ent, '4. CAPACITACIÓN - EDUCACIÓN CONTINUA')}/CAPACITACIONES EN EQUIPOS ${s.anio}${evid ? '/EVIDENCIAS' : ''}` }; let fotos = [...(d.fotos || [])], firma = a.firma_recibe || null, actaPdf = d.acta_pdf || null;
+    const destino = async (evid) => esTV ? { carpeta: 'tecnovigilancia', ruta: 'tecnovigilancia', sub: `${await TV.subDestino(ent, 5)}/${s.anio}${evid ? '/EVIDENCIAS' : ''}` } : { carpeta: 'protocolos', ruta: 'protocolos', sub: `${await P.subDestino(ent, '4. CAPACITACIÓN - EDUCACIÓN CONTINUA')}/CAPACITACIONES EN EQUIPOS ${s.anio}${evid ? '/EVIDENCIAS' : ''}` }; let fotos = [...(d.fotos || [])], firma = a.firma_recibe || null, firmaCap = a.firma_capacitador || null, actaPdf = d.acta_pdf || null;
     const pintarPdf = (m) => { m.body.querySelector('[data-apdf]').innerHTML = actaPdf ? `<span class="pill ok">✓ ${h(actaPdf.nombre)}</span> <button type="button" class="btn sm" data-apdfver>Ver</button> <button type="button" class="btn sm" data-apdfq>Quitar</button>` : '<span class="muted">No se ha cargado un acta en PDF.</span>'; };
     const pintarFotos = (m) => { m.body.querySelector('[data-fotos]').innerHTML = fotos.length ? fotos.map((x, i) => `<span class="pill" style="display:inline-flex;gap:6px;align-items:center">${h(x.nombre)}<button type="button" class="icon-btn bad" data-rmf="${i}" aria-label="Quitar foto">${I.x}</button></span>`).join(' ') : '<span class="muted">Sin fotos.</span>'; };
     modal({ titulo: `Acta de capacitación · ${nomA}`, size: 'wide', cuerpo: `<form class="form" onsubmit="return false"><p class="muted" style="font-size:.85rem">El acta incluye los datos de la capacitación, los asistentes con sus resultados del pre y post test (${tests.filter((t) => t.datos.fase === 'pre').length} pre · ${tests.filter((t) => t.datos.fase === 'post').length} post), el consolidado con gráfica y la evidencia fotográfica.</p>
       <div class="fields">${f.area('contenido', 'Contenido desarrollado (un tema por línea)', a.contenido || P.contenidoActa(d), { rows: 6 })}${f.area('conclusiones', 'Conclusiones (vacío = se redactan con los resultados)', a.conclusiones || '', { rows: 3 })}${f.area('compromisos', 'Compromisos (uno por línea)', a.compromisos || '', { rows: 3 })}
+        ${f.input('capacitador', 'Capacitador(a) · nombre', d.capacitador || st.emp?.responsable || '')}${f.input('cargo_capacitador', 'Capacitador(a) · cargo / área', a.cargo_capacitador || st.emp?.cargo || 'Ingeniería biomédica')}
         ${f.input('recibe', 'Recibe · nombre (responsable de la entidad)', a.recibe || '')}${f.input('cargo_recibe', 'Recibe · cargo', a.cargo_recibe || '')}</div>
-      <div class="actions" style="margin:6px 0"><button type="button" class="btn sm" data-firma>${I.firma} Firma de quien recibe</button><span data-fprev class="muted">${firma ? '✓ Firmada' : 'Sin firma'}</span></div>
+      <div class="actions" style="margin:6px 0"><button type="button" class="btn sm" data-firma>${I.firma} Firma de quien recibe</button><span data-fprev class="muted">${firma ? '✓ Firmada' : 'Sin firma'}</span><button type="button" class="btn sm" data-firmacap title="Solo si el capacitador no es quien firma en Mi empresa">${I.firma} Firma del capacitador</button><span data-fcprev class="muted">${firmaCap ? '✓ Firmada' : ''}</span></div>
       <fieldset><legend>Acta ya realizada (PDF)</legend><div data-apdf></div><label class="btn sm" style="margin-top:6px">${I.subir} Cargar acta en PDF<input type="file" accept="application/pdf,.pdf" hidden data-apdfsub></label><p class="muted" style="font-size:.8rem">Si el acta ya se hizo (firmada en papel o en otro formato), cárguela aquí: queda en la carpeta de capacitaciones y es la que se abre con el botón «Acta» de esta capacitación. Si no se carga, el gestor genera el acta con los datos de arriba.</p></fieldset>
       <fieldset><legend>Evidencia fotográfica</legend><div data-fotos></div><label class="btn sm" style="margin-top:6px">${I.subir} Agregar fotos<input type="file" accept="image/*" multiple hidden data-subir></label><p class="muted" style="font-size:.8rem">Las fotos se reducen y se guardan también en la carpeta de la entidad (evidencias de la capacitación).</p></fieldset></form>`,
       alAbrir: (m) => {
@@ -373,6 +375,7 @@
           } catch (er) { toast('No se pudo cargar el acta: ' + er.message, true); }
         };
         m.body.querySelector('[data-fotos]').onclick = (e) => { const b = e.target.closest('[data-rmf]'); if (b) { fotos.splice(+b.dataset.rmf, 1); pintarFotos(m); } };
+        m.body.querySelector('[data-firmacap]').onclick = async () => { const r = await UI.pedirFirma({ titulo: 'Firma del capacitador', actual: firmaCap }); if (r) { firmaCap = r; m.body.querySelector('[data-fcprev]').textContent = '✓ Firmada'; } };
         m.body.querySelector('[data-firma]').onclick = async () => { const r = await UI.pedirFirma({ titulo: 'Firma de quien recibe la capacitación', actual: firma }); if (r) { firma = r; m.body.querySelector('[data-fprev]').textContent = '✓ Firmada'; } };
         m.body.querySelector('[data-subir]').onchange = async (e) => {
           const fl = [...e.target.files]; e.target.value = ''; if (!fl.length) return; toast('Subiendo fotos…');
@@ -385,7 +388,7 @@
       },
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', fn: (m) => guardar(m, false) }, { t: 'Guardar y ver acta (PDF)', cls: 'pri', fn: (m) => guardar(m, true) }] });
     async function guardar(m, ver) {
-      const v = leer(m.body); const nd = { ...d, fotos, acta_pdf: actaPdf, acta: { contenido: v.contenido, conclusiones: v.conclusiones, compromisos: v.compromisos, recibe: v.recibe, cargo_recibe: v.cargo_recibe, firma_recibe: firma } };
+      const v = leer(m.body); const nd = { ...d, capacitador: (v.capacitador || '').trim() || d.capacitador || '', fotos, acta_pdf: actaPdf, acta: { cargo_capacitador: (v.cargo_capacitador || '').trim(), firma_capacitador: firmaCap, contenido: v.contenido, conclusiones: v.conclusiones, compromisos: v.compromisos, recibe: v.recibe, cargo_recibe: v.cargo_recibe, firma_recibe: firma } };
       await S.update(TB, s.id, { datos: nd }); s.datos = nd; toast('Acta guardada');
       if (ver && actaPdf) { const doc = await S.get('documentos', actaPdf.doc_id); if (doc) return A.abrirDoc(doc); }
       if (ver) { const doc = await P.pdfActaCap(ent, s, tests, ctx); verDoc(doc, `Acta de capacitación · ${nomA}`, `Acta_capacitacion_${slug(nomA)}_${d.fecha_ejec || s.fecha}.pdf`); }
