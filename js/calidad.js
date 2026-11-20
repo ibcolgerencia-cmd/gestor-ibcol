@@ -12,12 +12,12 @@
   const { h, I, toast, modal, leer, f } = UI;
 
   // documentos que puede diligenciar cada usuario de calidad / auxiliar (se guardan en la entidad: config.calidad_docs[usuario])
-  const DOCS = [['limpieza', 'Lista de chequeo limpieza y desinfección'], ['dano', 'Reporte de daño de equipos'], ['glucometro', 'Control de calidad glucómetro (control de glucometría)'], ['temperatura', 'Registro de temperatura y humedad'], ['evento', 'Reporte de eventos / incidentes adversos (FT-PGTV-016)']];
+  const DOCS = [['limpieza', 'Lista de chequeo limpieza y desinfección'], ['dano', 'Reporte de daño de equipos'], ['glucometro', 'Control de calidad glucómetro (control de glucometría)'], ['temperatura', 'Registro de temperatura y humedad'], ['esterilizacion', 'Bitácora de control de esterilización (cargas)'], ['evento', 'Reporte de eventos / incidentes adversos (FT-PGTV-016)']];
   A.DOCS_CALIDAD = DOCS;
-  A.docsCalidad = (ent, p) => { const l = ent?.config?.calidad_docs?.[p?.usuario]; return Array.isArray(l) && l.length ? l : DOCS.map((d) => d[0]); };
-  A.docsCalidadTxt = (ent, p) => A.docsCalidad(ent, p).map((k) => ({ limpieza: 'limpieza', dano: 'reporte de daño', glucometro: 'glucometría', temperatura: 'temperatura y humedad', evento: 'eventos adversos' }[k])).filter(Boolean).join(', ');
+  A.docsCalidad = (ent, p) => { const l = ent?.config?.calidad_docs?.[p?.usuario]; return Array.isArray(l) && l.length ? l : DOCS.map((d) => d[0]).filter((k) => k !== 'esterilizacion'); };
+  A.docsCalidadTxt = (ent, p) => A.docsCalidad(ent, p).map((k) => ({ limpieza: 'limpieza', dano: 'reporte de daño', glucometro: 'glucometría', temperatura: 'temperatura y humedad', esterilizacion: 'esterilización', evento: 'eventos adversos' }[k])).filter(Boolean).join(', ');
   A.checksDocsCalidad = (sel) => `<fieldset class="field full" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><legend style="font-size:.85rem;font-weight:600;padding:0 4px">Documentos que puede diligenciar *</legend>
-    ${DOCS.map(([k, t]) => `<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" data-doccal="${k}" ${!sel || sel.includes(k) ? 'checked' : ''}> ${h(t)}</label>`).join('')}</fieldset>`;
+    ${DOCS.map(([k, t]) => `<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" data-doccal="${k}" ${(!sel && k !== 'esterilizacion') || sel?.includes(k) ? 'checked' : ''}> ${h(t)}</label>`).join('')}</fieldset>`;
   A.leerDocsCalidad = (root) => [...root.querySelectorAll('[data-doccal]')].filter((c) => c.checked).map((c) => c.dataset.doccal);
   A.guardarDocsCalidad = async (ent, usuario, docs) => {
     if (!ent || !usuario) return; const ent2 = (await S.get('entidades', ent.id)) || ent;
@@ -46,6 +46,7 @@
         ${docs.includes('dano') ? `<button class="btn ${st.calTab === 'dano' ? 'pri' : ''}" data-cal-tab="dano" role="tab" aria-selected="${st.calTab === 'dano'}">${I.alerta} Reporte de daño de equipos</button>` : ''}
         ${docs.includes('glucometro') ? `<button class="btn ${st.calTab === 'glucometro' ? 'pri' : ''}" data-cal-tab="glucometro" role="tab" aria-selected="${st.calTab === 'glucometro'}">${I.check || ''} Control calidad glucómetro</button>` : ''}
         ${docs.includes('temperatura') ? `<button class="btn ${st.calTab === 'temperatura' ? 'pri' : ''}" data-cal-tab="temperatura" role="tab" aria-selected="${st.calTab === 'temperatura'}">${I.check || ''} Temperatura y humedad</button>` : ''}
+        ${docs.includes('esterilizacion') ? `<button class="btn ${st.calTab === 'esterilizacion' ? 'pri' : ''}" data-cal-tab="esterilizacion" role="tab" aria-selected="${st.calTab === 'esterilizacion'}">${I.check || ''} Control de esterilización</button>` : ''}
         ${docs.includes('evento') ? `<button class="btn ${st.calTab === 'evento' ? 'pri' : ''}" data-cal-tab="evento" role="tab" aria-selected="${st.calTab === 'evento'}">${I.alerta} Reporte de eventos adversos</button>` : ''}</div>
       <div data-cal-cuerpo></div>`;
     c.querySelectorAll('[data-cal-tab]').forEach((b) => (b.onclick = () => { st.calTab = b.dataset.calTab; A.recargar(); }));
@@ -53,6 +54,7 @@
     if (st.calTab === 'limpieza') await A.G.limpieza(cu, { ent, sede });
     else if (st.calTab === 'glucometro') await A.G.glucometro(cu, { ent, sede });
     else if (st.calTab === 'temperatura') await A.G.temperatura(cu, { ent, sede });
+    else if (st.calTab === 'esterilizacion') await A.G.esterilizacion(cu, { ent, sede });
     else if (st.calTab === 'evento') await A.G.eventosCalidad(cu, { ent, sede });
     else { cu.innerHTML = '<section class="panel" data-reportes></section>'; await A.panelReportes(cu.querySelector('[data-reportes]'), { entidadId: ent.id, sede }); }
   };

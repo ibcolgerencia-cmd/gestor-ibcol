@@ -39,6 +39,8 @@ window.CAT = (() => {
     { k: 'actas_revision', n: '10. ACTAS REVISIÓN SEDES', g: G1, ia: true },
     { k: 'hv_ingenieros', n: '11. HOJAS DE VIDA INGENIEROS BIOMÉDICOS', g: G1 },
     { k: 'temperatura', n: '12. TEMPERATURA Y HUMEDAD', g: G1, gen: 'temperatura' },
+    // opcional: solo en las entidades donde se active (Carpetas › marcar)
+    { k: 'esterilizacion', n: 'CONTROL DE ESTERILIZACIÓN (BITÁCORA DE CARGAS)', g: G2, gen: 'esterilizacion', opcional: true },
     // solo en la documentación general de la entidad (no se repite en cada sede)
     { k: 'protocolos', n: 'PROTOCOLOS Y PROGRAMAS', g: G2, gen: 'protocolos', ia: true, soloGeneral: true },
     { k: 'tecnovigilancia', n: 'PROGRAMA DE TECNOVIGILANCIA', g: G2, gen: 'tecnovigilancia', ia: true, subsFlex: true,

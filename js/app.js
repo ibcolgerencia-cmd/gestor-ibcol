@@ -1176,7 +1176,7 @@ window.APP = (() => {
   // Se guardan en entidades.config = { ocultas_ent: [...], ocultas_eq: [...] }.
   // Quitar una carpeta NO borra sus archivos: quedan guardados y vuelven si se activa de nuevo.
   const OBLIG = new Set(['equipos', 'hoja_vida']); // sin estas no funciona la estructura
-  A.ocultas = (ent, tipo, sede = null) => new Set([...((ent?.config || {})[tipo === 'eq' ? 'ocultas_eq' : 'ocultas_ent'] || []), ...(tipo !== 'eq' && sede ? ((ent?.config || {}).ocultas_sede || {})[sede] || [] : [])]);
+  A.ocultas = (ent, tipo, sede = null) => new Set([...((ent?.config || {})[tipo === 'eq' ? 'ocultas_eq' : 'ocultas_ent'] || []), ...(tipo !== 'eq' ? CAT.CARPETAS_ENTIDAD.filter((c) => c.opcional && !((ent?.config || {}).activas_ent || []).includes(c.k)).map((c) => c.k) : []), ...(tipo !== 'eq' && sede ? ((ent?.config || {}).ocultas_sede || {})[sede] || [] : [])]);
   // sedes donde se quitó una carpeta (solo para esas sedes)
   A.sedesSinCarpeta = (ent, k) => Object.entries((ent?.config || {}).ocultas_sede || {}).filter(([, l]) => (l || []).includes(k)).map(([s]) => s);
   // carpetas ocultas de un equipo: las quitadas para toda la entidad + las quitadas solo en ese equipo (equipos.hv.ocultas)
@@ -1344,7 +1344,7 @@ window.APP = (() => {
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
         const marc = (n) => new Set([...m.body.querySelectorAll(`[name=${n}]:checked`)].map((x) => x.value));
         const vE = marc('ent'), vQ = marc('eq');
-        const cfg = { ...(ent.config || {}), ocultas_ent: CAT.CARPETAS_ENTIDAD.filter((c) => !OBLIG.has(c.k) && !vE.has(c.k)).map((c) => c.k), ocultas_eq: CAT.CARPETAS_EQUIPO.filter((c) => !OBLIG.has(c.k) && !vQ.has(c.k)).map((c) => c.k) };
+        const cfg = { ...(ent.config || {}), ocultas_ent: CAT.CARPETAS_ENTIDAD.filter((c) => !OBLIG.has(c.k) && !vE.has(c.k)).map((c) => c.k), ocultas_eq: CAT.CARPETAS_EQUIPO.filter((c) => !OBLIG.has(c.k) && !vQ.has(c.k)).map((c) => c.k), activas_ent: CAT.CARPETAS_ENTIDAD.filter((c) => c.opcional && vE.has(c.k)).map((c) => c.k) };
         if (sedes.length > 1) { const vis = new Set([...m.body.querySelectorAll('[name=sd]:checked')].map((x) => x.value)), os = {}; sedes.forEach((sd) => { const l = A.carpetasEnt(ent).filter((c) => !OBLIG.has(c.k) && !vis.has(`${sd}|${c.k}`)).map((c) => c.k); if (l.length) os[sd] = l; }); cfg.ocultas_sede = os; }
         if (!(await guardarConfig(ent, cfg))) return false;
         S.log('EDITAR', 'entidades', ent.id, `Carpetas: ${cfg.ocultas_ent.length + cfg.ocultas_eq.length} quitadas`);
