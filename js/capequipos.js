@@ -83,19 +83,24 @@
   };
 
   // ------------------------------------------------------------------ ACTA DE CAPACITACIÓN
+  // capacitaciones del programa de tecnovigilancia (datos.programa distinto de 'equipos') usan la misma acta
+  P.esActaTV = (d) => (d?.programa || '') !== 'equipos';
+  P.TV_CONTENIDO = ['Marco normativo: Decreto 4725 de 2005 y Resolución 4816 de 2008 (Programa Nacional de Tecnovigilancia)', 'Qué es un evento y un incidente adverso, serio y no serio, con casos reales', 'Cómo y cuándo reportar: formato FT-PGTV-016, reporte inmediato (72 horas) y reporte trimestral', 'Responsabilidades del personal, del referente y del comité de tecnovigilancia', 'Alertas sanitarias del INVIMA y su gestión en la institución', 'Cultura del reporte no punitivo e incentivos al reporte'];
+  P.contenidoActa = (d) => (P.esActaTV(d) ? P.TV_CONTENIDO : P.capDe(d).diapos.map(([t]) => t)).join('\n');
   P.pdfActaCap = async (ent, ses, tests, ctx) => {
-    const d = ses.datos || {}, cap = P.capDe(d), fmt = fmtDe('acta_cap_eq'), doc = nuevo('p'), W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 16, ancho = W - 2 * M;
-    let y = TV.encabezado(doc, { fmt, ent, titulo: fmt.titulo }) + 2;
-    const salto = (n) => { if (y + n > H - 28) { doc.addPage(); y = TV.encabezado(doc, { fmt, ent, titulo: fmt.titulo }) + 2; } };
+    const d = ses.datos || {}, esTV = P.esActaTV(d), cap = P.capDe(d), fmt = fmtDe('acta_cap_eq'), doc = nuevo('p'), W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 16, ancho = W - 2 * M;
+    const tituloA = esTV ? 'ACTA DE CAPACITACIÓN EN TECNOVIGILANCIA' : fmt.titulo;
+    let y = TV.encabezado(doc, { fmt, ent, titulo: tituloA }) + 2;
+    const salto = (n) => { if (y + n > H - 28) { doc.addPage(); y = TV.encabezado(doc, { fmt, ent, titulo: tituloA }) + 2; } };
     const tit = (t) => { salto(16); doc.setFillColor(...CL); doc.rect(M, y - 4.4, ancho, 6.5, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text(sn(t), M + 2, y); y += 6; };
     const par = (t) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.4); const ls = doc.splitTextToSize(sn(t), ancho); ls.forEach((l, i) => { salto(5); if (window.PDFJ) window.PDFJ(doc, l, M, y, ancho, i === ls.length - 1); else doc.text(l, M, y); y += 4.2; }); y += 2; };
     const tabla = (o) => { doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, top: 40, bottom: 28 }, styles: { fontSize: 8.4, cellPadding: 1.3, lineColor: NG, lineWidth: 0.2, textColor: NG, halign: 'left', valign: 'middle' }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold', halign: 'center' }, ...o }); y = doc.lastAutoTable.finalY + 5; };
     tit('1. DATOS GENERALES');
     tabla({ columnStyles: { 0: { fontStyle: 'bold', cellWidth: 34, fillColor: CL }, 2: { fontStyle: 'bold', cellWidth: 28, fillColor: CL } },
-      body: [['ENTIDAD', { content: sn(ent.razon_social || ''), colSpan: 3 }], ['TEMA', { content: sn(d.tema || ''), colSpan: 3 }], ['EQUIPO', sn(d.equipo || cap.n), 'CLASE DE RIESGO', d.clase || cap.clase || ''], ['FECHA', fF(d.fecha_ejec || ses.fecha), 'HORA', [d.hora_ini, d.hora_fin].filter(Boolean).join(' a ')], ['LUGAR', sn(d.lugar || ''), 'MODALIDAD', sn(d.modalidad || 'Presencial')], ['CAPACITADOR', sn(d.capacitador || st.emp?.responsable || ''), 'INTENSIDAD', sn(d.duracion || '')], ['DIRIGIDO A', { content: sn(d.dirigido || cap.dirigido || ''), colSpan: 3 }]] });
-    tit('2. OBJETIVO'); par(d.objetivo || cap.objetivo);
+      body: [['ENTIDAD', { content: sn(ent.razon_social || ''), colSpan: 3 }], ['TEMA', { content: sn(d.tema || ''), colSpan: 3 }], (esTV ? ['PROGRAMA', 'Tecnovigilancia', 'SEMESTRE', ses.periodo === 'S1' ? 'Primero' : ses.periodo === 'S2' ? 'Segundo' : sn(ses.periodo || '')] : ['EQUIPO', sn(d.equipo || cap.n), 'CLASE DE RIESGO', d.clase || cap.clase || '']), ['FECHA', fF(d.fecha_ejec || ses.fecha), 'HORA', [d.hora_ini, d.hora_fin].filter(Boolean).join(' a ')], ['LUGAR', sn(d.lugar || ''), 'MODALIDAD', sn(d.modalidad || 'Presencial')], ['CAPACITADOR', sn(d.capacitador || st.emp?.responsable || ''), 'INTENSIDAD', sn(d.duracion || '')], ['DIRIGIDO A', { content: sn(d.dirigido || (esTV ? 'Personal asistencial y administrativo' : cap.dirigido) || ''), colSpan: 3 }]] });
+    tit('2. OBJETIVO'); par(d.objetivo || (esTV ? `Fortalecer en el personal de ${ent.razon_social || 'la institución'} el conocimiento del programa de tecnovigilancia, la identificación de eventos e incidentes adversos con dispositivos médicos y su reporte oportuno, para mejorar la seguridad del paciente.` : cap.objetivo));
     tit('3. CONTENIDO DESARROLLADO');
-    const cont = (d.acta?.contenido || cap.diapos.map(([t]) => t).join('\n')).split('\n').map((x) => x.trim()).filter(Boolean);
+    const cont = (d.acta?.contenido || P.contenidoActa(d)).split('\n').map((x) => x.trim()).filter(Boolean);
     cont.forEach((t, i) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.4); const ls = doc.splitTextToSize(sn(t.replace(/^[-•]\s*/, '')), ancho - 8); salto(ls.length * 4.2 + 1); doc.text(`${i + 1}.`, M + 1, y); doc.text(ls, M + 7, y); y += ls.length * 4.2 + 1; }); y += 2;
     // asistentes y resultados
     const pre = tests.filter((t) => t.datos.fase === 'pre'), post = tests.filter((t) => t.datos.fase === 'post');
@@ -114,8 +119,8 @@
       doc.setDrawColor(200, 60, 60); doc.setLineDashPattern([1.2, 1], 0); doc.line(gx, gy - 0.8 * gh, gx + 110, gy - 0.8 * gh); doc.setLineDashPattern([], 0); doc.setFontSize(7); doc.setTextColor(200, 60, 60); doc.text('Meta 80 %', gx + 111, gy - 0.8 * gh + 1); doc.setTextColor(...NG); doc.setDrawColor(...NG);
       y = gy + 10;
     }
-    tit('6. CONCLUSIONES'); par(d.acta?.conclusiones || (po === null ? 'Se realizó la capacitación según lo programado.' : po >= 80 ? `El grupo alcanzó la meta institucional en el post test (promedio ${po} %), con una mejora frente al pre test${pr !== null ? ` (${pr} %)` : ''}. El personal demuestra conocimiento del uso seguro, la limpieza y los cuidados del equipo.` : `El promedio del post test (${po} %) no alcanzó la meta del 80 %. Se programa refuerzo de la capacitación para el personal que no aprobó.`));
-    tit('7. COMPROMISOS'); (d.acta?.compromisos || 'Aplicar las recomendaciones de uso seguro, limpieza y cuidados del equipo.\nReportar oportunamente las fallas a ingeniería biomédica y los eventos o incidentes adversos al programa de tecnovigilancia.\nSocializar la guía rápida del equipo con el personal que no asistió.').split('\n').filter((x) => x.trim()).forEach((t) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.4); const ls = doc.splitTextToSize(sn(t.replace(/^[-•]\s*/, '')), ancho - 8); salto(ls.length * 4.2 + 1); doc.text('•', M + 2, y); doc.text(ls, M + 7, y); y += ls.length * 4.2 + 1; });
+    tit('6. CONCLUSIONES'); par(d.acta?.conclusiones || (po === null ? 'Se realizó la capacitación según lo programado.' : po >= 80 ? `El grupo alcanzó la meta institucional en el post test (promedio ${po} %), con una mejora frente al pre test${pr !== null ? ` (${pr} %)` : ''}. ${esTV ? 'El personal demuestra conocimiento del programa de tecnovigilancia, la clasificación de eventos e incidentes adversos y el procedimiento de reporte.' : 'El personal demuestra conocimiento del uso seguro, la limpieza y los cuidados del equipo.'}` : `El promedio del post test (${po} %) no alcanzó la meta del 80 %. Se programa refuerzo de la capacitación para el personal que no aprobó.`));
+    tit('7. COMPROMISOS'); (d.acta?.compromisos || (esTV ? 'Reportar todo evento o incidente adverso con dispositivos médicos en el formato FT-PGTV-016 y entregarlo al referente de tecnovigilancia.\nConservar el dispositivo involucrado y retirarlo del servicio para su análisis.\nSocializar el programa de tecnovigilancia con el personal que no asistió.' : null) || 'Aplicar las recomendaciones de uso seguro, limpieza y cuidados del equipo.\nReportar oportunamente las fallas a ingeniería biomédica y los eventos o incidentes adversos al programa de tecnovigilancia.\nSocializar la guía rápida del equipo con el personal que no asistió.').split('\n').filter((x) => x.trim()).forEach((t) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.4); const ls = doc.splitTextToSize(sn(t.replace(/^[-•]\s*/, '')), ancho - 8); salto(ls.length * 4.2 + 1); doc.text('•', M + 2, y); doc.text(ls, M + 7, y); y += ls.length * 4.2 + 1; });
     y += 2;
     // evidencia fotográfica
     const fotos = d.fotos || [];
@@ -336,12 +341,14 @@
     acciones: [{ t: 'Restablecer preguntas base', fn: (m) => { m.body.querySelector('[data-tx]').value = TV.txtBanco(P.capDe(s.datos).preguntas); return false; } }, { t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => { const l = TV.leerBanco(m.body.querySelector('[data-tx]').value); if (l.length < 3) { toast('Se necesitan al menos 3 preguntas con su respuesta marcada con *', true); return false; } await S.update(TB, s.id, { datos: { ...s.datos, preguntas: l } }); toast(`${l.length} preguntas guardadas`); A.recargar(); } }] });
 
   // acta: contenido, conclusiones, compromisos, fotos y firma de quien recibe
-  const formActa = (ent, ctx, s, tests, verDoc) => {
-    const d = s.datos || {}, a = d.acta || {}, cap = P.capDe(d); let fotos = [...(d.fotos || [])], firma = a.firma_recibe || null, actaPdf = d.acta_pdf || null;
+  const formActa = P.formActaCap = (ent, ctx, s, tests, verDoc) => {
+    const d = s.datos || {}, a = d.acta || {}, esTV = P.esActaTV(d), nomA = esTV ? (d.tema || 'Tecnovigilancia') : (d.equipo || '');
+    // destino de los archivos: tecnovigilancia → 6. Capacitaciones / AÑO; equipos → 4. Capacitación / CAPACITACIONES EN EQUIPOS AÑO
+    const destino = async (evid) => esTV ? { carpeta: 'tecnovigilancia', ruta: 'tecnovigilancia', sub: `${await TV.subDestino(ent, 5)}/${s.anio}${evid ? '/EVIDENCIAS' : ''}` } : { carpeta: 'protocolos', ruta: 'protocolos', sub: `${await P.subDestino(ent, '4. CAPACITACIÓN - EDUCACIÓN CONTINUA')}/CAPACITACIONES EN EQUIPOS ${s.anio}${evid ? '/EVIDENCIAS' : ''}` }; let fotos = [...(d.fotos || [])], firma = a.firma_recibe || null, actaPdf = d.acta_pdf || null;
     const pintarPdf = (m) => { m.body.querySelector('[data-apdf]').innerHTML = actaPdf ? `<span class="pill ok">✓ ${h(actaPdf.nombre)}</span> <button type="button" class="btn sm" data-apdfver>Ver</button> <button type="button" class="btn sm" data-apdfq>Quitar</button>` : '<span class="muted">No se ha cargado un acta en PDF.</span>'; };
     const pintarFotos = (m) => { m.body.querySelector('[data-fotos]').innerHTML = fotos.length ? fotos.map((x, i) => `<span class="pill" style="display:inline-flex;gap:6px;align-items:center">${h(x.nombre)}<button type="button" class="icon-btn bad" data-rmf="${i}" aria-label="Quitar foto">${I.x}</button></span>`).join(' ') : '<span class="muted">Sin fotos.</span>'; };
-    modal({ titulo: `Acta de capacitación · ${d.equipo || ''}`, size: 'wide', cuerpo: `<form class="form" onsubmit="return false"><p class="muted" style="font-size:.85rem">El acta incluye los datos de la capacitación, los asistentes con sus resultados del pre y post test (${tests.filter((t) => t.datos.fase === 'pre').length} pre · ${tests.filter((t) => t.datos.fase === 'post').length} post), el consolidado con gráfica y la evidencia fotográfica.</p>
-      <div class="fields">${f.area('contenido', 'Contenido desarrollado (un tema por línea)', a.contenido || cap.diapos.map(([t]) => t).join('\n'), { rows: 6 })}${f.area('conclusiones', 'Conclusiones (vacío = se redactan con los resultados)', a.conclusiones || '', { rows: 3 })}${f.area('compromisos', 'Compromisos (uno por línea)', a.compromisos || '', { rows: 3 })}
+    modal({ titulo: `Acta de capacitación · ${nomA}`, size: 'wide', cuerpo: `<form class="form" onsubmit="return false"><p class="muted" style="font-size:.85rem">El acta incluye los datos de la capacitación, los asistentes con sus resultados del pre y post test (${tests.filter((t) => t.datos.fase === 'pre').length} pre · ${tests.filter((t) => t.datos.fase === 'post').length} post), el consolidado con gráfica y la evidencia fotográfica.</p>
+      <div class="fields">${f.area('contenido', 'Contenido desarrollado (un tema por línea)', a.contenido || P.contenidoActa(d), { rows: 6 })}${f.area('conclusiones', 'Conclusiones (vacío = se redactan con los resultados)', a.conclusiones || '', { rows: 3 })}${f.area('compromisos', 'Compromisos (uno por línea)', a.compromisos || '', { rows: 3 })}
         ${f.input('recibe', 'Recibe · nombre (responsable de la entidad)', a.recibe || '')}${f.input('cargo_recibe', 'Recibe · cargo', a.cargo_recibe || '')}</div>
       <div class="actions" style="margin:6px 0"><button type="button" class="btn sm" data-firma>${I.firma} Firma de quien recibe</button><span data-fprev class="muted">${firma ? '✓ Firmada' : 'Sin firma'}</span></div>
       <fieldset><legend>Acta ya realizada (PDF)</legend><div data-apdf></div><label class="btn sm" style="margin-top:6px">${I.subir} Cargar acta en PDF<input type="file" accept="application/pdf,.pdf" hidden data-apdfsub></label><p class="muted" style="font-size:.8rem">Si el acta ya se hizo (firmada en papel o en otro formato), cárguela aquí: queda en la carpeta de capacitaciones y es la que se abre con el botón «Acta» de esta capacitación. Si no se carga, el gestor genera el acta con los datos de arriba.</p></fieldset>
@@ -357,11 +364,11 @@
           if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') return toast('El acta debe ser un archivo PDF', true);
           try {
             toast('Subiendo el acta…');
-            const sub = await P.subDestino(ent, '4. CAPACITACIÓN - EDUCACIÓN CONTINUA');
-            const nombre = /^acta/i.test(file.name) ? file.name : `Acta capacitación ${d.equipo || ''} ${fF(d.fecha_ejec || s.fecha)} - ${file.name}`;
-            const path = `${ent.id}/general/protocolos/${Date.now()}-${slug(file.name.replace(/\.pdf$/i, ''))}.pdf`;
+            const ds = await destino(false);
+            const nombre = /^acta/i.test(file.name) ? file.name : `Acta capacitación ${nomA} ${fF(d.fecha_ejec || s.fecha)} - ${file.name}`;
+            const path = `${ent.id}/general/${ds.ruta}/${Date.now()}-${slug(file.name.replace(/\.pdf$/i, ''))}.pdf`;
             await S.upload(path, file);
-            const doc = await S.insert('documentos', { entidad_id: ent.id, equipo_id: null, carpeta: 'protocolos', subcarpeta: `${sub}/CAPACITACIONES EN EQUIPOS ${s.anio}`, nombre, archivo: path, mime: 'application/pdf', tamano: file.size, fecha_documento: d.fecha_ejec || s.fecha || UI.hoy(), visible_cliente: true, firmado: false });
+            const doc = await S.insert('documentos', { entidad_id: ent.id, equipo_id: null, carpeta: ds.carpeta, subcarpeta: ds.sub, nombre, archivo: path, mime: 'application/pdf', tamano: file.size, fecha_documento: d.fecha_ejec || s.fecha || UI.hoy(), visible_cliente: true, firmado: false });
             actaPdf = { doc_id: doc.id, nombre, archivo: path }; pintarPdf(m); toast('Acta cargada (pulse Guardar)');
           } catch (er) { toast('No se pudo cargar el acta: ' + er.message, true); }
         };
@@ -369,9 +376,9 @@
         m.body.querySelector('[data-firma]').onclick = async () => { const r = await UI.pedirFirma({ titulo: 'Firma de quien recibe la capacitación', actual: firma }); if (r) { firma = r; m.body.querySelector('[data-fprev]').textContent = '✓ Firmada'; } };
         m.body.querySelector('[data-subir]').onchange = async (e) => {
           const fl = [...e.target.files]; e.target.value = ''; if (!fl.length) return; toast('Subiendo fotos…');
-          const sub = await P.subDestino(ent, '4. CAPACITACIÓN - EDUCACIÓN CONTINUA');
-          for (const file of fl) { try { const b = await reducir(file), nombre = `Evidencia ${d.equipo || ''} ${fF(d.fecha_ejec || s.fecha)} (${fotos.length + 1}).jpg`, path = `${ent.id}/general/protocolos/${Date.now()}-${slug(nombre)}.jpg`;
-            await S.upload(path, b); await S.insert('documentos', { entidad_id: ent.id, equipo_id: null, carpeta: 'protocolos', subcarpeta: `${sub}/CAPACITACIONES EN EQUIPOS ${s.anio}/EVIDENCIAS`, nombre, archivo: path, mime: 'image/jpeg', tamano: b.size, fecha_documento: UI.hoy(), visible_cliente: true, firmado: false });
+          const ds = await destino(true);
+          for (const file of fl) { try { const b = await reducir(file), nombre = `Evidencia ${nomA} ${fF(d.fecha_ejec || s.fecha)} (${fotos.length + 1}).jpg`, path = `${ent.id}/general/${ds.ruta}/${Date.now()}-${slug(nombre)}.jpg`;
+            await S.upload(path, b); await S.insert('documentos', { entidad_id: ent.id, equipo_id: null, carpeta: ds.carpeta, subcarpeta: ds.sub, nombre, archivo: path, mime: 'image/jpeg', tamano: b.size, fecha_documento: UI.hoy(), visible_cliente: true, firmado: false });
             fotos.push({ archivo: path, nombre }); } catch (er) { toast(`${file.name}: ${er.message}`, true); } }
           pintarFotos(m); toast('Fotos agregadas (pulse Guardar)');
         };
@@ -381,7 +388,7 @@
       const v = leer(m.body); const nd = { ...d, fotos, acta_pdf: actaPdf, acta: { contenido: v.contenido, conclusiones: v.conclusiones, compromisos: v.compromisos, recibe: v.recibe, cargo_recibe: v.cargo_recibe, firma_recibe: firma } };
       await S.update(TB, s.id, { datos: nd }); s.datos = nd; toast('Acta guardada');
       if (ver && actaPdf) { const doc = await S.get('documentos', actaPdf.doc_id); if (doc) return A.abrirDoc(doc); }
-      if (ver) { const doc = await P.pdfActaCap(ent, s, tests, ctx); verDoc(doc, `Acta de capacitación · ${d.equipo}`, `Acta_capacitacion_${slug(d.equipo)}_${d.fecha_ejec || s.fecha}.pdf`); }
+      if (ver) { const doc = await P.pdfActaCap(ent, s, tests, ctx); verDoc(doc, `Acta de capacitación · ${nomA}`, `Acta_capacitacion_${slug(nomA)}_${d.fecha_ejec || s.fecha}.pdf`); }
       else A.recargar();
     }
   };

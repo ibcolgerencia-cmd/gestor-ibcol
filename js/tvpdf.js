@@ -6,7 +6,7 @@
 //  lista de asistencia, plan semestral e indicadores (GT-IND-036).
 // =====================================================================
 (() => {
-  const A = window.APP, st = A.st;
+  const A = window.APP, st = A.st, S = A.S;
   const TV = (A.TV = A.TV || {});
   const AZ = [0, 150, 190], GR = [217, 217, 217], CL = [221, 243, 250], NG = [0, 0, 0];
   const nuevo = (o = 'p') => new window.jspdf.jsPDF({ unit: 'mm', format: 'letter', orientation: o });
@@ -177,17 +177,52 @@
     doc.addPage(); const pagTOC = doc.getNumberOfPages(); doc.addPage();
     let y = TOP; const toc = [];
     const salto = (n) => { if (y + n > H - BOT) { doc.addPage(); y = TOP; } };
-    const escribir = (t, { fs = 10, b = false, ind = 0, vin = '', gapA = 1.8 } = {}) => {
-      doc.setFont('helvetica', b ? 'bold' : 'normal'); doc.setFontSize(fs); doc.setTextColor(...NG);
-      const ls = doc.splitTextToSize(t, ancho - ind - (vin ? 5 : 0)); const lh = fs * 0.43;
-      ls.forEach((ln, i) => { salto(lh + 1); if (vin && !i) doc.text(vin, M + ind, y); if (b) doc.text(ln, M + ind + (vin ? 5 : 0), y); else window.PDFJ(doc, ln, M + ind + (vin ? 5 : 0), y, ancho - ind - (vin ? 5 : 0), i === ls.length - 1); y += lh; });
+    const escribir = (t0, { fs = 10, b = false, ind = 0, vin = '', gapA = 1.8 } = {}) => {
+      // «**Etiqueta:** texto» → etiqueta en negrilla al inicio; «**texto**» → todo en negrilla
+      let t = String(t0), lbl = ''; const mb = t.match(/^\*\*(.+?)\*\*\s*(.*)$/); if (mb) { if (!mb[2]) { t = mb[1]; b = true; } else { lbl = mb[1]; t = mb[2]; } }
+      t = t.replace(/\*\*/g, '');
+      doc.setFontSize(fs); doc.setTextColor(...NG); const x0 = M + ind + (vin ? 5 : 0), w0 = ancho - ind - (vin ? 5 : 0), lh = fs * 0.43;
+      let lw = 0; if (lbl) { doc.setFont('helvetica', 'bold'); lw = doc.getTextWidth(lbl + ' '); if (lw > w0 * 0.7) { t = lbl + ' ' + t; lbl = ''; lw = 0; } }
+      doc.setFont('helvetica', b ? 'bold' : 'normal');
+      let ls; if (lbl) { const p1 = doc.splitTextToSize(t, w0 - lw); const primera = p1[0] || ''; const resto = t.slice(primera.length).trim(); ls = [primera, ...(resto ? doc.splitTextToSize(resto, w0) : [])]; } else ls = doc.splitTextToSize(t, w0);
+      ls.forEach((ln, i) => { salto(lh + 1); if (vin && !i) { doc.setFont('helvetica', 'normal'); doc.text(vin, M + ind, y); }
+        const dx = lbl && !i ? lw : 0; if (lbl && !i) { doc.setFont('helvetica', 'bold'); doc.text(lbl, x0, y); }
+        doc.setFont('helvetica', b ? 'bold' : 'normal'); if (b) doc.text(ln, x0 + dx, y); else window.PDFJ(doc, ln, x0 + dx, y, w0 - dx, i === ls.length - 1); y += lh; });
       y += gapA;
+    };
+    // tabla escrita con «| celda | celda |» (primera fila = encabezado si tiene 3 o más columnas, o si todas sus celdas van en **negrilla**)
+    const NIVEL = { ALTO: [248, 203, 203], MEDIO: [255, 235, 156], BAJO: [198, 239, 206] };
+    const tablaTexto = (filas) => {
+      const rows = filas.map((l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())).filter((r) => !r.every((c) => /^:?-{2,}:?$/.test(c) || !c));
+      if (!rows.length) return; const nc = Math.max(...rows.map((r) => r.length)); rows.forEach((r) => { while (r.length < nc) r.push(''); });
+      const celda = (c) => { const bold = /^\*\*.*\*\*$/.test(c); const tx = c.replace(/\*\*/g, '').replace(/<br\s*\/?>/gi, '\n'); const st2 = {}; if (bold) st2.fontStyle = 'bold'; const nv = NIVEL[tx.trim().toUpperCase()]; if (nv) Object.assign(st2, { fillColor: nv, fontStyle: 'bold', halign: 'center' }); return { content: tx, styles: st2 }; };
+      const r0 = rows[0], todasB = r0.filter(Boolean).every((c) => /^\*\*.*\*\*$/.test(c)), titulo = r0.slice(1).every((c) => !c);
+      let head = []; let body = rows;
+      if (titulo) { head = [[{ content: r0[0].replace(/\*\*/g, ''), colSpan: nc, styles: { halign: 'center' } }]]; body = rows.slice(1); }
+      else if (nc >= 3 || todasB) { head = [r0.map((c) => c.replace(/\*\*/g, ''))]; body = rows.slice(1); }
+      salto(18); doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, top: TOP, bottom: BOT }, rowPageBreak: 'avoid', styles: { fontSize: nc >= 5 ? 7.2 : 8.4, cellPadding: 1.3, lineColor: NG, lineWidth: 0.2, textColor: NG, valign: 'middle' }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold', halign: 'center' },
+        head, body: body.map((r) => r.map(celda)), columnStyles: nc === 2 ? { 0: { cellWidth: 52, fontStyle: 'bold', fillColor: CL } } : nc >= 5 ? { 0: { cellWidth: 24, fontStyle: 'bold' }, 3: { cellWidth: 16 } } : {} });
+      y = doc.lastAutoTable.finalY + 5;
+    };
+    // imágenes del documento: [[IMAGEN:clave|ancho mm|pie de figura]] (archivo en cfg.imagenes[clave])
+    const imgs = {};
+    for (const k of [...new Set([...String(texto).matchAll(/\[\[IMAGEN:([\w-]+)/g)].map((m) => m[1]))]) {
+      const ar = cfg.imagenes?.[k]?.archivo; if (!ar) continue;
+      try { const bl = await S.fileBlob(ar); const du = await new Promise((r, j) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.onerror = j; fr.readAsDataURL(bl); }); const pr = doc.getImageProperties(du); imgs[k] = { du, w: pr.width, h: pr.height }; } catch (er) { console.warn('imagen del programa', k, er); }
+    }
+    const imagen = (tok) => {
+      const [, k, wS, pie] = tok.match(/^\[\[IMAGEN:([\w-]+)\|?([\d.]*)\|?(.*?)\]\]$/) || []; const im = imgs[k]; if (!im) return;
+      let w = Math.min(+wS || ancho, ancho), hh = w * im.h / im.w; const maxH = H - TOP - BOT - 12; if (hh > maxH) { hh = maxH; w = hh * im.w / im.h; }
+      salto(hh + (pie ? 8 : 4)); doc.addImage(im.du, /^data:image\/png/i.test(im.du) ? 'PNG' : 'JPEG', M + (ancho - w) / 2, y, w, hh); y += hh + 3;
+      if (pie) { doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(...NG); const pl = doc.splitTextToSize(pie, ancho); doc.text(pl, W / 2, y + 1.5, { align: 'center' }); y += pl.length * 3.5 + 2; } y += 2;
     };
     let n1 = 0;
     const lineas = rep(texto).split('\n');
-    for (const raw of lineas) {
-      const l = raw.trimEnd(); if (!l.trim()) continue;
-      if (l.startsWith('# ')) { n1++; const sig = lineas.slice(lineas.indexOf(raw) + 1).find((z) => z.trim()); salto(sig && sig.trim() === '[[FLUJO]]' ? 175 : 18); if (y > TOP + 2) y += 3; doc.setFillColor(...CL); doc.rect(M, y - 4.6, ancho, 7, 'F'); toc.push([`${n1}. ${l.slice(2).trim()}`, doc.getNumberOfPages(), 1]); escribir(`${n1}. ${l.slice(2).trim().toUpperCase()}`, { fs: 11.5, b: true, gapA: 3 }); continue; }
+    for (let li = 0; li < lineas.length; li++) {
+      const raw = lineas[li]; const l = raw.trimEnd(); if (!l.trim()) continue;
+      if (l.trim().startsWith('|')) { const bl = []; while (li < lineas.length && lineas[li].trim().startsWith('|')) bl.push(lineas[li++]); li--; tablaTexto(bl); continue; }
+      if (/^\[\[IMAGEN:/.test(l.trim())) { imagen(l.trim()); continue; }
+      if (l.startsWith('# ')) { n1++; const sig = lineas.slice(li + 1).find((z) => z.trim()); salto(sig && sig.trim() === '[[FLUJO]]' ? 175 : sig && /^\[\[IMAGEN:/.test(sig.trim()) ? 90 : 18); if (y > TOP + 2) y += 3; doc.setFillColor(...CL); doc.rect(M, y - 4.6, ancho, 7, 'F'); toc.push([`${n1}. ${l.slice(2).trim()}`, doc.getNumberOfPages(), 1]); escribir(`${n1}. ${l.slice(2).trim().toUpperCase()}`, { fs: 11.5, b: true, gapA: 3 }); continue; }
       if (l.startsWith('## ')) { salto(12); y += 1; toc.push([l.slice(3).trim(), doc.getNumberOfPages(), 2]); escribir(l.slice(3).trim(), { fs: 10.2, b: true, gapA: 1.5 }); continue; }
       if (l.startsWith('-- ')) { escribir(l.slice(3), { ind: 10, vin: '–', fs: 9.6 }); continue; }
       if (l.startsWith('- ')) { escribir(l.slice(2), { ind: 4, vin: '•', fs: 9.8 }); continue; }
