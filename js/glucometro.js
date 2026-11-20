@@ -14,13 +14,21 @@
   const TABLA = 'control_glucometro';
   // encabezado por defecto (tomado del formato Excel de la entidad)
   const ENC = { proceso: 'APOYO DIAGNÓSTICO Y COMPLEMENTACIÓN TERAPÉUTICA', subproceso: 'LABORATORIO CLÍNICO', nombre: 'FORMATO CONTROL DE GLUCOMETRÍA', codigo: 'MIS-ACT-LC-FOR-14', version: '1', fecha: 'MARZO DE 2025', franja: 'EQUIPO GLUCÓMETRO' };
-  const CAMPOS = ['marca', 'modelo', 'serie', 'lote_tira', 'lote_solucion', 'rango_normal', 'rango_alto', 'fecha_apertura', 'tipo', 'valor', 'observaciones', 'responsable', 'cargo'];
+  const CAMPOS = ['marca', 'modelo', 'serie', 'lote_tira', 'lote_solucion', 'rango_normal', 'rango_alto', 'fecha_apertura', 'tipo', 'valor', 'resultado', 'observaciones', 'responsable', 'cargo'];
   // encabezado: Formatos (código, versión, fecha…) y, si la entidad/sede tiene uno propio, ese
   const fechaMes = (s) => { const m = String(s || '').match(/^(\d{4})-(\d{2})/); return m ? `${CAT.MESES[+m[2] - 1].toUpperCase()} DE ${m[1]}` : String(s || ''); };
   const encFormatos = () => { const x = st.fmt?.glucometro || {}; return { ...ENC, ...(x.titulo ? { nombre: x.titulo } : {}), ...['codigo', 'version', 'proceso', 'subproceso', 'franja'].reduce((o, k) => (x[k] ? { ...o, [k]: x[k] } : o), {}), ...(x.fecha ? { fecha: fechaMes(x.fecha) } : {}) }; };
   const propio = (ent, sede) => (ent.config?.fmt_glucometro || {})[sede || '_'] || (ent.config?.fmt_glucometro || {})._ || null;
   const encDe = (ent, sede) => ({ ...encFormatos(), ...(propio(ent, sede) || {}) });
   const fechaTxt = (s) => { if (!s) return ''; const [y, m, d] = String(s).slice(0, 10).split('-'); return y && m && d ? `${+d}/${+m}/${y}` : String(s); };
+  // resultado del control (Aprobó / No aprobó) y fotos de evidencia
+  const RES = [['', '— Elegir —'], ['APROBÓ', 'Aprobó'], ['NO APROBÓ', 'No aprobó']];
+  const pillRes = (d) => (d.resultado ? `<span class="pill ${d.resultado === 'APROBÓ' ? 'ok' : 'bad'}">${h(d.resultado)}</span> ` : '');
+  const obsPDF = (d) => [d.resultado, d.observaciones].filter(Boolean).join(' · ');
+  const reducirFoto = (file) => new Promise((res) => { const u = URL.createObjectURL(file); const im = new Image(); im.onload = () => { const k = Math.min(1, 1400 / Math.max(im.width, im.height)); const c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); c.toBlob((b) => res(b || file), 'image/jpeg', 0.78); }; im.onerror = () => { URL.revokeObjectURL(u); res(null); }; im.src = u; });
+  const urlFoto = {}; const verFotoGl = async (fo) => { try { if (!urlFoto[fo.archivo]) { const b = await S.fileBlob(fo.archivo); if (!b || !b.size) throw new Error('no disponible'); urlFoto[fo.archivo] = URL.createObjectURL(b); } return urlFoto[fo.archivo]; } catch (e) { return null; } };
+  A.fotosGlucometro = async (r) => { const fs = r.datos?.fotos || []; const us = await Promise.all(fs.map(verFotoGl)); const ok = fs.map((x, i) => [x, us[i]]).filter(([, u]) => u);
+    modal({ titulo: `Evidencia del control · ${fechaTxt(r.fecha)}`, size: 'wide', cuerpo: ok.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${ok.map(([x, u]) => `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt="${h(x.nombre || '')}" style="width:100%;border-radius:8px;border:1px solid var(--line,#ddd)"></a>`).join('')}</div>` : '<div class="empty">No hay fotos disponibles.</div>', acciones: [{ t: 'Cerrar', cls: 'pri' }] }); };
   const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.').replace(/[^\d.-]/g, '')); return Number.isFinite(n) ? n : null; };
   // ¿el valor quedó dentro del rango de la solución empleada? (ej. "96 – 144 mg/dL")
   const rango = (t) => { const m = String(t || '').match(/(\d+(?:[.,]\d+)?)\s*[-–—a]\s*(\d+(?:[.,]\d+)?)/); return m ? [num(m[1]), num(m[2])] : null; };
@@ -61,16 +69,17 @@
         <div class="tbl-wrap"><table class="tbl gl-tbl"><thead>
           <tr><th rowspan="2">Fecha</th><th colspan="3">Marca glucómetro</th><th colspan="2">Tira glucometría</th><th colspan="2">Lote solución de control empleada</th><th rowspan="2">Fecha apertura solución de control</th><th colspan="2">Tipo de solución de control empleada</th><th rowspan="2">Valor obtenido</th><th rowspan="2">Observaciones</th><th rowspan="2">Responsable</th><th rowspan="2">Cargo del responsable</th>${esProp() ? '<th rowspan="2"></th>' : ''}</tr>
           <tr><th>Marca</th><th>Modelo</th><th>Serie</th><th>Lote de tirilla empleada</th><th>Lote solución de control empleada</th><th>Normal</th><th>Alto</th><th>Normal</th><th>Alta</th></tr></thead>
-          <tbody>${lista.map((r) => { const d = r.datos || {}; const fuera = fueraDeRango(d); return `<tr class="${fuera ? 'gl-fuera' : ''}">
+          <tbody>${lista.map((r) => { const d = r.datos || {}; const fuera = fueraDeRango(d) || d.resultado === 'NO APROBÓ'; return `<tr class="${fuera ? 'gl-fuera' : ''}">
             <td class="num" style="white-space:nowrap">${fechaTxt(r.fecha)}</td><td>${h(d.marca || '')}</td><td>${h(d.modelo || '')}</td><td class="mono">${h(d.serie || '')}</td><td class="mono">${h(d.lote_tira || '')}</td><td class="mono">${h(d.lote_solucion || '')}</td>
             <td>${h(d.rango_normal || '')}</td><td>${h(d.rango_alto || '')}</td><td class="num">${fechaTxt(d.fecha_apertura)}</td>
             <td class="c">${d.tipo === 'NORMAL' || d.tipo === 'AMBAS' ? 'x' : ''}</td><td class="c">${d.tipo === 'ALTA' || d.tipo === 'AMBAS' ? 'x' : ''}</td>
-            <td class="num"><b>${h(d.valor ?? '')}</b>${fuera ? ' <span class="pill bad" title="El valor está fuera del rango de la solución empleada">Fuera de rango</span>' : ''}</td><td>${h(d.observaciones || '')}</td><td>${h(d.responsable || '')}</td><td>${h(d.cargo || '')}</td>
+            <td class="num"><b>${h(d.valor ?? '')}</b>${fuera ? ' <span class="pill bad" title="El valor está fuera del rango de la solución empleada">Fuera de rango</span>' : ''}</td><td>${pillRes(d)}${h(d.observaciones || '')}${(d.fotos || []).length ? ` <button class="btn sm" data-act="glFotos" data-id="${r.id}" title="Ver la evidencia fotográfica">📷 ${(d.fotos || []).length}</button>` : ''}</td><td>${h(d.responsable || '')}</td><td>${h(d.cargo || '')}</td>
             ${esProp() ? `<td style="white-space:nowrap"><button class="icon-btn" data-act="glEditar" data-id="${r.id}" title="Corregir" aria-label="Corregir">${I.edit}</button><button class="icon-btn" data-act="glBorrar" data-id="${r.id}" title="Eliminar" aria-label="Eliminar">${I.del}</button></td>` : ''}</tr>`; }).join('') || `<tr><td colspan="${esProp() ? 16 : 15}" class="muted" style="text-align:center;padding:24px">Sin registros en ${h(periodo)}.${esProp() ? ' Use “Registro de hoy” o “Importar Excel” para cargar los controles que ya tiene.' : ''}</td></tr>`}</tbody></table></div></section>`;
       el.querySelectorAll('[data-gl]').forEach((s) => { s.onchange = () => { F[s.dataset.gl] = s.dataset.gl === 'serie' ? s.value : +s.value; pintar(); }; });
       const imp = el.querySelector('[data-glimp]'); if (imp) imp.onchange = async () => { const fl = imp.files[0]; imp.value = ''; if (fl) await importar(fl); };
       A.acts({
         glNuevo: () => formRegistro(null),
+        glFotos: (d) => A.fotosGlucometro(regs.find((r) => r.id === d.id)),
         glEditar: (d) => formRegistro(regs.find((r) => r.id === d.id)),
         glBorrar: async (d) => {
           const r = regs.find((x) => x.id === d.id); if (!r) return;
@@ -101,8 +110,8 @@
     const formRegistro = (r) => {
       const ult = regs.slice().sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || String(b.created_at).localeCompare(String(a.created_at)))[0]?.datos || {};
       const g0 = glucos[0];
-      const d = r ? { ...r.datos } : { marca: ult.marca || g0?.marca || '', modelo: ult.modelo || g0?.modelo || '', serie: ult.serie || g0?.serie || '', lote_tira: ult.lote_tira || '', lote_solucion: ult.lote_solucion || '', rango_normal: ult.rango_normal || '96 – 144 mg/dL', rango_alto: ult.rango_alto || '280 - 420 mg/dL', fecha_apertura: ult.fecha_apertura || '', tipo: ult.tipo || 'NORMAL', valor: '', observaciones: 'Ninguna', responsable: ult.responsable || '', cargo: ult.cargo || '' };
-      const fecha = r ? String(r.fecha).slice(0, 10) : UI.hoy();
+      const d = r ? { ...r.datos } : { marca: ult.marca || g0?.marca || '', modelo: ult.modelo || g0?.modelo || '', serie: ult.serie || g0?.serie || '', lote_tira: ult.lote_tira || '', lote_solucion: ult.lote_solucion || '', rango_normal: ult.rango_normal || '96 – 144 mg/dL', rango_alto: ult.rango_alto || '280 - 420 mg/dL', fecha_apertura: ult.fecha_apertura || '', tipo: ult.tipo || 'NORMAL', valor: '', resultado: '', fotos: [], observaciones: 'Ninguna', responsable: ult.responsable || '', cargo: ult.cargo || '' };
+      const fecha = r ? String(r.fecha).slice(0, 10) : UI.hoy(); let fotos = [...(d.fotos || [])];
       modal({ titulo: r ? `Corregir registro del ${fechaTxt(r.fecha)}` : 'Nuevo registro de control de glucometría', size: 'wide',
         cuerpo: `<form class="form" onsubmit="return false">
           ${glucos.length ? `<div class="fields">${f.sel('_eq', 'Glucómetro del inventario (llena marca, modelo y serie)', [['', '— Elegir —'], ...glucos.map((e) => [e.id, `${e.nombre} ${e.marca || ''} ${e.modelo || ''} · Serie ${e.serie || 'NR'}${e.codigo_inv ? ' · ' + e.codigo_inv : ''}`])], '', { full: true })}</div>` : ''}
@@ -111,14 +120,23 @@
           ${f.input('rango_normal', 'Rango solución NORMAL', d.rango_normal, { attrs: 'placeholder="96 – 144 mg/dL"' })}${f.input('rango_alto', 'Rango solución ALTO', d.rango_alto, { attrs: 'placeholder="280 - 420 mg/dL"' })}
           ${f.input('fecha_apertura', 'Fecha apertura solución de control', d.fecha_apertura, { type: 'date' })}
           ${f.sel('tipo', 'Tipo de solución de control empleada', [['NORMAL', 'Normal'], ['ALTA', 'Alta'], ['AMBAS', 'Normal y alta']], d.tipo)}
-          ${f.input('valor', 'Valor obtenido (mg/dL)', d.valor ?? '', { req: true, attrs: 'inputmode="decimal"' })}
+          ${f.input('valor', 'Valor obtenido (mg/dL)', d.valor ?? '', { req: true, attrs: 'inputmode="decimal"' })}${f.sel('resultado', 'Resultado del control', RES, d.resultado || '')}
           ${f.input('observaciones', 'Observaciones', d.observaciones, { full: true })}
           ${f.input('responsable', 'Responsable', d.responsable)}${f.input('cargo', 'Cargo del responsable', d.cargo)}</div>
-          <p class="muted" data-glrango style="font-size:.85rem"></p></form>`,
+          <p class="muted" data-glrango style="font-size:.85rem"></p>
+          <fieldset><legend>Evidencia fotográfica</legend><div data-glfotos></div><label class="btn sm" style="margin-top:6px">📷 Tomar o cargar fotos<input type="file" accept="image/*" multiple hidden data-glsub></label><span class="muted" style="font-size:.8rem;margin-left:8px">Ej.: pantalla del glucómetro con el valor, tirilla y frasco de solución con su lote.</span></fieldset></form>`,
         alAbrir: (m) => {
           const q = (n) => m.body.querySelector(`[name=${n}]`);
+          let tocado = !!d.resultado; q('resultado').addEventListener('change', () => { tocado = true; });
+          const pintarF = async () => { const box = m.body.querySelector('[data-glfotos]'); if (!fotos.length) { box.innerHTML = '<span class="muted">Sin fotos.</span>'; return; } const us = await Promise.all(fotos.map(verFotoGl));
+            box.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px">${fotos.map((x, i) => `<figure style="margin:0;position:relative;width:120px">${us[i] ? `<img src="${us[i]}" alt="" style="width:120px;height:90px;object-fit:cover;border-radius:6px;border:1px solid var(--line,#ddd);display:block">` : '<div style="width:120px;height:90px;display:flex;align-items:center;justify-content:center;font-size:.75rem;border:1px dashed #c33;border-radius:6px">No disponible</div>'}<button type="button" class="icon-btn bad" data-rmgl="${i}" aria-label="Quitar foto" style="position:absolute;top:2px;right:2px;background:#fff">${I.x}</button></figure>`).join('')}</div>`; };
+          m.body.querySelector('[data-glfotos]').onclick = (e) => { const b = e.target.closest('[data-rmgl]'); if (b) { fotos.splice(+b.dataset.rmgl, 1); pintarF(); } };
+          m.body.querySelector('[data-glsub]').onchange = async (e) => { const fl = [...e.target.files]; e.target.value = ''; if (!fl.length) return; toast('Subiendo fotos…');
+            for (const file of fl) { try { const b = await reducirFoto(file); if (!b) throw new Error('no es una imagen'); const path = `${ent.id}/compartidos/glucometro/${Date.now()}-control-${UI.hoy()}.jpg`; await S.upload(path, b); urlFoto[path] = URL.createObjectURL(b); fotos.push({ archivo: path, nombre: `Control glucometría ${UI.hoy()} (${fotos.length + 1}).jpg`, tamano: b.size }); } catch (er) { toast(`${file.name}: ${er.message}`, true); } }
+            pintarF(); toast('Fotos agregadas (pulse Guardar)'); };
+          pintarF();
           const se = q('_eq'); if (se) se.onchange = () => { const e = glucos.find((x) => x.id === se.value); if (e) { q('marca').value = e.marca || ''; q('modelo').value = e.modelo || ''; q('serie').value = e.serie || ''; } };
-          const aviso = () => { const v = leer(m.body); const p = m.body.querySelector('[data-glrango]'); p.innerHTML = v.valor && fueraDeRango(v) ? '<span class="pill bad">El valor está fuera del rango de la solución empleada</span> Revise el glucómetro y las tiras antes de usarlo con pacientes, y anótelo en observaciones.' : ''; };
+          const aviso = () => { const v = leer(m.body); const p = m.body.querySelector('[data-glrango]'); if (!tocado && v.valor) q('resultado').value = fueraDeRango(v) ? 'NO APROBÓ' : 'APROBÓ'; p.innerHTML = v.valor && fueraDeRango(v) ? '<span class="pill bad">El valor está fuera del rango de la solución empleada</span> Revise el glucómetro y las tiras antes de usarlo con pacientes, y anótelo en observaciones.' : ''; };
           ['valor', 'tipo', 'rango_normal', 'rango_alto'].forEach((n) => { const x = q(n); if (x) x.oninput = x.onchange = aviso; });
         },
         acciones: [{ t: 'Cancelar' }, { t: r ? 'Guardar cambios' : 'Guardar registro', cls: 'pri', fn: async (m) => {
@@ -126,6 +144,9 @@
           if (!v.fecha) { toast('Escriba la fecha', true); return false; }
           if (num(v.valor) == null) { toast('Escriba el valor obtenido', true); return false; }
           const datos = Object.fromEntries(CAMPOS.map((k) => [k, String(v[k] ?? '').trim()]));
+          if (!datos.resultado) datos.resultado = fueraDeRango({ ...datos, valor: num(v.valor) }) ? 'NO APROBÓ' : 'APROBÓ';
+          for (const x of fotos) { if (x.doc) continue; try { const dc = await S.insert('documentos', { entidad_id: ent.id, equipo_id: null, carpeta: 'glucometro', subcarpeta: `EVIDENCIAS/${v.fecha.slice(0, 4)}`, nombre: x.nombre, archivo: x.archivo, mime: 'image/jpeg', tamano: x.tamano || null, fecha_documento: v.fecha, visible_cliente: true, firmado: false }); x.doc = dc.id; } catch (er) { /* el usuario de calidad no crea documentos: la foto queda en el registro */ } }
+          datos.fotos = fotos.map(({ archivo, nombre, doc }) => ({ archivo, nombre, ...(doc ? { doc } : {}) }));
           datos.valor = num(v.valor); if (v._eq) datos.equipo_id = v._eq; else if (r?.datos?.equipo_id) datos.equipo_id = r.datos.equipo_id;
           try {
             if (r) { const u = await S.update(TABLA, r.id, { fecha: v.fecha, datos }); regs = regs.map((x) => (x.id === r.id ? u : x)); }
@@ -189,7 +210,7 @@
         ['', 'NOMBRE DEL DOCUMENTO', '', ...Array(16).fill(''), 'Fecha:', e.fecha], ['', '', e.nombre], [], [e.franja], [],
         ['FECHA', 'MARCA GLUCOMETRO', '', '', 'TIRA GLUCOMETRIA', '', 'LOTE SOLUCIÓN DE CONTROL EMPLEADA', '', 'FECHA APERTURA SOLUCIÓN DE CONTROL', 'TIPO DE SOLUCIÓN DE CONTROL EMPLEADA', '', 'VALOR OBTENIDO', 'OBSERVACIONES', '', '', 'RESPONSABLE', '', '', '', '', 'CARGO DEL RESPONSABLE'],
         ['', 'MARCA', 'MODELO', 'SERIE', 'LOTE DE TIRILLA EMPLEADA', 'LOTE SOLUCIÓN DE CONTROL EMPLEADA', 'NORMAL', 'ALTO', '', 'NORMAL', 'ALTA'],
-        ...lista.map((r) => { const d = r.datos || {}; return [fechaTxt(r.fecha), d.marca, d.modelo, d.serie, d.lote_tira, d.lote_solucion, d.rango_normal, d.rango_alto, fechaTxt(d.fecha_apertura), d.tipo === 'NORMAL' || d.tipo === 'AMBAS' ? 'x' : '', d.tipo === 'ALTA' || d.tipo === 'AMBAS' ? 'x' : '', d.valor, d.observaciones, '', '', d.responsable, '', '', '', '', d.cargo]; }),
+        ...lista.map((r) => { const d = r.datos || {}; return [fechaTxt(r.fecha), d.marca, d.modelo, d.serie, d.lote_tira, d.lote_solucion, d.rango_normal, d.rango_alto, fechaTxt(d.fecha_apertura), d.tipo === 'NORMAL' || d.tipo === 'AMBAS' ? 'x' : '', d.tipo === 'ALTA' || d.tipo === 'AMBAS' ? 'x' : '', d.valor, obsPDF(d), '', '', d.responsable, '', '', '', '', d.cargo]; }),
       ];
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       const R = (a) => XLSX.utils.decode_range(a);
@@ -237,7 +258,7 @@
     const y0 = encabezado();
     // tabla (filas 8-9 del Excel + datos); columnas con celdas combinadas como en el Excel
     const x = (d) => (d ? 'x' : '');
-    const body = lista.map((r) => { const d = r.datos || {}; return [fechaTxt(r.fecha), d.marca || '', d.modelo || '', d.serie || '', d.lote_tira || '', d.lote_solucion || '', d.rango_normal || '', d.rango_alto || '', fechaTxt(d.fecha_apertura), x(d.tipo === 'NORMAL' || d.tipo === 'AMBAS'), x(d.tipo === 'ALTA' || d.tipo === 'AMBAS'), d.valor ?? '', d.observaciones || '', d.responsable || '', d.cargo || '']; });
+    const body = lista.map((r) => { const d = r.datos || {}; return [fechaTxt(r.fecha), d.marca || '', d.modelo || '', d.serie || '', d.lote_tira || '', d.lote_solucion || '', d.rango_normal || '', d.rango_alto || '', fechaTxt(d.fecha_apertura), x(d.tipo === 'NORMAL' || d.tipo === 'AMBAS'), x(d.tipo === 'ALTA' || d.tipo === 'AMBAS'), d.valor ?? '', obsPDF(d), d.responsable || '', d.cargo || '']; });
     const anchos = [cw[0], cw[1], cw[2], cw[3], cw[4], cw[5], cw[6], cw[7], cw[8], cw[9], cw[10], cw[11], suma(12, 14), suma(15, 19), suma(20, 24)];
     const colStyles = {}; anchos.forEach((w, i) => { colStyles[i] = { cellWidth: w, halign: 'center' }; });
     const hd = (t, o = {}) => ({ content: t, ...o });
@@ -250,6 +271,20 @@
       columnStyles: colStyles,
       didParseCell: (c) => { if (c.section === 'head' && c.row.index === 1 && c.cell.raw && /^(NORMAL|ALTA)$/.test(String(c.cell.raw)) && c.column.index >= 9) c.cell.styles.fontSize = 5; },
       didDrawPage: () => { if (doc.getCurrentPageInfo().pageNumber > 1) encabezado(); } });
+    // evidencia fotográfica de los controles (solo las fotos que se pueden abrir)
+    const ev = [];
+    for (const r of lista) for (const fo of r.datos?.fotos || []) { try { const bl = await S.fileBlob(fo.archivo); if (!bl || !bl.size) continue; const src = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = no; fr.readAsDataURL(bl); }); doc.getImageProperties(src); ev.push({ src, r }); } catch (er) { /* no disponible: se omite */ } }
+    if (ev.length) {
+      const cols = 4, gap = 4, fw = (ancho - gap * (cols - 1)) / cols, fh = fw * 0.75, cap = 7; let y = 0;
+      ev.forEach((x, i) => {
+        if (i === 0 || y + fh + cap > H - 12) { doc.addPage(); y = encabezado(); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text('EVIDENCIA FOTOGRÁFICA DE LOS CONTROLES', M, y + 3); y += 7; }
+        const c = i % cols; if (c === 0 && i && !(y === 0)) { /* nueva fila */ }
+        const xx = M + c * (fw + gap); doc.setDrawColor(180); doc.rect(xx, y, fw, fh); img(x.src, xx + 0.8, y + 0.8, fw - 1.6, fh - 1.6); doc.setDrawColor(...N);
+        const d = x.r.datos || {}; doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.text(doc.splitTextToSize(`${fechaTxt(x.r.fecha)} · Serie ${d.serie || ''} · Valor ${d.valor ?? ''} mg/dL${d.resultado ? ' · ' + d.resultado : ''}`, fw), xx, y + fh + 3);
+        if (c === cols - 1 || i === ev.length - 1) y += fh + cap + 2;
+        if (c === cols - 1 && i < ev.length - 1 && y + fh + cap > H - 12) y = H; // fuerza página nueva
+      });
+    }
     const n = doc.getNumberOfPages();
     for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(60); doc.text(`${e.codigo} · Versión ${e.version}`, M, H - 5); doc.text(`Página ${i} de ${n}`, W - M, H - 5, { align: 'right' }); doc.setTextColor(...N); }
     return doc.output('blob');
