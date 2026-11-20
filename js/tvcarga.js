@@ -189,6 +189,72 @@
       } }] });
   };
 
+  // ================================================================== BITÁCORAS DE ALERTAS PARA OTRAS ENTIDADES
+  // Lee las filas de una bitácora FT-PGTV-015 en PDF (mismo diseño del formato) por la posición de cada columna
+  const COLS_AL = [['n', 48.9], ['mes', 107.2], ['rs', 197.6], ['dispositivo', 292.3], ['tipo', 387.3], ['agencia', 444.6], ['fecha', 501.4], ['responsable', 616.3], ['analisis', 672.4], ['aplica', 9999]];
+  TV.filasBitacora = async (blob) => {
+    if (!window.pdfjsLib) throw new Error('No se pudo cargar el lector de PDF');
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise; const filas = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const pg = await pdf.getPage(p), esc = pg.getViewport({ scale: 1 }).width / 841.89;
+      const its = (await pg.getTextContent()).items.filter((i) => i.str.trim()).map((i) => { const cx = (i.transform[4] + 2) / esc; return { t: i.str.trim(), x: i.transform[4], y: i.transform[5] / esc, col: COLS_AL.find(([, lim]) => cx < lim)[0] }; });
+      const anclas = its.filter((i) => i.col === 'n' && /^\d{1,3}$/.test(i.t)).sort((a, b) => b.y - a.y); if (!anclas.length) continue;
+      const tope = anclas[0].y + 13;
+      const rows = anclas.map(() => ({}));
+      its.filter((i) => i.y <= tope && i.col !== 'n').sort((a, b) => b.y - a.y || a.x - b.x).forEach((i) => {
+        let k = -1, dm = 1e9; anclas.forEach((a, j) => { const dd = Math.abs(a.y - i.y); if (dd < dm) { dm = dd; k = j; } }); if (k < 0 || dm > 16) return;
+        rows[k][i.col] = rows[k][i.col] ? `${rows[k][i.col]} ${i.t}` : i.t; });
+      rows.forEach((r) => { if (Object.keys(r).length >= 3) filas.push(r); });
+    }
+    return filas;
+  };
+  const nrmRS = (t) => String(t || '').toUpperCase().replace(/REGISTRO\s*SANITARIO|INVIMA|RS\b/g, '').replace(/[^A-Z0-9]/g, '');
+  const isoDMY = (t) => { const m = String(t || '').match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; };
+  TV.compartirAlertas = async (ent) => {
+    const [docs0, ents0] = await Promise.all([S.list('documentos', { entidad_id: ent.id }), S.list('entidades', {}, 'razon_social')]);
+    const meses = docs0.filter((d) => d.carpeta === 'alertas' && /^\d{4}\/\d{2}\./.test(d.subcarpeta || '') && /\.pdf$/i.test(d.nombre || '') && /pgtv[\s_-]*0?15|bit[aá]cora/i.test(d.nombre))
+      .sort((a, b) => String(b.subcarpeta).localeCompare(String(a.subcarpeta)));
+    if (!meses.length) { toast('Esta entidad no tiene bitácoras FT-PGTV-015 en PDF organizadas por mes', true); return; }
+    const ents = ents0.filter((e) => e.id !== ent.id && e.activo !== false && !(A.ocultas ? A.ocultas(e, 'ent').has('tecnovigilancia') : false));
+    const etq = (d) => { const [a, m] = d.subcarpeta.split('/'); return `${m.replace(/^\d+\.\s*/, '')} ${a}`; };
+    modal({ titulo: 'Usar las bitácoras de alertas en otras entidades', size: 'wide', cuerpo: `<form class="form" onsubmit="return false">
+      <p class="muted" style="font-size:.85rem">El gestor lee las alertas de cada bitácora de <b>${h(ent.razon_social)}</b> y genera la bitácora FT-PGTV-015 de cada entidad con <b>su logo y su nombre</b>; la guarda en su carpeta de alertas (año / mes) y registra la consulta. Si el registro sanitario de una alerta coincide con un equipo del inventario de la entidad, esa fila sale «APLICA - VERIFICAR». Los meses que la entidad ya tiene con soporte no se tocan.</p>
+      <fieldset><legend>Meses</legend><label class="chk"><input type="checkbox" data-todos-m checked> Todos</label><div style="display:flex;flex-wrap:wrap;gap:4px 14px">${meses.map((d, i) => `<label class="chk" title="${h(d.nombre)}"><input type="checkbox" data-m="${i}" checked> ${h(etq(d))}</label>`).join('')}</div></fieldset>
+      <fieldset><legend>Entidades</legend><label class="chk"><input type="checkbox" data-todos-e checked> Todas</label><div style="display:flex;flex-direction:column;gap:2px;max-height:260px;overflow:auto">${ents.map((e) => `<label class="chk"><input type="checkbox" data-e="${e.id}" checked> ${h(e.razon_social)}</label>`).join('')}</div></fieldset></form>`,
+      alAbrir: (m) => { m.body.querySelector('[data-todos-m]').onchange = (e) => m.body.querySelectorAll('[data-m]').forEach((x) => { x.checked = e.target.checked; }); m.body.querySelector('[data-todos-e]').onchange = (e) => m.body.querySelectorAll('[data-e]').forEach((x) => { x.checked = e.target.checked; }); },
+      acciones: [{ t: 'Cancelar' }, { t: 'Generar bitácoras', cls: 'pri', fn: async (m) => {
+        const selM = [...m.body.querySelectorAll('[data-m]:checked')].map((x) => meses[+x.dataset.m]), selE = [...m.body.querySelectorAll('[data-e]:checked')].map((x) => ents.find((e) => e.id === x.dataset.e));
+        if (!selM.length || !selE.length) { toast('Elija al menos un mes y una entidad', true); return false; }
+        const pg = progreso('Leyendo las bitácoras…'); const res = { hechas: 0, ya: 0, aplican: 0, sinFilas: [] };
+        try {
+          const lect = [];
+          for (const d of selM) { pg.set(`Leyendo ${etq(d)}…`); const filas = await TV.filasBitacora(await S.fileBlob(d.archivo)).catch(() => []); if (!filas.length) res.sinFilas.push(etq(d)); else lect.push({ d, filas }); }
+          for (const [ie, e] of selE.entries()) {
+            const [eqs, dE, alE] = await Promise.all([S.list('equipos', { entidad_id: e.id }), S.list('documentos', { entidad_id: e.id }), S.list('alertas', { entidad_id: e.id })]);
+            const rsEq = new Map(); eqs.filter((q) => q.estado !== 'Dado de baja' && q.registro_sanitario).forEach((q) => rsEq.set(nrmRS(q.registro_sanitario), q));
+            for (const { d, filas } of lect) {
+              pg.set(`${ie + 1} de ${selE.length}: ${e.razon_social} · ${etq(d)}`);
+              if (dE.some((x) => x.carpeta === 'alertas' && x.subcarpeta === d.subcarpeta && /\.pdf$/i.test(x.nombre || ''))) { res.ya++; continue; }
+              let ap = 0;
+              const rows = filas.map((r) => { const q = r.rs && rsEq.get(nrmRS(r.rs)); if (q) ap++;
+                return { mes_consulta: r.mes || '', registro_sanitario: r.rs || '', dispositivo: r.dispositivo || '', tipo_notificacion: r.tipo || '', agencia: r.agencia || 'INVIMA', fecha_publicacion: isoDMY(r.fecha), responsable: r.responsable || st.emp?.responsable || '',
+                  analisis: q ? `APLICA: ${q.nombre || 'equipo'} ${q.codigo_inv || ''}`.trim() : (r.analisis || 'NO APLICA'), aplicabilidad: q ? 'APLICA - VERIFICAR' : (r.aplica || 'NO APLICA') }; });
+              const blob = await FMT.alertas({ ent: e, alertas: rows, fmt: st.fmt.alertas || {} });
+              await subirArchivo({ blob, nombre: d.nombre, ent: e, carpeta: 'alertas', subcarpeta: d.subcarpeta });
+              const [anio, mm] = d.subcarpeta.split('/'), etiqueta = `${CAT.MESES[+mm.slice(0, 2) - 1]} ${anio}`, ya = alE.find((a) => nrm(a.mes_consulta) === nrm(etiqueta));
+              const reg = { analisis: `Consulta realizada (${rows.length} alerta${rows.length === 1 ? '' : 's'} revisada${rows.length === 1 ? '' : 's'}${ap ? `, ${ap} con registro sanitario del inventario` : ''}). Soporte: ${d.nombre}`, aplicabilidad: ap ? 'Aplica - en gestión' : 'No aplica' };
+              if (ya) await S.update('alertas', ya.id, reg);
+              else alE.push(await S.insert('alertas', { entidad_id: e.id, mes_consulta: etiqueta, tipo_notificacion: 'Consulta periódica', agencia: 'INVIMA', responsable: rows[0]?.responsable || st.emp?.responsable || '', fecha_publicacion: rows.find((r) => r.fecha_publicacion)?.fecha_publicacion || null, ...reg }));
+              res.hechas++; if (ap) res.aplican++;
+            }
+          }
+        } catch (er) { pg.cerrar(); toast('Error: ' + er.message, true); return; }
+        pg.cerrar();
+        modal({ titulo: 'Bitácoras generadas', cuerpo: `<p><b>${res.hechas}</b> bitácora(s) generadas con el logo y el nombre de cada entidad.${res.ya ? ` ${res.ya} mes(es) ya tenían soporte y no se tocaron.` : ''}</p>${res.aplican ? `<p class="pill warn">${res.aplican} bitácora(s) tienen alertas con registro sanitario de equipos del inventario: revíselas («APLICA - VERIFICAR»).</p>` : ''}${res.sinFilas.length ? `<p class="muted">No se pudieron leer las filas de: ${h(res.sinFilas.join(', '))}.</p>` : ''}`, acciones: [{ t: 'Cerrar', cls: 'pri' }] });
+      } }] });
+  };
+
   // ================================================================== ACTAS DE COMITÉ YA REALIZADAS (PDF)
   TV.detectarActa = (nombre, texto) => {
     const n = nrm(nombre), t = nrm(texto);
