@@ -753,3 +753,5 @@ h1 .icon-btn { vertical-align: middle; }
 .vir-barra .vir-rec { width: 10px; height: 10px; border-radius: 50%; background: #e24b4b; animation: virPulso 1.2s infinite; }
 @keyframes virPulso { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .vir-barra .vir-rec { animation: none; } }
+/* v180: último equipo abierto al volver a la lista */
+.eq-row.eq-ultimo { outline: 2px solid var(--pri, #0a7da0); outline-offset: 2px; background: rgba(23, 179, 214, .12); transition: background .6s; }
