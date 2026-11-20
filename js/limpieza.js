@@ -38,7 +38,12 @@
     const hoy = new Date();
     st.lcF = st.lcF || {}; const F = (st.lcF[ent.id] = st.lcF[ent.id] || { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1, cons: '' });
     let [consAll, eqs] = await Promise.all([S.list('consultorios', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id })]);
-    const cons = A.ordenar(consAll).filter((c) => (!sede || (c.sede || 'Sede principal') === sede) && eqs.some((e) => e.consultorio_id === c.id && e.estado !== 'Dado de baja'));
+    // servicio de cada equipo en la lista de chequeo (se puede organizar distinto al inventario: config.limpieza_serv[equipo] = servicio, '-' = no va en la lista)
+    let ov = { ...(ent.config?.limpieza_serv || {}) };
+    const servDe = (e) => ov[e.id] || e.consultorio_id;
+    const consSede = A.ordenar(consAll).filter((c) => !sede || (c.sede || 'Sede principal') === sede);
+    const eqsSede = () => eqs.filter((e) => e.estado !== 'Dado de baja' && consSede.some((c) => c.id === e.consultorio_id));
+    let cons = consSede.filter((c) => eqs.some((e) => servDe(e) === c.id && e.estado !== 'Dado de baja'));
     if (!F.cons || !cons.some((c) => c.id === F.cons)) F.cons = cons[0]?.id || '';
     let lista = null, guardando = null;
     const pintar = async () => {
@@ -50,7 +55,7 @@
       const c = cons.find((x) => x.id === F.cons);
       lista = regs.find((r) => r.consultorio_id === F.cons && +r.anio === +F.anio && +r.mes === +F.mes) || null;
       const anterior = regs.filter((r) => r.consultorio_id === F.cons && (+r.anio * 12 + +r.mes) < (+F.anio * 12 + +F.mes)).sort((x, y) => (y.anio * 12 + y.mes) - (x.anio * 12 + x.mes))[0];
-      const eqServ = eqs.filter((e) => e.consultorio_id === F.cons && e.estado !== 'Dado de baja').sort((x, y) => (x.orden ?? 9999) - (y.orden ?? 9999) || String(x.codigo_inv).localeCompare(String(y.codigo_inv)));
+      const eqServ = eqs.filter((e) => servDe(e) === F.cons && e.estado !== 'Dado de baja').sort((x, y) => (x.orden ?? 9999) - (y.orden ?? 9999) || String(x.codigo_inv).localeCompare(String(y.codigo_inv)));
       // filas: las guardadas + equipos nuevos del inventario
       const base = (lista?.datos?.filas || anterior?.datos?.filas?.map((r) => ({ ...r, marcas: {} })) || []);
       const filas = [...base.filter((r) => !r.equipo_id || eqServ.some((e) => e.id === r.equipo_id)),
@@ -61,7 +66,7 @@
       const editable = true; // propietario y usuario de la entidad pueden marcar
       const hechosHoy = esMesActual ? filas.filter((r) => r.marcas?.[dHoy]).length : 0;
       el.innerHTML = `<section class="panel lc"><header><div><h2>Lista de chequeo diaria · ${h(fmtLC().codigo)}</h2><span class="muted" style="font-size:.85rem">Marque con X el día del mes en que realiza la limpieza y desinfección de cada equipo. No marque sábados, domingos ni festivos si no son laborales en la entidad.</span></div>
-          <div class="actions"><button class="btn" data-act="lcPDF">${I.pdf} PDF ${h(fmtLC().codigo)}</button>${esProp() && lista ? `<button class="btn" data-act="lcGuardarPDF">${I.subir} Guardar PDF en la carpeta</button>` : ''}</div></header>
+          <div class="actions">${esProp() ? '<button class="btn" data-act="lcOrg" title="Organizar en qué servicio de la lista de chequeo va cada equipo">⇄ Organizar servicios</button>' : ''}<button class="btn" data-act="lcPDF">${I.pdf} PDF ${h(fmtLC().codigo)}</button>${esProp() && lista ? `<button class="btn" data-act="lcGuardarPDF">${I.subir} Guardar PDF en la carpeta</button>` : ''}</div></header>
         ${cons.length ? '' : '<div class="empty">La entidad aún no tiene equipos por servicio en el inventario.</div>'}
         <div class="tbl-tools lc-tools">
           <div class="field"><label for="lc_cons">Servicio</label><select id="lc_cons" data-lc="cons">${cons.map((x) => `<option value="${x.id}" ${x.id === F.cons ? 'selected' : ''}>${h(x.nombre)}</option>`).join('')}</select></div>
@@ -75,7 +80,7 @@
         ${filas.length ? `<div class="lc-wrap"><table class="lc-tbl"><thead>
           <tr><th rowspan="2" class="lc-it">Ítem</th><th rowspan="2" class="lc-eq">Equipos</th><th rowspan="2" class="lc-pr">Procedimiento</th><th rowspan="2" class="lc-ag">Agente recomendado</th><th rowspan="2" class="lc-fr">Frecuencia</th><th colspan="${nd}">${CAT.MESES[F.mes - 1].toUpperCase()} ${F.anio}</th></tr>
           <tr>${Array.from({ length: nd }, (_, i) => { const t = tipoDia(F.anio, F.mes, i + 1); return `<th class="lc-d ${t} ${esMesActual && i + 1 === dHoy ? 'hoy' : ''}" title="${t === 'fest' ? 'Festivo' : t === 'fds' ? 'Fin de semana' : ''}">${i + 1}<small>${DIAS[new Date(F.anio, F.mes - 1, i + 1).getDay()]}</small></th>`; }).join('')}</tr></thead>
-          <tbody>${filas.map((r, i) => `<tr data-fila="${i}"><td class="num">${i + 1}</td><td class="lc-eq">${h(r.equipo || r.nombre || '')}</td>
+          <tbody>${filas.map((r, i) => `<tr data-fila="${i}"><td class="num">${i + 1}</td><td class="lc-eq">${h(r.equipo || r.nombre || '')}${esProp() && r.equipo_id ? ` <button type="button" class="icon-btn" data-mover="${i}" title="Pasar este equipo a otro servicio de la lista" aria-label="Pasar a otro servicio">⇄</button>` : ''}</td>
             <td class="lc-pr">${esProp() ? `<textarea data-k="procedimiento" rows="3" aria-label="Procedimiento">${h(r.procedimiento || '')}</textarea>` : h(r.procedimiento || '').replace(/\n/g, '<br>')}</td>
             <td class="lc-ag">${esProp() ? `<textarea data-k="agente" rows="3" aria-label="Agente recomendado">${h(r.agente || '')}</textarea>` : h(r.agente || '')}</td>
             <td class="lc-fr"><select data-k="frecuencia" aria-label="Frecuencia" ${esProp() ? '' : 'disabled'}>${[...new Set([...FREC, r.frecuencia].filter(Boolean))].map((x) => `<option ${x === r.frecuencia ? 'selected' : ''}>${h(x)}</option>`).join('')}</select></td>
@@ -110,7 +115,36 @@
         });
         tr.querySelectorAll('[data-k]').forEach((i) => { i.onchange = () => { r[i.dataset.k] = i.value; guardar(); }; });
       });
+      // pasar equipos a otro servicio (solo en la lista de chequeo); las marcas del mes van con el equipo
+      const moverA = async (cambios) => {
+        const e2 = (await S.get('entidades', ent.id)) || ent; ov = { ...(e2.config?.limpieza_serv || {}) };
+        for (const [eqId, dest] of Object.entries(cambios)) { const e = eqs.find((x) => x.id === eqId); if (!e) continue; if (dest === e.consultorio_id) delete ov[eqId]; else ov[eqId] = dest; }
+        if (!(await A.guardarConfig(e2, { ...(e2.config || {}), limpieza_serv: ov }))) return false;
+        ent.config = { ...(e2.config || {}), limpieza_serv: ov };
+        // llevar las marcas del mes visto a la lista del servicio destino
+        const regs2 = await S.list('listas_limpieza', { entidad_id: ent.id });
+        for (const [eqId, dest] of Object.entries(cambios)) {
+          if (dest === '-') continue;
+          const orig = regs2.find((x) => +x.anio === +F.anio && +x.mes === +F.mes && x.consultorio_id !== dest && (x.datos?.filas || []).some((fr) => fr.equipo_id === eqId && Object.keys(fr.marcas || {}).length));
+          if (!orig) continue; const fr = orig.datos.filas.find((x) => x.equipo_id === eqId);
+          const dst = regs2.find((x) => x.consultorio_id === dest && +x.anio === +F.anio && +x.mes === +F.mes);
+          const cD = consSede.find((x) => x.id === dest);
+          if (dst) { if (!(dst.datos?.filas || []).some((x) => x.equipo_id === eqId)) { dst.datos = { ...dst.datos, filas: [...(dst.datos?.filas || []), fr] }; await S.update('listas_limpieza', dst.id, { datos: dst.datos }); } }
+          else regs2.push(await S.insert('listas_limpieza', { entidad_id: ent.id, consultorio_id: dest, anio: +F.anio, mes: +F.mes, datos: { responsable: orig.datos.responsable || '', cargo: orig.datos.cargo || '', servicio: cD?.nombre || '', filas: [fr] } }));
+        }
+        cons = consSede.filter((c) => eqs.some((e) => servDe(e) === c.id && e.estado !== 'Dado de baja'));
+        if (!cons.some((c) => c.id === F.cons)) F.cons = cons[0]?.id || '';
+        toast('Servicios de la lista actualizados'); pintar(); return true;
+      };
+      const opcServ = (sel) => `${consSede.map((x) => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${h(x.nombre)}</option>`).join('')}<option value="-" ${sel === '-' ? 'selected' : ''}>— No va en la lista —</option>`;
+      el.querySelectorAll('[data-mover]').forEach((b) => { b.onclick = () => { const r = filas[+b.dataset.mover]; const e = eqs.find((x) => x.id === r.equipo_id); if (!e) return;
+        modal({ titulo: `Pasar a otro servicio · ${r.equipo || e.nombre}`, cuerpo: `<form class="form" onsubmit="return false"><div class="field"><label for="lc_dest">Servicio de la lista de chequeo</label><select id="lc_dest" name="dest">${opcServ(servDe(e))}</select></div><p class="muted" style="font-size:.85rem">Solo cambia la lista de chequeo de limpieza; el inventario no cambia. Las marcas de este mes pasan con el equipo.</p></form>`,
+          acciones: [{ t: 'Cancelar' }, { t: 'Pasar', cls: 'pri', fn: (m) => moverA({ [e.id]: leer(m.body).dest }) }] }); }; });
       A.acts({
+        lcOrg: () => { const lista2 = eqsSede().sort((x, y) => String(consSede.find((c) => c.id === servDe(x))?.nombre || '').localeCompare(String(consSede.find((c) => c.id === servDe(y))?.nombre || '')) || (x.orden ?? 9999) - (y.orden ?? 9999));
+          modal({ titulo: `Organizar servicios de la lista de chequeo${sede ? ' · ' + sede : ''}`, size: 'wide', cuerpo: `<p class="muted" style="font-size:.85rem">Elija en qué servicio de la lista de limpieza va cada equipo (no cambia el inventario). Los servicios sin equipos no aparecen en la lista. «No va en la lista» lo quita de la lista de chequeo.</p>
+            <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Equipo</th><th>Servicio en el inventario</th><th>Servicio en la lista de chequeo</th></tr></thead><tbody>${lista2.map((e) => `<tr><td><b>${h(e.nombre)}</b> <span class="mono muted">${h(e.codigo_inv || '')}</span></td><td class="muted">${h(consSede.find((c) => c.id === e.consultorio_id)?.nombre || '')}</td><td><select data-org="${e.id}" aria-label="Servicio">${opcServ(servDe(e))}</select></td></tr>`).join('')}</tbody></table></div>`,
+            acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: (m) => { const cambios = {}; m.body.querySelectorAll('[data-org]').forEach((x) => { const e = eqs.find((q) => q.id === x.dataset.org); if (x.value !== servDe(e)) cambios[e.id] = x.value; }); return Object.keys(cambios).length ? moverA(cambios) : undefined; } }] }); },
         lcTodosHoy: () => { filas.forEach((r) => { r.marcas = { ...(r.marcas || {}), [dHoy]: 'X' }; }); guardar(); setTimeout(pintar, 650); },
         lcPDF: async () => { const blob = await A.pdfLimpieza(ent, c, F.anio, F.mes, datos); S.log('CONSULTA', 'listas_limpieza', lista?.id || ent.id, `Lista limpieza ${c?.nombre} ${F.mes}/${F.anio}`); UI.verPDF({ titulo: `Lista de chequeo · ${c?.nombre || ''} · ${CAT.MESES[F.mes - 1]} ${F.anio}`, blob, nombre: `${fmtLC().codigo} Lista limpieza ${c?.nombre || ''} ${CAT.MESES[F.mes - 1]} ${F.anio}.pdf` }); },
         lcGuardarPDF: async () => {
