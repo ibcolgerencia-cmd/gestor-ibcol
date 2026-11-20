@@ -30,16 +30,24 @@
     b.innerHTML = `<span class="vir-rec"></span><b>Fotos de evidencia</b><span>${cap.n} tomada${cap.n === 1 ? '' : 's'}${cap.cada ? ` · automática cada ${cap.cada} min` : ''}</span><button type="button" class="btn sm pri" data-vir="foto">📷 Tomar foto</button><button type="button" class="btn sm" data-vir="parar">Detener</button>`;
     b.onclick = (e) => { const x = e.target.closest('[data-vir]'); if (!x) return; if (x.dataset.vir === 'foto') A.virFoto(); else A.virParar(); };
   };
-  A.virFoto = async () => {
+  // una foto a la vez (la automática y la manual no se pisan) y solo se registra si el archivo quedó guardado
+  let colaFoto = Promise.resolve();
+  const existe = async (path) => { try { if (S.r2Existe) return await S.r2Existe(path); } catch (e) { /* se verifica descargando */ } try { const b = await S.fileBlob(path); return !!(b && b.size); } catch (e) { return false; } };
+  A.virFoto = () => (colaFoto = colaFoto.then(tomarFoto, tomarFoto));
+  const tomarFoto = async () => {
     if (!cap) return;
     try {
       const v = cap.video; if (!v.videoWidth) { await new Promise((r) => setTimeout(r, 400)); if (!v.videoWidth) throw new Error('La pantalla aún no está lista'); }
       const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
-      const b = await reducir(c); const s = cap.s; const d = s.datos || {};
+      const b = await reducir(c); const s = cap.s;
+      const neg = await new Promise((r) => { try { const k = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let sum = 0, n = 0; for (let i = 0; i < k.length; i += 4 * 997) { sum += k[i] + k[i + 1] + k[i + 2]; n++; } r(n && sum / n < 6); } catch (e) { r(false); } });
+      if (neg) throw new Error('la pantalla capturada está en negro; no se guardó');
+      const fresco = await S.get(cap.tb, s.id).catch(() => null); const d = fresco?.datos || s.datos || {};
       const ahora = new Date(), hh = `${String(ahora.getHours()).padStart(2, '0')}-${String(ahora.getMinutes()).padStart(2, '0')}`;
       const nombre = `Evidencia virtual ${cap.base} ${UI.hoy()} ${hh} (${(d.fotos || []).length + 1}).jpg`;
       const path = `${cap.ent.id}/general/${cap.carpeta}/${Date.now()}-${slug(nombre)}.jpg`;
       await S.upload(path, b);
+      if (!(await existe(path))) { await S.upload(path, b); if (!(await existe(path))) throw new Error('el archivo no quedó guardado; intente de nuevo'); }
       await S.insert('documentos', { entidad_id: cap.ent.id, equipo_id: null, carpeta: cap.carpeta, subcarpeta: cap.subcarpeta, nombre, archivo: path, mime: 'image/jpeg', tamano: b.size, fecha_documento: UI.hoy(), visible_cliente: true, firmado: false });
       const nd = { ...d, fotos: [...(d.fotos || []), { archivo: path, nombre, virtual: true }] };
       await S.update(cap.tb, s.id, { datos: nd }); s.datos = nd; cap.n++; pintarBarra(); toast(`Foto de evidencia guardada (${Math.round(b.size / 1024)} KB)`);

@@ -124,13 +124,15 @@
     tit('7. COMPROMISOS'); (d.acta?.compromisos || (esTV ? 'Reportar todo evento o incidente adverso con dispositivos médicos en el formato FT-PGTV-016 y entregarlo al referente de tecnovigilancia.\nConservar el dispositivo involucrado y retirarlo del servicio para su análisis.\nSocializar el programa de tecnovigilancia con el personal que no asistió.' : null) || 'Aplicar las recomendaciones de uso seguro, limpieza y cuidados del equipo.\nReportar oportunamente las fallas a ingeniería biomédica y los eventos o incidentes adversos al programa de tecnovigilancia.\nSocializar la guía rápida del equipo con el personal que no asistió.').split('\n').filter((x) => x.trim()).forEach((t) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.4); const ls = doc.splitTextToSize(sn(t.replace(/^[-•]\s*/, '')), ancho - 8); salto(ls.length * 4.2 + 1); doc.text('•', M + 2, y); doc.text(ls, M + 7, y); y += ls.length * 4.2 + 1; });
     y += 2;
     // evidencia fotográfica
-    const fotos = d.fotos || [];
+    // solo las fotos que se pueden abrir (las que no existen o están dañadas no salen)
+    const fotos = [];
+    for (const fo of d.fotos || []) { try { const b = await S.fileBlob(fo.archivo); if (!b || !b.size) continue; const src = await new Promise((r, j) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.onerror = j; fr.readAsDataURL(b); }); doc.getImageProperties(src); fotos.push(src); } catch (e) { /* foto no disponible: se omite */ } }
     if (fotos.length) {
       tit('8. EVIDENCIA FOTOGRÁFICA'); const fw = (ancho - 6) / 2, fh = 62;
       for (let i = 0; i < fotos.length; i++) {
         if (i % 2 === 0) salto(fh + 8);
         const x = M + (i % 2) * (fw + 6);
-        try { const b = await S.fileBlob(fotos[i].archivo); const src = await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); doc.setDrawColor(200); doc.rect(x, y, fw, fh); img(doc, src, x + 1, y + 1, fw - 2, fh - 2); doc.setDrawColor(...NG); } catch (e) { doc.rect(x, y, fw, fh); doc.setFontSize(8); doc.text('Foto no disponible', x + fw / 2, y + fh / 2, { align: 'center' }); }
+        try { doc.setDrawColor(200); doc.rect(x, y, fw, fh); img(doc, fotos[i], x + 1, y + 1, fw - 2, fh - 2); doc.setDrawColor(...NG); } catch (e) { /* omitida */ }
         if (i % 2 === 1 || i === fotos.length - 1) y += fh + 6;
       }
     }
@@ -347,7 +349,16 @@
     // destino de los archivos: tecnovigilancia → 6. Capacitaciones / AÑO; equipos → 4. Capacitación / CAPACITACIONES EN EQUIPOS AÑO
     const destino = async (evid) => esTV ? { carpeta: 'tecnovigilancia', ruta: 'tecnovigilancia', sub: `${await TV.subDestino(ent, 5)}/${s.anio}${evid ? '/EVIDENCIAS' : ''}` } : { carpeta: 'protocolos', ruta: 'protocolos', sub: `${await P.subDestino(ent, '4. CAPACITACIÓN - EDUCACIÓN CONTINUA')}/CAPACITACIONES EN EQUIPOS ${s.anio}${evid ? '/EVIDENCIAS' : ''}` }; let fotos = [...(d.fotos || [])], firma = a.firma_recibe || null, firmaCap = a.firma_capacitador || null, actaPdf = d.acta_pdf || null;
     const pintarPdf = (m) => { m.body.querySelector('[data-apdf]').innerHTML = actaPdf ? `<span class="pill ok">✓ ${h(actaPdf.nombre)}</span> <button type="button" class="btn sm" data-apdfver>Ver</button> <button type="button" class="btn sm" data-apdfq>Quitar</button>` : '<span class="muted">No se ha cargado un acta en PDF.</span>'; };
-    const pintarFotos = (m) => { m.body.querySelector('[data-fotos]').innerHTML = fotos.length ? fotos.map((x, i) => `<span class="pill" style="display:inline-flex;gap:6px;align-items:center">${h(x.nombre)}<button type="button" class="icon-btn bad" data-rmf="${i}" aria-label="Quitar foto">${I.x}</button></span>`).join(' ') : '<span class="muted">Sin fotos.</span>'; };
+    // vista previa de las fotos: miniaturas (clic = ver grande); las que no se pueden abrir se marcan y no se guardan
+    const urlF = {}, malas = new Set();
+    const miniatura = async (fo) => { if (urlF[fo.archivo] !== undefined) return urlF[fo.archivo]; try { const b = await S.fileBlob(fo.archivo); if (!b || !b.size) throw new Error('vacía'); urlF[fo.archivo] = URL.createObjectURL(b); } catch (e) { urlF[fo.archivo] = null; malas.add(fo.archivo); } return urlF[fo.archivo]; };
+    const pintarFotos = async (m) => { const box = m.body.querySelector('[data-fotos]'); if (!fotos.length) { box.innerHTML = '<span class="muted">Sin fotos.</span>'; return; }
+      box.innerHTML = '<span class="muted">Cargando fotos…</span>'; await Promise.all(fotos.map(miniatura));
+      const nMal = fotos.filter((x) => malas.has(x.archivo)).length;
+      box.innerHTML = `${nMal ? `<p class="muted" style="font-size:.82rem;margin:0 0 6px">${nMal} foto${nMal === 1 ? '' : 's'} no disponible${nMal === 1 ? '' : 's'} (no se guarda${nMal === 1 ? '' : 'n'} ni sale${nMal === 1 ? '' : 'n'} en el acta).</p>` : ''}<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">${fotos.map((x, i) => { const u = urlF[x.archivo];
+        return `<figure style="margin:0;border:1px solid var(--line,#ddd);border-radius:8px;overflow:hidden;position:relative;background:var(--bg2,#f5f7f9)">${u ? `<img src="${u}" alt="${h(x.nombre)}" data-verf="${i}" style="width:100%;height:100px;object-fit:cover;display:block;cursor:zoom-in">` : '<div style="height:100px;display:flex;align-items:center;justify-content:center;font-size:.78rem;color:var(--bad,#c33)">No disponible</div>'}
+          <figcaption style="font-size:.7rem;padding:3px 26px 3px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${h(x.nombre)}">${h(x.nombre)}</figcaption><button type="button" class="icon-btn bad" data-rmf="${i}" aria-label="Quitar foto" style="position:absolute;right:2px;bottom:0">${I.x}</button></figure>`; }).join('')}</div>`; };
+    const verFoto = (i) => { const u = urlF[fotos[i]?.archivo]; if (!u) return; modal({ titulo: fotos[i].nombre, size: 'wide', cuerpo: `<img src="${u}" alt="" style="max-width:100%;max-height:75vh;display:block;margin:auto">`, acciones: [{ t: 'Quitar esta foto', cls: 'danger', fn: () => { fotos.splice(i, 1); const mm = document.querySelector('[data-fotos]')?.closest('.modal'); if (mm) pintarFotos({ body: mm }); } }, { t: 'Cerrar', cls: 'pri' }] }); };
     modal({ titulo: `Acta de capacitación · ${nomA}`, size: 'wide', cuerpo: `<form class="form" onsubmit="return false"><p class="muted" style="font-size:.85rem">El acta incluye los datos de la capacitación, los asistentes con sus resultados del pre y post test (${tests.filter((t) => t.datos.fase === 'pre').length} pre · ${tests.filter((t) => t.datos.fase === 'post').length} post), el consolidado con gráfica y la evidencia fotográfica.</p>
       <div class="fields">${f.area('contenido', 'Contenido desarrollado (un tema por línea)', a.contenido || P.contenidoActa(d), { rows: 6 })}${f.area('conclusiones', 'Conclusiones (vacío = se redactan con los resultados)', a.conclusiones || '', { rows: 3 })}${f.area('compromisos', 'Compromisos (uno por línea)', a.compromisos || '', { rows: 3 })}
         ${f.input('capacitador', 'Capacitador(a) · nombre', d.capacitador || st.emp?.responsable || '')}${f.input('cargo_capacitador', 'Capacitador(a) · cargo / área', a.cargo_capacitador || st.emp?.cargo || 'Ingeniería biomédica')}
@@ -374,7 +385,7 @@
             actaPdf = { doc_id: doc.id, nombre, archivo: path }; pintarPdf(m); toast('Acta cargada (pulse Guardar)');
           } catch (er) { toast('No se pudo cargar el acta: ' + er.message, true); }
         };
-        m.body.querySelector('[data-fotos]').onclick = (e) => { const b = e.target.closest('[data-rmf]'); if (b) { fotos.splice(+b.dataset.rmf, 1); pintarFotos(m); } };
+        m.body.querySelector('[data-fotos]').onclick = (e) => { const b = e.target.closest('[data-rmf]'); if (b) { fotos.splice(+b.dataset.rmf, 1); pintarFotos(m); return; } const v = e.target.closest('[data-verf]'); if (v) verFoto(+v.dataset.verf); };
         m.body.querySelector('[data-firmacap]').onclick = async () => { const r = await UI.pedirFirma({ titulo: 'Firma del capacitador', actual: firmaCap }); if (r) { firmaCap = r; m.body.querySelector('[data-fcprev]').textContent = '✓ Firmada'; } };
         m.body.querySelector('[data-firma]').onclick = async () => { const r = await UI.pedirFirma({ titulo: 'Firma de quien recibe la capacitación', actual: firma }); if (r) { firma = r; m.body.querySelector('[data-fprev]').textContent = '✓ Firmada'; } };
         m.body.querySelector('[data-subir]').onchange = async (e) => {
@@ -388,7 +399,11 @@
       },
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', fn: (m) => guardar(m, false) }, { t: 'Guardar y ver acta (PDF)', cls: 'pri', fn: (m) => guardar(m, true) }] });
     async function guardar(m, ver) {
-      const v = leer(m.body); const nd = { ...d, capacitador: (v.capacitador || '').trim() || d.capacitador || '', fotos, acta_pdf: actaPdf, acta: { cargo_capacitador: (v.cargo_capacitador || '').trim(), firma_capacitador: firmaCap, contenido: v.contenido, conclusiones: v.conclusiones, compromisos: v.compromisos, recibe: v.recibe, cargo_recibe: v.cargo_recibe, firma_recibe: firma } };
+      const quitadas = new Set((d.fotos || []).filter((x) => !fotos.some((y) => y.archivo === x.archivo)).map((x) => x.archivo));
+      const act = await S.get(TB, s.id).catch(() => null); const nuevas = (act?.datos?.fotos || []).filter((x) => !quitadas.has(x.archivo) && !fotos.some((y) => y.archivo === x.archivo));
+      for (const x of nuevas) { await miniatura(x); fotos.push(x); }
+      fotos = fotos.filter((x) => !malas.has(x.archivo));
+      const v = leer(m.body); const nd = { ...(act?.datos || d), capacitador: (v.capacitador || '').trim() || d.capacitador || '', fotos, acta_pdf: actaPdf, acta: { cargo_capacitador: (v.cargo_capacitador || '').trim(), firma_capacitador: firmaCap, contenido: v.contenido, conclusiones: v.conclusiones, compromisos: v.compromisos, recibe: v.recibe, cargo_recibe: v.cargo_recibe, firma_recibe: firma } };
       await S.update(TB, s.id, { datos: nd }); s.datos = nd; toast('Acta guardada');
       if (ver && actaPdf) { const doc = await S.get('documentos', actaPdf.doc_id); if (doc) return A.abrirDoc(doc); }
       if (ver) { const doc = await P.pdfActaCap(ent, s, tests, ctx); verDoc(doc, `Acta de capacitación · ${nomA}`, `Acta_capacitacion_${slug(nomA)}_${d.fecha_ejec || s.fecha}.pdf`); }
