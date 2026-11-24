@@ -80,7 +80,7 @@
   // punto: tamaño del punto de la impresora (mm) para que cada módulo del QR sea un número entero de puntos (rotuladora)
   const dibQR = async (doc, texto, x, y, lado, punto = 0) => {
     const qr = await lib('qr'); const q = qr(0, texto.length > 160 ? 'L' : 'M'); q.addData(utf8(texto)); q.make();
-    const n = q.getModuleCount(); let c = lado / n; if (punto && c >= punto) { c = Math.floor(c / punto) * punto; x += (lado - c * n) / 2; y += (lado - c * n) / 2; } doc.setFillColor(0, 0, 0);
+    const n = q.getModuleCount(); let c = lado / n; if (punto && c >= punto && Math.floor(c / punto) * punto >= c * 0.85) { c = Math.floor(c / punto) * punto; x += (lado - c * n) / 2; y += (lado - c * n) / 2; } doc.setFillColor(0, 0, 0);
     for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) doc.rect(x + k * c, y + r * c, c + 0.01, c + 0.01, 'F');
   };
   const pngBarras = async (texto) => { const JB = await lib('barras'); const cv = document.createElement('canvas'); JB(cv, texto, { format: 'CODE128', displayValue: false, margin: 12, height: 60, width: 2 }); return { src: cv.toDataURL('image/png'), w: cv.width, h: cv.height }; };
