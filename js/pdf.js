@@ -114,7 +114,7 @@ window.PDF = (() => {
     const ancho = W(doc) - 2 * M;
     const colStyles = {};
     for (let i = 0; i < cols; i++) colStyles[i] = { cellWidth: i % 2 === 0 ? (opts.lab || 34) : (ancho - (cols / 2) * (opts.lab || 34)) / (cols / 2) };
-    doc.autoTable({ startY: y, body, theme: 'grid', margin: { left: M, right: M }, styles: { fontSize: 7.5, cellPadding: 1.4, lineColor: LINEA, lineWidth: 0.15, textColor: TXT, overflow: 'linebreak' }, columnStyles: colStyles });
+    doc.autoTable({ startY: y, body, theme: 'grid', margin: { left: M, right: M, bottom: 22, top: 20 }, styles: { fontSize: 7.5, cellPadding: 1.4, lineColor: LINEA, lineWidth: 0.15, textColor: TXT, overflow: 'linebreak' }, columnStyles: colStyles });
     return doc.lastAutoTable.finalY + (opts.gap ?? 3);
   }
 
@@ -128,7 +128,7 @@ window.PDF = (() => {
 
   function tabla(doc, y, head, body, opts = {}) {
     doc.autoTable({
-      startY: y, head: [head], body, theme: 'grid', margin: { left: M, right: M, top: 20 },
+      startY: y, head: [head], body, theme: 'grid', margin: { left: M, right: M, top: 20, bottom: 22 },
       headStyles: { fillColor: GRIS, textColor: TEAL, fontStyle: 'bold', fontSize: opts.fs || 7.5, halign: 'center', valign: 'middle', lineColor: LINEA, lineWidth: 0.15 },
       styles: { fontSize: opts.fs || 7.5, cellPadding: 1.3, lineColor: LINEA, lineWidth: 0.15, textColor: TXT, valign: 'middle' }, columnStyles: opts.cols || {}, didParseCell: opts.didParseCell, didDrawCell: opts.didDrawCell,
     });
@@ -390,7 +390,7 @@ window.PDF = (() => {
     const cols = {}; for (let k = fijas; k < head.length; k++) cols[k] = { cellWidth: 3.3, halign: 'center', fontSize: 5.5, cellPadding: 0.3 };
     cols[0] = { cellWidth: 7, halign: 'center' };
     doc.autoTable({
-      startY: y, head: [head], body, theme: 'grid', margin: { left: M, right: M },
+      startY: y, head: [head], body, theme: 'grid', margin: { left: M, right: M, top: 20, bottom: 22 },
       headStyles: { fillColor: CYAN, textColor: 255, fontSize: 5.5, cellPadding: 0.6, halign: 'left' },
       styles: { fontSize: 6, cellPadding: 0.8, lineColor: [175, 182, 188], lineWidth: 0.12, overflow: 'linebreak' }, columnStyles: cols,
       didParseCell: (d) => {
@@ -444,7 +444,7 @@ window.PDF = (() => {
     y = seccion(doc, y, '3. Estado de valoración');
     const val = d.valoracion || [];
     const vr = []; for (let i = 0; i < CAT.VALORACION.length; i += 2) vr.push([val.includes(CAT.VALORACION[i]) ? '✓' : 'x', CAT.VALORACION[i], val.includes(CAT.VALORACION[i + 1]) ? '✓' : 'x', CAT.VALORACION[i + 1]]);
-    doc.autoTable({ startY: y, body: vr.map((r) => r.map((c, i) => (i % 2 === 0 ? (c === '✓' ? 'SI' : '—') : c))), theme: 'grid', margin: { left: M, right: M }, styles: { fontSize: 7.5, cellPadding: 1.2, lineColor: [175, 182, 188], lineWidth: 0.15 }, columnStyles: { 0: { cellWidth: 10, halign: 'center', fontStyle: 'bold' }, 2: { cellWidth: 10, halign: 'center', fontStyle: 'bold' } },
+    doc.autoTable({ startY: y, body: vr.map((r) => r.map((c, i) => (i % 2 === 0 ? (c === '✓' ? 'SI' : '—') : c))), theme: 'grid', margin: { left: M, right: M, top: 20, bottom: 22 }, styles: { fontSize: 7.5, cellPadding: 1.2, lineColor: [175, 182, 188], lineWidth: 0.15 }, columnStyles: { 0: { cellWidth: 10, halign: 'center', fontStyle: 'bold' }, 2: { cellWidth: 10, halign: 'center', fontStyle: 'bold' } },
       didParseCell: (c) => { if ((c.column.index === 0 || c.column.index === 2) && c.cell.raw === 'SI') c.cell.styles.textColor = [30, 140, 80]; } });
     y = doc.lastAutoTable.finalY + 3;
     if (m.tipo !== 'metrologia') {
@@ -595,7 +595,7 @@ window.PDF = (() => {
     tot.push(['VALOR TOTAL', pesos(total)]);
     const last = tot.length - 1;
     y = salto(doc, y, 8 + tot.length * 7);
-    doc.autoTable({ startY: y - 2, body: tot, theme: 'grid', margin: { left: W(doc) - M - (detalle ? 80 : 92), right: M }, styles: { fontSize: detalle ? 8.5 : 10, cellPadding: detalle ? 1.4 : 2.2 }, columnStyles: { 0: { fontStyle: 'bold', fillColor: GRIS }, 1: { halign: 'right' } },
+    doc.autoTable({ startY: y - 2, body: tot, theme: 'grid', margin: { left: W(doc) - M - (detalle ? 80 : 92), right: M, top: 20, bottom: 22 }, styles: { fontSize: detalle ? 8.5 : 10, cellPadding: detalle ? 1.4 : 2.2 }, columnStyles: { 0: { fontStyle: 'bold', fillColor: GRIS }, 1: { halign: 'right' } },
       didParseCell: (d) => { if (d.row.index === last) { d.cell.styles.fillColor = TEAL; d.cell.styles.textColor = 255; d.cell.styles.fontStyle = 'bold'; } else if (String(d.row.raw[0]).startsWith('Descuento')) { d.cell.styles.textColor = [176, 46, 38]; } } });
     y = doc.lastAutoTable.finalY + 5;
     doc.setFontSize(8.5); doc.text(doc.splitTextToSize(`Son: ${enLetras(total)} pesos m/cte.${desc ? ' Incluye descuento.' : ''}${pIva ? ` IVA ${pIva}% incluido.` : ''}`, W(doc) - 2 * M), M, y, { align: 'justify', maxWidth: W(doc) - 2 * M }); y += 6;
