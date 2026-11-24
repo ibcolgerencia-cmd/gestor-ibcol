@@ -1357,7 +1357,7 @@
     el.innerHTML = `<section class="panel"><header><h2>${nom}</h2>${esProp() ? `<button class="btn pri" data-act="nuevoCom">${I.mas} ${tipo === 'cotizaciones' ? 'Nueva cotización' : tipo === 'factura' ? 'Registrar factura' : 'Nueva cuenta de cobro'}</button>` : ''}</header>
       ${lista.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Número</th><th>Fecha</th>${entidadId ? '' : '<th>Entidad</th>'}<th>${tipo === 'cotizaciones' ? 'Validez' : 'Concepto'}</th><th class="r">Total</th><th>Estado</th><th></th></tr></thead><tbody>
         ${lista.map((x) => `<tr class="clic" data-act="verCom" data-id="${x.id}"><td class="mono">${h(x.numero)}</td><td class="num">${UI.fecha(x.fecha)}</td>${entidadId ? '' : `<td>${h(en(x.entidad_id))}</td>`}<td class="muted">${tipo === 'cotizaciones' ? `${x.validez_dias || 30} días` : h((x.concepto || '').slice(0, 70))}</td><td class="r num"><b>${PDF.pesos(tot(x))}</b></td><td>${est(x.estado)}</td>
-          <td><div class="row-actions"><button class="icon-btn" data-act="verCom" data-id="${x.id}" aria-label="Ver PDF" title="${tipo === 'cotizaciones' && esProp() ? 'PDF con la tabla de ítems (solo usted)' : 'Ver PDF'}">${I.pdf}</button>${tipo === 'cotizaciones' && esProp() ? `<button class="icon-btn" data-act="verCom" data-id="${x.id}" data-cliente="1" aria-label="PDF para el cliente" title="PDF para el cliente: solo el valor total (más IVA)">${I.ojo}</button>` : ''}${esProp() ? `${tipo === 'cotizaciones' && x.estado === 'Aprobada' ? `<button class="btn sm" data-act="convertir" data-id="${x.id}">Cuenta de cobro</button>` : ''}<button class="icon-btn" data-act="editCom" data-id="${x.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-act="delCom" data-id="${x.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`).join('')}
+          <td><div class="row-actions"><button class="icon-btn" data-act="verCom" data-id="${x.id}" aria-label="Ver PDF" title="${tipo === 'cotizaciones' ? 'Cotización para el cliente: equipos y servicios, valor total y forma de pago' : 'Ver PDF'}">${I.pdf}</button>${tipo === 'cotizaciones' && esProp() ? `<button class="icon-btn" data-act="verCom" data-id="${x.id}" data-detalle="1" aria-label="Detalle con valores (solo usted)" title="Detalle con valores unitarios (solo usted)">${I.ojo}</button>` : ''}${esProp() ? `${tipo === 'cotizaciones' && x.estado === 'Aprobada' ? `<button class="btn sm" data-act="convertir" data-id="${x.id}">Cuenta de cobro</button>` : ''}<button class="icon-btn" data-act="editCom" data-id="${x.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-act="delCom" data-id="${x.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`).join('')}
       </tbody></table></div>` : '<div class="empty">Sin registros.</div>'}</section>`;
     const reg = (id) => lista.find((x) => x.id === id);
     A.acts({
@@ -1372,8 +1372,10 @@
           const b = await S.fileBlob(x.archivo); if (!b) return toast('El archivo no está disponible', true);
           return UI.verPDF({ titulo: `Factura ${x.numero}`, blob: b, nombre: `Factura_${x.numero}.pdf` });
         }
-        const detalle = tipo === 'cotizaciones' && esProp() && !d.cliente;
-        const blob = tipo === 'cotizaciones' ? PDF.cotizacion({ c: detalle ? { ...x, items: await A.itemsCot(x) } : { ...x, items: [], total: A.totalCot(x), subtotal: x.subtotal ?? totalItems(x.items) }, ent, emp: st.emp, fmt: st.fmt.cotizacion, firma: st.firma, detalle }).output('blob') : await FMT.cuentaCobro({ cc: x, ent });
+        const detalle = tipo === 'cotizaciones' && esProp() && !!d.detalle;
+        const its = tipo === 'cotizaciones' ? (esProp() ? await A.itemsCot(x) : x.items || []) : [];
+        const listado = its.filter((i) => String(i.descripcion || '').trim()).map((i) => ({ descripcion: i.descripcion, cantidad: i.cantidad }));
+        const blob = tipo === 'cotizaciones' ? PDF.cotizacion({ c: detalle ? { ...x, items: its } : { ...x, items: [], listado, total: A.totalCot(x), subtotal: x.subtotal ?? totalItems(its) }, ent, emp: st.emp, fmt: st.fmt.cotizacion, firma: st.firma, detalle }).output('blob') : await FMT.cuentaCobro({ cc: x, ent });
         S.log('CONSULTA', tabla, x.id, x.numero);
         UI.verPDF({ titulo: tipo === 'cotizaciones' ? `${x.numero}${detalle ? ' · detalle (solo propietario)' : ' · versión cliente'}` : x.numero, blob, nombre: `${x.numero}${tipo === 'cotizaciones' && !detalle && esProp() ? '_cliente' : ''}.pdf` });
       },
@@ -1425,12 +1427,13 @@
         ${tipo === 'cotizaciones' ? `${f.input('validez_dias', 'Validez (días)', x?.validez_dias || 30, { type: 'number' })}${f.input('iva', 'IVA %', x?.iva ?? 0, { type: 'number' })}${f.sel('descuento_tipo', 'Descuento en', [['%', 'Porcentaje (%)'], ['$', 'Valor ($)']], x?.descuento_tipo || '%')}${f.input('descuento', 'Descuento (sobre el subtotal, antes de IVA)', x?.descuento || '', { type: 'number', attrs: 'min="0" step="any"' })}${f.sel('estado', 'Estado', ['Borrador', 'Enviada', 'Aprobada', 'Rechazada'], x?.estado || 'Borrador')}`
           : `${f.sel('estado', 'Estado', ['Pendiente', 'Pagada', 'Anulada'], x?.estado || 'Pendiente')}${tipo === 'factura' ? f.input('total', 'Valor total (COP) *', x?.total, { type: 'number' }) : ''}`}
         ${tipo === 'factura' ? f.area('concepto', 'Por concepto de', x?.concepto, { rows: 2 }) : tipo === 'cuenta_cobro' ? f.area('concepto', 'Texto introductorio del concepto (opcional)', x?.concepto, { rows: 2 }) + '<p class="muted field full">Cada ítem sale numerado en “Por concepto de”, por ejemplo: “Cuota correspondiente al mes de marzo del contrato No. 05-2026, con el objeto de…”.</p>' : ''}</div>
-        ${tipo === 'cotizaciones' ? `<div class="fields">${f.area('descripcion', 'Objeto de la cotización (lo ve el cliente, junto con el valor total) — puede modificarlo', nuevo && !x?.descripcion ? objetoDe(x?.entidad_id || entidadId) : x?.descripcion || '', { rows: 8, full: true })}<div class="field full" style="margin-top:-6px"><button type="button" class="btn sm" data-objdef>Usar el objeto por defecto</button> <span class="muted" style="font-size:.8rem">Se edita en Formatos › Cotización.</span></div></div>` : ''}
-        ${tipo !== 'factura' ? `<div class="field"><span class="lbl">Ítems${tipo === 'cotizaciones' ? ' <span class="muted" style="font-weight:400">— la tabla solo la ve usted; el cliente ve el total</span>' : ''}</span>${tipo === 'cotizaciones' ? `<div data-invdrag></div><div style="margin-bottom:6px"><button type="button" class="btn sm" data-inv>${I.mas} Elegir varios del inventario</button></div>` : ''}${rep('items', itemsCols, x?.items || [])}<div class="muted" data-tot></div></div>` : `<div class="field"><span class="lbl">PDF de la factura electrónica</span><input type="file" accept="application/pdf" data-fact>${x?.archivo ? '<span class="muted">Ya tiene un PDF adjunto; cargue otro para reemplazarlo.</span>' : ''}</div>`}
+        ${tipo === 'cotizaciones' ? `<div class="fields">${f.area('descripcion', 'Objeto de la cotización (lo ve el cliente, junto con el listado, el valor total y la forma de pago) — puede modificarlo', nuevo && !x?.descripcion ? objetoDe(x?.entidad_id || entidadId) : x?.descripcion || '', { rows: 8, full: true })}<div class="field full" style="margin-top:-6px"><button type="button" class="btn sm" data-objdef>Usar el objeto por defecto</button> <span class="muted" style="font-size:.8rem">Se edita en Formatos › Cotización.</span></div></div>` : ''}
+        ${tipo !== 'factura' ? `<div class="field"><span class="lbl">Ítems${tipo === 'cotizaciones' ? ' <span class="muted" style="font-weight:400">— los valores unitarios solo los ve usted; en la cotización salen el listado, el valor total y la forma de pago</span>' : ''}</span>${tipo === 'cotizaciones' ? `<div data-invdrag></div><div style="margin-bottom:6px"><button type="button" class="btn sm" data-inv>${I.mas} Elegir varios del inventario</button></div>` : ''}${rep('items', itemsCols, x?.items || [])}<div class="muted" data-tot></div></div>` : `<div class="field"><span class="lbl">PDF de la factura electrónica</span><input type="file" accept="application/pdf" data-fact>${x?.archivo ? '<span class="muted">Ya tiene un PDF adjunto; cargue otro para reemplazarlo.</span>' : ''}</div>`}
         ${tipo === 'cotizaciones' ? `<fieldset><legend>Condiciones comerciales</legend><div class="fields">
           ${f.sel('forma_pago', 'Forma de pago', FORMAS_PAGO.map((o) => [o.k, o.n]), formaDe(x?.condiciones ?? st.fmt.cotizacion.condiciones).k)}
           ${f.input('cuotas', 'Número de cuotas', formaDe(x?.condiciones ?? st.fmt.cotizacion.condiciones).n || '', { type: 'number', attrs: 'min="1" max="60" step="1"' })}
           <div class="field" data-cuota-info style="align-self:end"><span class="muted" data-cuota></span></div>
+          <div class="field full"><span class="lbl">Cuadro de forma de pago (así sale en la cotización)</span><div data-plan class="tbl-wrap"></div></div>
           ${f.area('condiciones', 'Texto de condiciones comerciales (la línea «Forma de pago» se actualiza sola; puede editar el resto)', x?.condiciones ?? st.fmt.cotizacion.condiciones, { rows: 4 })}</div></fieldset>` : ''}</form>`,
       alAbrir: (m) => {
         repBind(m.body);
@@ -1451,7 +1454,10 @@
           const n = Math.max(1, Math.round(Number(fpN.value) || 1));
           const total = totales().total;
           m.body.querySelector('[data-cuota]').textContent = conCuotas && total ? `${n} cuotas de ${PDF.pesos(Math.round(total / n))}` : '';
-          const l = lineaPago(k, n, total); if (!l) return;
+          const l = lineaPago(k, n, total);
+          const pl = m.body.querySelector('[data-plan]');
+          if (pl) { const filas = l ? PDF.planPagoCot(l, total) : []; pl.innerHTML = filas.length ? `<table class="tbl"><thead><tr><th>No.</th><th>Pago</th><th>Momento del pago</th><th class="r">Valor</th></tr></thead><tbody>${filas.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="r num">${PDF.pesos(r[3])}</td></tr>`).join('')}<tr><td></td><td><b>TOTAL</b></td><td></td><td class="r num"><b>${PDF.pesos(total)}</b></td></tr></tbody></table>` : `<p class="muted" style="margin:0">${k === 'libre' ? 'Forma de pago libre: se toma del texto de condiciones (sin cuadro).' : 'Agregue ítems para calcular los pagos.'}</p>`; }
+          if (!l) return;
           const filas = cond.value.split('\n'); const i = filas.findIndex((r) => /^forma de pago/i.test(r.trim()));
           if (i >= 0) filas[i] = l; else filas.unshift(l);
           cond.value = filas.join('\n');
@@ -1501,7 +1507,7 @@
           itemsCot = repLeer(m.body, 'items'); const sub = totalItems(itemsCot); const iva = Number(v.iva) || 0;
           const dsc = { descuento: Number(v.descuento) || 0, descuento_tipo: v.descuento_tipo === '$' ? '$' : '%' };
           const base = sub - PDF.descuentoCot(dsc, sub);
-          Object.assign(o, { validez_dias: Number(v.validez_dias) || 30, iva, condiciones: v.condiciones, descripcion: v.descripcion || null, subtotal: sub, total: base + Math.round(base * iva / 100), items: [], ...dsc });
+          Object.assign(o, { validez_dias: Number(v.validez_dias) || 30, iva, condiciones: v.condiciones, descripcion: v.descripcion || null, subtotal: sub, total: base + Math.round(base * iva / 100), items: itemsCot.filter((i) => String(i.descripcion || '').trim()).map((i) => ({ descripcion: i.descripcion, cantidad: Number(i.cantidad) || 1 })), ...dsc });
         }
         else {
           Object.assign(o, { tipo, concepto: v.concepto });

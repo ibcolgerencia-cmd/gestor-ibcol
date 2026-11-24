@@ -530,6 +530,29 @@ window.PDF = (() => {
     lineas: [emp.cotiza_cargo, emp.cobro_documento ? `C.C. ${emp.cobro_documento}${emp.cobro_expedicion ? ` de ${emp.cobro_expedicion}` : ''}` : '', emp.nombre || 'IBCOL Ingeniería Biomédica de Colombia'].filter(Boolean),
   });
 
+  // forma de pago (línea «Forma de pago: …» de las condiciones) → cuadro de pagos con el valor de cada pago
+  function formaPagoCot(txt) {
+    const l = (String(txt || '').split('\n').find((r) => /^forma de pago/i.test(r.trim())) || '').toLowerCase();
+    if (!l) return { k: 'libre' };
+    const n = Number((l.match(/(\d+)\s*cuotas/) || [])[1]) || null;
+    if (/cada dos meses|bimestral/.test(l)) return { k: 'bimestral', n: n || 6 };
+    if (/mensual/.test(l)) return { k: 'mensual', n: n || 12 };
+    if (/50\s*%/.test(l)) return { k: '50y50' };
+    if (/único|unico/.test(l)) return { k: 'unico' };
+    return { k: 'libre' };
+  }
+  function planPagoCot(condiciones, total) {
+    const fp = formaPagoCot(condiciones); total = Math.round(Number(total) || 0);
+    if (!total) return [];
+    if (fp.k === '50y50') { const a = Math.round(total / 2); return [['1', 'Anticipo (50%)', 'A la aceptación de la cotización', a], ['2', 'Saldo (50%)', 'Contra entrega del informe', total - a]]; }
+    if (fp.k === 'unico') return [['1', 'Pago único (100%)', 'Contra entrega del informe', total]];
+    if (fp.k === 'mensual' || fp.k === 'bimestral') {
+      const n = Math.max(1, Math.min(60, fp.n || 1)), c = Math.round(total / n), paso = fp.k === 'bimestral' ? 2 : 1;
+      return Array.from({ length: n }, (_, i) => [String(i + 1), `Cuota ${i + 1} de ${n}`, `Mes ${i * paso + 1}`, i === n - 1 ? total - c * (n - 1) : c]);
+    }
+    return [];
+  }
+
   // detalle = true: tabla de ítems (solo propietario). detalle = false: versión del cliente, solo el valor total (+ IVA si aplica)
   function cotizacion({ c, ent, emp, fmt, firma, detalle = true }) {
     const doc = nuevo();
@@ -549,6 +572,13 @@ window.PDF = (() => {
     const iva = Math.round(base * pIva / 100);
     const total = usarItems || c.total == null || c.total === '' ? base + iva : Number(c.total) || 0;
     if (c.descripcion) { y = seccion(doc, y, 'Objeto de la cotización'); y = parrafo(doc, y, c.descripcion, 9); y += 1; }
+    // versión para el cliente: listado de equipos y servicios sin valores
+    const listado = (detalle ? [] : (c.listado || [])).filter((i) => String(i.descripcion || '').trim());
+    if (!detalle && listado.length) {
+      y = seccion(doc, y, 'Equipos y servicios incluidos');
+      y = tabla(doc, y, ['Ítem', 'Descripción', 'Cant.'], listado.map((i, k) => [k + 1, i.descripcion, i.cantidad || 1]),
+        { cols: { 0: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 16, halign: 'center' } } });
+    }
     if (detalle) {
       y = tabla(doc, y, ['Ítem', 'Descripción', 'Cant.', 'Valor unitario', 'Valor total'],
         items.map((i, k) => [k + 1, i.descripcion, i.cantidad, pesos(i.valor), pesos((Number(i.cantidad) || 0) * (Number(i.valor) || 0))]),
@@ -565,8 +595,17 @@ window.PDF = (() => {
       didParseCell: (d) => { if (d.row.index === last) { d.cell.styles.fillColor = TEAL; d.cell.styles.textColor = 255; d.cell.styles.fontStyle = 'bold'; } else if (String(d.row.raw[0]).startsWith('Descuento')) { d.cell.styles.textColor = [176, 46, 38]; } } });
     y = doc.lastAutoTable.finalY + 5;
     doc.setFontSize(8.5); doc.text(doc.splitTextToSize(`Son: ${enLetras(total)} pesos m/cte.${desc ? ' Incluye descuento.' : ''}${pIva ? ` IVA ${pIva}% incluido.` : ''}`, W(doc) - 2 * M), M, y, { align: 'justify', maxWidth: W(doc) - 2 * M }); y += 6;
-    y = seccion(doc, y, 'Condiciones comerciales');
-    y = parrafo(doc, y, c.condiciones || '', 8.5);
+    // cuadro de forma de pago (50% y 50%, cuotas mensuales / bimestrales o pago único)
+    const plan = planPagoCot(c.condiciones, total);
+    if (plan.length) {
+      y = salto(doc, y, 22);
+      y = seccion(doc, y, 'Forma de pago');
+      y = tabla(doc, y, ['No.', 'Pago', 'Momento del pago', 'Valor'], [...plan.map((r) => [r[0], r[1], r[2], pesos(r[3])]), ['', 'TOTAL', '', pesos(total)]],
+        { fs: 8.5, cols: { 0: { cellWidth: 12, halign: 'center' }, 3: { cellWidth: 34, halign: 'right' } },
+          didParseCell: (d) => { if (d.section === 'body' && d.row.index === plan.length) { d.cell.styles.fillColor = TEAL; d.cell.styles.textColor = 255; d.cell.styles.fontStyle = 'bold'; } } });
+    }
+    const cond = plan.length ? String(c.condiciones || '').split('\n').filter((r) => !/^forma de pago/i.test(r.trim())).join('\n').trim() : c.condiciones || '';
+    if (cond) { y = seccion(doc, y, 'Condiciones comerciales'); y = parrafo(doc, y, cond, 8.5); }
     firmas(doc, y + 4, [firmaCotizacion(emp, firma)]);
     return pie(doc, emp);
   }
@@ -732,5 +771,5 @@ window.PDF = (() => {
     return s;
   }
 
-  return { descuentoCot, nuevo, encabezado, documento, hojaVida, inventario, cronograma, mantenimiento, alertas, evento, acta, cotizacion, cuentaCobro, indicadores, firmarPDF, enLetras, fF, pesos };
+  return { descuentoCot, planPagoCot, formaPagoCot, nuevo, encabezado, documento, hojaVida, inventario, cronograma, mantenimiento, alertas, evento, acta, cotizacion, cuentaCobro, indicadores, firmarPDF, enLetras, fF, pesos };
 })();
