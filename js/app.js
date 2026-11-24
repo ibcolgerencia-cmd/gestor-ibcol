@@ -119,6 +119,7 @@ window.APP = (() => {
     else if (p.entidad_id) go('entidad', { id: p.entidad_id }, true);
     else { content().innerHTML = '<div class="empty">Su usuario aún no tiene una entidad asignada. Contacte a IBCOL.</div>'; }
     setTimeout(() => A.verificarPoliticas?.(p), 400);
+    if (!esCalidad()) setTimeout(() => A.abrirEnlaceEquipo?.(), 250);
   }
 
   A.cargarConfig = async () => {
@@ -144,9 +145,9 @@ window.APP = (() => {
     const p = st.perfil;
     const nav = esProp()
       ? [['grp', 'Operación'], ['panel', 'Panel de control', I.panel], ['entidades', 'Entidades y equipos', I.ent], ['comercial', 'Cotizaciones y cobros', I.plata], ['asistente', 'Asistente IA', I.ia],
-        ['grp', 'Administración'], ['usuarios', 'Usuarios y accesos', I.users], ['formatos', 'Formatos', I.fmt], ['consecutivos', 'Consecutivos', I.cal], ['auditoria', 'Auditoría', I.audit], ['empresa', 'Mi empresa y firma', I.emp], ['politicas', 'Privacidad y seguridad', I.llave]]
+        ['escanear', 'Escanear QR / código', A.ICO_QR || I.panel], ['grp', 'Administración'], ['usuarios', 'Usuarios y accesos', I.users], ['formatos', 'Formatos', I.fmt], ['consecutivos', 'Consecutivos', I.cal], ['auditoria', 'Auditoría', I.audit], ['empresa', 'Mi empresa y firma', I.emp], ['politicas', 'Privacidad y seguridad', I.llave]]
       : esCalidad() ? [['grp', 'Área de calidad'], ['calidad', 'Documentos de calidad', I.ent], ['politicas', 'Privacidad y seguridad', I.audit]]
-      : [['grp', 'Mi entidad'], ['entidad', 'Documentación', I.ent], ['cuenta', 'Mi cuenta', I.llave], ['politicas', 'Privacidad y seguridad', I.audit]];
+      : [['grp', 'Mi entidad'], ['entidad', 'Documentación', I.ent], ['escanear', 'Escanear QR / código', A.ICO_QR || I.ent], ['cuenta', 'Mi cuenta', I.llave], ['politicas', 'Privacidad y seguridad', I.audit]];
     root.innerHTML = `<div class="app" id="app">
       <aside class="side" aria-label="Menú principal">
         <button class="side-tog" data-menu aria-label="Desplegar menú" title="Desplegar menú">${I.menu}<span>Menú</span></button>
@@ -156,13 +157,14 @@ window.APP = (() => {
           <div class="nav"><button data-tema title="Cambiar tema">${I.luna}<span>Cambiar tema</span></button><button data-salir title="Cerrar sesión">${I.salir}<span>Cerrar sesión</span></button></div><div class="ver" style="font-size:.7rem;opacity:.55;padding:4px 14px">Versión ${h(window.IBCOL_VERSION || '')}</div></div>
       </aside>
       <div class="main">
-        <div class="topbar"><button data-menu aria-label="Abrir menú">${I.menu}</button><b>Gestor biomédico IBCOL</b></div>
+        <div class="topbar"><button data-menu aria-label="Abrir menú">${I.menu}</button><b>Gestor biomédico IBCOL</b>${esCalidad() ? '' : `<button data-nav="escanear" aria-label="Escanear código QR o de barras" title="Escanear QR / código" style="margin-left:auto">${A.ICO_QR || ''}</button>`}</div>
         ${S.modo === 'demo' ? `<div class="demo-band"><b>Modo demostración.</b><span>Los datos se guardan solo en este navegador. Para usarlo en la nube con sus clientes, configure Supabase (ver guía).</span>${esProp() ? '<button class="btn sm" data-reset>Restaurar datos de ejemplo</button>' : ''}</div>` : ''}
         <main class="content" id="content"></main>
       </div></div>`;
     const app = document.getElementById('app');
     app.addEventListener('click', async (e) => {
       const n = e.target.closest('[data-nav]');
+      if (n && n.dataset.nav === 'escanear') { app.classList.remove('menu'); return A.escanear(); }
       if (n) { app.classList.remove('menu'); return n.dataset.nav === 'entidad' ? go('entidad', { id: p.entidad_id }, true) : go(n.dataset.nav, {}, true); }
       if (e.target.closest('[data-menu]')) { const ab = app.classList.toggle('menu'); app.querySelectorAll('[data-menu]').forEach((b) => b.setAttribute('aria-expanded', ab)); return; }
       if (e.target.closest('[data-tema]')) return cambiarTema();
@@ -335,7 +337,7 @@ window.APP = (() => {
     const graves = evs.filter((e) => e.estado === 'Abierto' && ['Muerte', 'Deterioro grave'].includes(e.consecuencia));
     content().innerHTML = `
       <div class="page-head"><div><span class="eyebrow">${UI.fecha(UI.hoy())}</span><h1>Panel de control</h1></div>
-        <div class="actions"><button class="btn pri" data-act="nuevaEnt">${I.mas} Nueva entidad</button></div></div>
+        <div class="actions"><button class="btn" data-act="rotulos" title="Rótulos con código QR y de barras para pegar en los equipos">${A.ICO_QR || ''} Rótulos QR / código de barras</button><button class="btn" data-act="escanearP">${A.ICO_QR || ''} Escanear</button><button class="btn pri" data-act="nuevaEnt">${I.mas} Nueva entidad</button></div></div>
       ${graves.length ? `<div class="panel" style="border-color:var(--bad)"><b style="color:var(--bad)">${I.alerta.replace('<svg', '<svg width="18" height="18" style="vertical-align:-3px"')} ${graves.length} evento(s) adverso(s) grave(s) abierto(s)</b><span class="muted">Deben notificarse al Programa Nacional de Tecnovigilancia del INVIMA dentro de las 72 horas siguientes al conocimiento del evento.</span></div>` : ''}
       <section class="panel" data-reportes></section>
       <section class="panel" data-portales></section>
@@ -356,7 +358,7 @@ window.APP = (() => {
         <div class="tbl-wrap"><table class="tbl"><tbody>${aud.slice(0, 8).map((a) => `<tr><td class="muted num" style="white-space:nowrap">${UI.fechaHora(a.fecha)}</td><td><b>${h(a.usuario || '')}</b></td><td>${A.accionTxt(a)}</td></tr>`).join('') || '<tr><td class="empty">Sin actividad.</td></tr>'}</tbody></table></div></section>`;
     A.panelReportes?.(content().querySelector('[data-reportes]'));
     A.panelPortales?.(content().querySelector('[data-portales]'));
-    A.acts({ abrirEq: (d) => go('equipo', { id: d.id }), abrirEnt: (d) => go('entidad', { id: d.id }), nuevaEnt: () => A.formEntidad(), verAud: () => go('auditoria', {}, true) });
+    A.acts({ rotulos: () => A.rotulos(), escanearP: () => A.escanear(), abrirEq: (d) => go('equipo', { id: d.id }), abrirEnt: (d) => go('entidad', { id: d.id }), nuevaEnt: () => A.formEntidad(), verAud: () => go('auditoria', {}, true) });
   };
 
   const TABLAS = { equipos: 'equipo', documentos: 'documento', mantenimientos: 'reporte de mantenimiento', cronogramas: 'cronograma', alertas: 'alerta sanitaria', eventos: 'evento de tecnovigilancia', entidades: 'entidad', consultorios: 'consultorio', cotizaciones: 'cotización', cobros: 'cobro', perfiles: 'usuario', empresa: 'datos de empresa', formatos: 'formato' };
@@ -636,7 +638,7 @@ window.APP = (() => {
       ${migas([...A.rutaEnt(ent), [A.nomCarpeta(ent, 'ent', CARP_EQ), 'areas', st.areasParams?.id === ent.id ? st.areasParams : { id: ent.id }], `${c ? c._n + '. ' + c.nombre.toUpperCase() + ' / ' : ''}${eq.nombre.toUpperCase()}`])}
       <div class="page-head"><div><span class="eyebrow">${h(c?.nombre || 'Sin área')} · ${h(eq.ubicacion || '')}</span><h1>${h(eq.nombre)} ${A.riesgo(eq.clase_riesgo)}${esProp() ? ` <button class="icon-btn" data-act="editEqRapido" title="Cambiar el nombre y los datos del equipo" aria-label="Editar el nombre del equipo">${I.edit}</button>` : ''}</h1>
         <span class="muted"><span class="mono">${h(eq.codigo_inv)}</span> · ${h([eq.marca, eq.modelo].filter(Boolean).join(' · '))} · S/N <span class="mono">${h(eq.serie || '—')}</span></span></div>
-        <div class="actions">${A.estadoPill(eq.estado)}${esProp() ? `<button class="btn" data-act="fotoEq">${I.subir} Imagen del equipo</button>` : ''}<button class="btn" data-act="pdfHV">${I.pdf} Hoja de vida PDF</button>${esProp() ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button><button class="btn pri" data-act="editHV">${I.edit} Editar hoja de vida</button>` : ''}</div></div>
+        <div class="actions">${A.estadoPill(eq.estado)}${esProp() ? `<button class="btn" data-act="fotoEq">${I.subir} Imagen del equipo</button>` : ''}<button class="btn" data-act="pdfHV">${I.pdf} Hoja de vida PDF</button>${esProp() ? `<button class="btn" data-act="rotuloEq" title="Rótulo con código QR y de barras para este equipo">${A.ICO_QR || ''} Rótulo QR</button>` : ''}${esProp() ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button><button class="btn pri" data-act="editHV">${I.edit} Editar hoja de vida</button>` : ''}</div></div>
       <section class="panel"><div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
         <div style="flex:0 0 150px;height:150px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff${esProp() ? ';cursor:pointer' : ''}" ${esProp() ? 'data-act="fotoEq" title="Cambiar imagen del equipo"' : ''}>
           ${eq.foto || eq.hv?.foto ? `<img src="${eq.foto || eq.hv.foto}" alt="Imagen del equipo" style="max-width:100%;max-height:100%;object-fit:contain">` : '<span class="muted" style="font-size:.8rem;text-align:center;padding:8px">IMAGEN DEL EQUIPO<br>(sin cargar)</span>'}</div>
@@ -676,6 +678,7 @@ window.APP = (() => {
       mostrarCarpEq: async () => { const act = await S.get('equipos', eq.id); await S.update('equipos', eq.id, { hv: { ...(act.hv || {}), ocultas: [] } }); toast('Carpetas visibles de nuevo en este equipo'); A.recargar(); },
       renCarp: (d) => A.renombrarCarpeta(ent, 'eq', d.k, eq),
       nuevaCarpetaEq: () => A.nuevaCarpeta(ent, eq),
+      rotuloEq: () => A.rotulos({ entId: ent.id, eqIds: [eq.id] }),
       pdfHV: () => A.verHojaVida(eq, ent, c, mtos),
       fotoEq: () => A.cargarFotoEquipo(eq),
       editEqRapido: () => A.editarEquipoRapido(eq, cons),
