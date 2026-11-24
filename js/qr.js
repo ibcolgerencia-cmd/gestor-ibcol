@@ -77,9 +77,10 @@
   };
 
   // ---------------------------------------------------------------- dibujo de QR y código de barras
-  const dibQR = async (doc, texto, x, y, lado) => {
+  // punto: tamaño del punto de la impresora (mm) para que cada módulo del QR sea un número entero de puntos (rotuladora)
+  const dibQR = async (doc, texto, x, y, lado, punto = 0) => {
     const qr = await lib('qr'); const q = qr(0, texto.length > 160 ? 'L' : 'M'); q.addData(utf8(texto)); q.make();
-    const n = q.getModuleCount(), c = lado / n; doc.setFillColor(0, 0, 0);
+    const n = q.getModuleCount(); let c = lado / n; if (punto && c >= punto) { c = Math.floor(c / punto) * punto; x += (lado - c * n) / 2; y += (lado - c * n) / 2; } doc.setFillColor(0, 0, 0);
     for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) doc.rect(x + k * c, y + r * c, c + 0.01, c + 0.01, 'F');
   };
   const pngBarras = async (texto) => { const JB = await lib('barras'); const cv = document.createElement('canvas'); JB(cv, texto, { format: 'CODE128', displayValue: false, margin: 12, height: 60, width: 2 }); return { src: cv.toDataURL('image/png'), w: cv.width, h: cv.height }; };
@@ -159,7 +160,8 @@
   const rotuloCinta = async (doc, e, L, T, { ent, cons, mtos, tipo, datos }) => {
     const ph = T.ph, y0 = (T.cinta - ph) / 2, m = 2, codigo = e.codigo_inv || e.activo_fijo || e.serie || '';
     const conQR = tipo !== 'barras', conBar = tipo !== 'qr' && !!codigo; let x = m;
-    if (conQR) { await dibQR(doc, textoDe(e, ent, cons, mtos, datos, true), x, y0, ph); x += ph + 1.5; }
+    // cinta de 12 mm: el QR solo cabe legible con el código de inventario (el gestor lo abre con «Escanear»)
+    if (conQR) { await dibQR(doc, ph < 12 ? (codigo || A.urlEquipo(e.id)) : textoDe(e, ent, cons, mtos, datos, true), x, y0, ph, 25.4 / 180); x += ph + 1.5; }
     const libre = L - m - x, barW = conBar ? (conQR ? libre * 0.5 : libre * 0.55) : 0, tw = libre - (conBar ? barW + 1.5 : 0);
     let fs = Math.min(ph / 18 * 8.5, 9); doc.setTextColor(0, 0, 0); let ty = y0;
     // la palabra más larga del nombre debe caber completa (sin partirla)
@@ -215,7 +217,7 @@
         ${UI.f.sel('tipo', 'Tipo de código', [['ambos', 'QR + código de barras'], ['qr', 'Solo QR'], ['barras', 'Solo código de barras']], 'ambos')}<div class="field"><label for="ro_tam">Tamaño del rótulo</label><select id="ro_tam" name="tam"><optgroup label="Hoja adhesiva (carta)">${Object.entries(TAM).filter(([, v]) => !v.cinta).map(([k, v]) => `<option value="${k}" ${k === 'gra' ? 'selected' : ''}>${h(v.t)}</option>`).join('')}</optgroup><optgroup label="Rotuladora Brother PT-P700">${Object.entries(TAM).filter(([, v]) => v.cinta).map(([k, v]) => `<option value="${k}">${h(v.t)}</option>`).join('')}</optgroup></select></div>
         <div class="field" data-ropers hidden><label>Ancho × alto (mm)</label><div style="display:flex;gap:6px"><input name="ancho" type="number" min="20" max="200" value="70" aria-label="Ancho en mm"><input name="alto" type="number" min="12" max="150" value="35" aria-label="Alto en mm"></div></div>
         <div class="field" data-rolargo hidden><label for="ro_largo">Largo de cada rótulo en la cinta (mm)</label><input id="ro_largo" name="largo" type="number" min="30" max="200" value="75"></div>
-        <p class="muted full" data-roayuda hidden style="font-size:.8rem;margin:0">Para la <b>Brother PT-P700</b>: abra el PDF, elija la impresora Brother PT-P700, en <i>Propiedades</i> ponga el ancho de cinta elegido y el largo indicado (cada página es un rótulo), escala <b>100 % / tamaño real</b> y margen mínimo. El QR lleva la versión corta de los datos para que se lea en la cinta. También puede abrir el PDF en P-touch Editor (Archivo › Importar imagen).</p>
+        <p class="muted full" data-roayuda hidden style="font-size:.8rem;margin:0">Para la <b>Brother PT-P700</b>: abra el PDF, elija la impresora Brother PT-P700, en <i>Propiedades</i> ponga el ancho de cinta elegido y el largo indicado (cada página es un rótulo), escala <b>100 % / tamaño real</b> y margen mínimo. El QR lleva la versión corta de los datos (en cinta de 12 mm solo el código de inventario, que «Escanear» abre en el gestor) para que se lea en la cinta. También puede abrir el PDF en P-touch Editor (Archivo › Importar imagen).</p>
         ${UI.f.sel('qrc', 'Contenido del código QR', [['datos', 'Datos del equipo (se leen con cualquier celular)'], ['corto', 'Datos resumidos (QR más pequeño, para rótulos chicos)'], ['datos_enlace', 'Datos del equipo + enlace al gestor'], ['enlace', 'Solo enlace al gestor (pide usuario y contraseña)']], 'datos')}
         <div class="field full" style="display:flex;flex-wrap:wrap;gap:4px 16px"><label class="chk"><input type="checkbox" name="d_logo" checked> Logo de la entidad</label><label class="chk"><input type="checkbox" name="d_marca" checked> Marca y modelo</label><label class="chk"><input type="checkbox" name="d_serie" checked> Serie</label><label class="chk"><input type="checkbox" name="d_servicio" checked> Servicio</label></div>
         <div class="field full"><label for="ro_q">Buscar equipo</label><input id="ro_q" data-roq placeholder="Código, nombre, serie o marca"></div></div>
