@@ -771,10 +771,13 @@ window.APP = (() => {
   };
   // subcarpetas en orden descendente: por fecha del nombre (año, mes) y luego número / nombre de mayor a menor (2026 antes que 2025, «12. DICIEMBRE» antes que «01. ENERO»)
   A.claveSub = (n) => { const f = A.fechaDeNombre(n); if (f) { const t0 = String(n).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase(); const mm = t0.match(/\b(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|SET|OCT|NOV|DIC)[A-Z]*\b/); if (!f.endsWith('-01-01')) return f; return mm ? f.slice(0, 5) + p2(MES_N[mm[1]]) + '-01' : /(^|\D)0?1[\s._\-/]0?1[\s._\-/]\d{2,4}/.test(t0) ? f : f.slice(0, 5) + '13'; } const t = String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase(); const m = t.match(/\b(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|SET|OCT|NOV|DIC)[A-Z]*\b/); return m ? '0000-' + p2(MES_N[m[1]]) + '-01' : ''; };
-  A.ordenSubs = (a, b) => { const ka = A.claveSub(a), kb = A.claveSub(b); return (kb ? 1 : 0) - (ka ? 1 : 0) || kb.localeCompare(ka) || String(b).localeCompare(String(a), 'es', { numeric: true }); };
+  // numeración inicial del nombre ("4. MANTENIMIENTOS", "2.1. ACTAS", "3.MTTOS", "06670 REPORTE"); no toma fechas como 24-04-2026
+  A.numInicial = (n) => { const m = String(n || '').match(/^\s*(\d{1,6}(?:\.\d{1,3})*)\s*[.)\-_]?\s*(?=[A-Za-zÁÉÍÓÚÑÜáéíóúñü])/); return m ? m[1].split('.').map(Number) : null; };
+  A.cmpNum = (na, nb) => { if (!na || !nb) return (nb ? 1 : 0) - (na ? 1 : 0); for (let i = 0; i < Math.max(na.length, nb.length); i++) { const d = (nb[i] ?? -1) - (na[i] ?? -1); if (d) return d; } return 0; };
+  A.ordenSubs = (a, b) => { const ka = A.claveSub(a), kb = A.claveSub(b); return A.cmpNum(A.numInicial(a), A.numInicial(b)) || (kb ? 1 : 0) - (ka ? 1 : 0) || kb.localeCompare(ka) || String(b).localeCompare(String(a), 'es', { numeric: true }); };
   A.fechaDocumento = (d) => A.fechaDeNombre(d.nombre) || String(d.fecha_documento || d.created_at || '').slice(0, 10);
   // orden: más reciente primero; con la misma fecha, el número inicial más alto primero ("2. MTTO…" antes que "1. MTTO…")
-  A.ordenDocs = (a, b) => A.fechaDocumento(b).localeCompare(A.fechaDocumento(a)) || ((parseFloat(b.nombre) || 0) - (parseFloat(a.nombre) || 0)) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true });
+  A.ordenDocs = (a, b) => { const na = A.numInicial(a.nombre), nb = A.numInicial(b.nombre); return (na && nb ? A.cmpNum(na, nb) : 0) || A.fechaDocumento(b).localeCompare(A.fechaDocumento(a)) || ((parseFloat(b.nombre) || 0) - (parseFloat(a.nombre) || 0)) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }); };
 
   // ---------------------------------------------------------------- Archivos de una carpeta (con subcarpetas)
   st.subSel = st.subSel || {};
