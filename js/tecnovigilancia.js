@@ -203,7 +203,7 @@
   const panelAnexos = async (el, ent) => {
     if (!el) return;
     const sub = await TV.subDestino(ent, 1);
-    const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => d.carpeta === 'tecnovigilancia' && (d.subcarpeta || '').split('/')[0] === sub).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }));
+    const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => d.carpeta === 'tecnovigilancia' && (d.subcarpeta || '').split('/')[0] === sub).sort(A.ordenDocs);
     let abierto = false; try { abierto = localStorage.getItem('ibcol.plegable.anexos_tv') === '1'; } catch {}
     el.classList.remove('panel'); el.classList.add('plegable-sec');
     el.innerHTML = `<details class="plegable" data-anx-wrap ${abierto ? 'open' : ''}><summary><span>Anexos del programa</span><span class="muted">${docs.length} documento${docs.length === 1 ? '' : 's'} · <span data-anx-lbl>${abierto ? 'ocultar' : 'ver'}</span></span></summary><div class="panel"><header><div><h2>Anexos del programa</h2><span class="muted" style="font-size:.85rem">Subcarpeta “${h(sub)}”: formatos y documentos que acompañan el programa (acto administrativo, FT-PGTV-016, FT-PGTV-015, FAR-013, RETEIM-002, NTC 5736…).</span></div>

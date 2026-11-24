@@ -769,6 +769,9 @@ window.APP = (() => {
     if (ys.length) return `${Math.max(...ys)}-01-01`;
     return '';
   };
+  // subcarpetas en orden descendente: por fecha del nombre (año, mes) y luego número / nombre de mayor a menor (2026 antes que 2025, «12. DICIEMBRE» antes que «01. ENERO»)
+  A.claveSub = (n) => { const f = A.fechaDeNombre(n); if (f) { const t0 = String(n).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase(); const mm = t0.match(/\b(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|SET|OCT|NOV|DIC)[A-Z]*\b/); if (!f.endsWith('-01-01')) return f; return mm ? f.slice(0, 5) + p2(MES_N[mm[1]]) + '-01' : /(^|\D)0?1[\s._\-/]0?1[\s._\-/]\d{2,4}/.test(t0) ? f : f.slice(0, 5) + '13'; } const t = String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase(); const m = t.match(/\b(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SEP|SET|OCT|NOV|DIC)[A-Z]*\b/); return m ? '0000-' + p2(MES_N[m[1]]) + '-01' : ''; };
+  A.ordenSubs = (a, b) => { const ka = A.claveSub(a), kb = A.claveSub(b); return (kb ? 1 : 0) - (ka ? 1 : 0) || kb.localeCompare(ka) || String(b).localeCompare(String(a), 'es', { numeric: true }); };
   A.fechaDocumento = (d) => A.fechaDeNombre(d.nombre) || String(d.fecha_documento || d.created_at || '').slice(0, 10);
   // orden: más reciente primero; con la misma fecha, el número inicial más alto primero ("2. MTTO…" antes que "1. MTTO…")
   A.ordenDocs = (a, b) => A.fechaDocumento(b).localeCompare(A.fechaDocumento(a)) || ((parseFloat(b.nombre) || 0) - (parseFloat(a.nombre) || 0)) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true });
@@ -798,13 +801,13 @@ window.APP = (() => {
     const raiz = (d) => (d.subcarpeta || '').split('/')[0];
     // subcarpetas fijas "flexibles": si ya existe una equivalente con otro nombre (ej. "1. PROGRAMA TECNOVIGILANCIA"), se usa la existente
     if (opts.subsFlex) { const eqv = (x) => String(x).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/^\s*\d+\s*[.\-)]\s*/, '').replace(/\b(DE|DEL|LA|LAS|LOS|Y|EL)\b/g, '').replace(/[^A-Z]/g, ''); const reales = [...new Set(docs.map(raiz).filter(Boolean))].map(eqv); subs = subs.filter((x) => { const k = eqv(x); return !reales.some((r) => r !== k && (r.includes(k) || k.includes(r)) && Math.min(r.length, k.length) >= 6); }); }
-    const listaSubs = [...new Set([...subs, ...[...new Set([...(st.subExtra[llave] || []).map((x) => x.split('/')[0]), ...docs.map(raiz).filter(Boolean)])].filter((x) => !subs.includes(x)).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }))])];
+    const listaSubs = [...new Set([...subs, ...[...new Set([...(st.subExtra[llave] || []).map((x) => x.split('/')[0]), ...docs.map(raiz).filter(Boolean)])].filter((x) => !subs.includes(x)).sort(A.ordenSubs)])];
     let sel = st.subSel[llave] ?? '';
     // sel puede ser una ruta "SUB/SUBSUB/…" (subcarpetas dentro de subcarpetas)
     if (sel && !listaSubs.includes(sel.split('/')[0])) sel = '';
     const dentro = (d, ruta) => { const x = d.subcarpeta || ''; return x === ruta || x.startsWith(ruta + '/'); };
     const selRaiz = sel.split('/')[0];
-    const hijos = sel ? [...new Set([...docs.filter((d) => (d.subcarpeta || '').startsWith(sel + '/')).map((d) => d.subcarpeta.slice(sel.length + 1).split('/')[0]), ...(st.subExtra[llave] || []).filter((x) => x.startsWith(sel + '/')).map((x) => x.slice(sel.length + 1).split('/')[0])])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'es', { numeric: true })) : [];
+    const hijos = sel ? [...new Set([...docs.filter((d) => (d.subcarpeta || '').startsWith(sel + '/')).map((d) => d.subcarpeta.slice(sel.length + 1).split('/')[0]), ...(st.subExtra[llave] || []).filter((x) => x.startsWith(sel + '/')).map((x) => x.slice(sel.length + 1).split('/')[0])])].filter(Boolean).sort(A.ordenSubs) : [];
     const cuentaRuta = (r) => docs.filter((d) => dentro(d, r)).length;
     // Del más reciente al más antiguo: fecha del documento (o de carga), luego hora de carga
     const fechaDoc = (d) => A.fechaDocumento(d);
