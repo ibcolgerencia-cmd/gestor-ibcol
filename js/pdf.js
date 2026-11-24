@@ -535,8 +535,9 @@ window.PDF = (() => {
     const l = (String(txt || '').split('\n').find((r) => /^forma de pago/i.test(r.trim())) || '').toLowerCase();
     if (!l) return { k: 'libre' };
     const n = Number((l.match(/(\d+)\s*cuotas/) || [])[1]) || null;
-    if (/cada dos meses|bimestral/.test(l)) return { k: 'bimestral', n: n || 6 };
-    if (/mensual/.test(l)) return { k: 'mensual', n: n || 12 };
+    const ini = Number(((l.match(/cuota inicial de \$?\s*([\d.]+)/) || [])[1] || '').replace(/\./g, '')) || 0;
+    if (/cada dos meses|bimestral/.test(l)) return { k: 'bimestral', n: n || 6, ini };
+    if (/mensual/.test(l)) return { k: 'mensual', n: n || 12, ini };
     if (/50\s*%/.test(l)) return { k: '50y50' };
     if (/único|unico/.test(l)) return { k: 'unico' };
     return { k: 'libre' };
@@ -547,8 +548,11 @@ window.PDF = (() => {
     if (fp.k === '50y50') { const a = Math.round(total / 2); return [['1', 'Anticipo (50%)', 'A la aceptación de la cotización', a], ['2', 'Saldo (50%)', 'Contra entrega del informe', total - a]]; }
     if (fp.k === 'unico') return [['1', 'Pago único (100%)', 'Contra entrega del informe', total]];
     if (fp.k === 'mensual' || fp.k === 'bimestral') {
-      const n = Math.max(1, Math.min(60, fp.n || 1)), c = Math.round(total / n), paso = fp.k === 'bimestral' ? 2 : 1;
-      return Array.from({ length: n }, (_, i) => [String(i + 1), `Cuota ${i + 1} de ${n}`, `Mes ${i * paso + 1}`, i === n - 1 ? total - c * (n - 1) : c]);
+      const n = Math.max(1, Math.min(60, fp.n || 1)), paso = fp.k === 'bimestral' ? 2 : 1;
+      const ini = Math.min(Math.max(0, Math.round(fp.ini || 0)), total), resto = total - ini, c = Math.round(resto / n);
+      const filas = ini ? [['—', 'Cuota inicial', 'A la aceptación de la cotización', ini]] : [];
+      Array.from({ length: n }, (_, i) => filas.push([String(i + 1), `Cuota ${i + 1} de ${n}`, `Mes ${i * paso + 1}`, i === n - 1 ? resto - c * (n - 1) : c]));
+      return filas;
     }
     return [];
   }

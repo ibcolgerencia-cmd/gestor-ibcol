@@ -1404,14 +1404,17 @@
       const l = (String(txt || '').split('\n').find((r) => /^forma de pago/i.test(r.trim())) || '').toLowerCase();
       if (!l) return { k: 'libre' };
       const n = Number((l.match(/(\d+)\s*cuotas/) || [])[1]) || null;
-      if (/cada dos meses|bimestral/.test(l)) return { k: 'bimestral', n: n || 6 };
-      if (/mensual/.test(l)) return { k: 'mensual', n: n || 12 };
+      const ini = Number(((l.match(/cuota inicial de \$?\s*([\d.]+)/) || [])[1] || '').replace(/\./g, '')) || 0;
+      if (/cada dos meses|bimestral/.test(l)) return { k: 'bimestral', n: n || 6, ini };
+      if (/mensual/.test(l)) return { k: 'mensual', n: n || 12, ini };
       if (/50\s*%/.test(l)) return { k: '50y50' };
       if (/único|unico/.test(l)) return { k: 'unico' };
       return { k: 'libre' };
     };
-    const lineaPago = (k, n, total) => {
+    const lineaPago = (k, n, total, ini = 0) => {
       const p = (v) => PDF.pesos(Math.round(v));
+      ini = Math.min(Math.max(0, Math.round(Number(ini) || 0)), total || Infinity);
+      if (ini && (k === 'mensual' || k === 'bimestral')) return `Forma de pago: cuota inicial de ${p(ini)} y ${n} cuotas ${k === 'mensual' ? 'mensuales' : 'cada dos meses (bimestrales)'}${total ? ` de ${p((total - ini) / n)} cada una` : ''}.`;
       if (k === '50y50') return `Forma de pago: 50% de anticipo${total ? ` (${p(total / 2)})` : ''} y 50% contra entrega del informe${total ? ` (${p(total - Math.round(total / 2))})` : ''}.`;
       if (k === 'mensual') return `Forma de pago: ${n} cuotas mensuales${total ? ` de ${p(total / n)} cada una` : ''}.`;
       if (k === 'bimestral') return `Forma de pago: ${n} cuotas cada dos meses (bimestrales)${total ? ` de ${p(total / n)} cada una` : ''}.`;
@@ -1432,6 +1435,7 @@
         ${tipo === 'cotizaciones' ? `<fieldset><legend>Condiciones comerciales</legend><div class="fields">
           ${f.sel('forma_pago', 'Forma de pago', FORMAS_PAGO.map((o) => [o.k, o.n]), formaDe(x?.condiciones ?? st.fmt.cotizacion.condiciones).k)}
           ${f.input('cuotas', 'Número de cuotas', formaDe(x?.condiciones ?? st.fmt.cotizacion.condiciones).n || '', { type: 'number', attrs: 'min="1" max="60" step="1"' })}
+          ${f.input('cuota_inicial', 'Cuota inicial $ (opcional)', formaDe(x?.condiciones ?? st.fmt.cotizacion.condiciones).ini || '', { type: 'number', attrs: 'min="0" step="1000" placeholder="0 = sin cuota inicial"' })}
           <div class="field" data-cuota-info style="align-self:end"><span class="muted" data-cuota></span></div>
           <div class="field full"><span class="lbl">Cuadro de forma de pago (así sale en la cotización)</span><div data-plan class="tbl-wrap"></div></div>
           ${f.area('condiciones', 'Texto de condiciones comerciales (la línea «Forma de pago» se actualiza sola; puede editar el resto)', x?.condiciones ?? st.fmt.cotizacion.condiciones, { rows: 4 })}</div></fieldset>` : ''}</form>`,
@@ -1450,11 +1454,13 @@
           if (!fpSel) return;
           const k = fpSel.value, conCuotas = k === 'mensual' || k === 'bimestral';
           fpN.closest('.field').style.display = conCuotas ? '' : 'none';
+          const fpI = m.body.querySelector('[name=cuota_inicial]'); fpI.closest('.field').style.display = conCuotas ? '' : 'none';
           if (conCuotas && !(Number(fpN.value) >= 1)) fpN.value = FORMAS_PAGO.find((o) => o.k === k).c;
           const n = Math.max(1, Math.round(Number(fpN.value) || 1));
           const total = totales().total;
-          m.body.querySelector('[data-cuota]').textContent = conCuotas && total ? `${n} cuotas de ${PDF.pesos(Math.round(total / n))}` : '';
-          const l = lineaPago(k, n, total);
+          const ini = conCuotas ? Math.min(Math.max(0, Math.round(Number(fpI.value) || 0)), total) : 0;
+          m.body.querySelector('[data-cuota]').textContent = conCuotas && total ? `${ini ? `Cuota inicial ${PDF.pesos(ini)} + ` : ''}${n} cuotas de ${PDF.pesos(Math.round((total - ini) / n))}` : '';
+          const l = lineaPago(k, n, total, ini);
           const pl = m.body.querySelector('[data-plan]');
           if (pl) { const filas = l ? PDF.planPagoCot(l, total) : []; pl.innerHTML = filas.length ? `<table class="tbl"><thead><tr><th>No.</th><th>Pago</th><th>Momento del pago</th><th class="r">Valor</th></tr></thead><tbody>${filas.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="r num">${PDF.pesos(r[3])}</td></tr>`).join('')}<tr><td></td><td><b>TOTAL</b></td><td></td><td class="r num"><b>${PDF.pesos(total)}</b></td></tr></tbody></table>` : `<p class="muted" style="margin:0">${k === 'libre' ? 'Forma de pago libre: se toma del texto de condiciones (sin cuadro).' : 'Agregue ítems para calcular los pagos.'}</p>`; }
           if (!l) return;
