@@ -331,3 +331,4 @@ Opcional `IA_MODELO` para cambiar el modelo. Solo el propietario puede usar el a
 - **Un proyecto Free se pausa si pasa 7 días sin uso.** Se reactiva con un clic en supabase.com (los datos no se pierden). Con uso semanal normal no ocurre.
 - Copia de seguridad: en Supabase, *Database → Backups* (o descargue tablas en *Table Editor → Export CSV*) una vez al mes.
 - La cuenta de cobro incluye la declaración de no responsable de IVA; revise con su contador que el texto corresponda a su situación tributaria. Complete cédula y cuenta bancaria en **Mi empresa y firma**.
+- **Novedades (v185):** el QR solo se ajusta a puntos enteros de la rotuladora cuando no pierde más del 15 % de tamaño (cintas de 24 y 18 mm vuelven a leer con todos los datos).
