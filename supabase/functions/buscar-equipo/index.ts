@@ -1,6 +1,6 @@
 // =====================================================================
 //  Supabase Edge Function: buscar-equipo
-//  Gestor Biomédico IBCOL · Búsqueda con Google + IA de Google (Gemini)
+//  Gestor Biomédico IBCOL · Búsqueda web + IA (Claude primero, Gemini de respaldo)
 //
 //  Acciones (solo el usuario PROPIETARIO):
 //   - investigar:    busca en Google el equipo del inventario y devuelve
@@ -13,8 +13,10 @@
 //                    para guardarlo en la carpeta del equipo.
 //
 //  Secretos (Supabase > Edge Functions > Secrets):
-//   GEMINI_API_KEY        (obligatorio, el mismo del asistente-ia)
-//   IA_MODELO_BUSQUEDA    (opcional, lista separada por comas)
+//   ANTHROPIC_API_KEY     (Claude, se usa primero; con búsqueda web de Claude)
+//   GEMINI_API_KEY        (respaldo: Gemini con Google Search si Claude falla o no tiene saldo)
+//   IA_MODELO_CLAUDE      (opcional, por defecto claude-haiku-5-5)
+//   IA_MODELO_BUSQUEDA    (opcional, lista de modelos Gemini separada por comas)
 // =====================================================================
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 
@@ -105,6 +107,50 @@ async function gemini(prompt: string, buscar = true): Promise<Resp> {
   if (errores.length && errores.every((e) => /429|RESOURCE_EXHAUSTED|quota/i.test(e))) throw new Error('Se agotó la cuota gratuita de Google Gemini por hoy o por minuto. Espere un momento e intente de nuevo.');
   if (errores.length && errores.every((e) => /503|overload|UNAVAILABLE/i.test(e))) throw new Error('Google Gemini está saturado en este momento. Intente de nuevo en unos minutos.');
   throw new Error('La IA de Google no respondió. Detalle: ' + (errores.at(-1) || 'sin modelos disponibles').slice(0, 300));
+}
+
+// ------------------------------------------------------------------ Claude (primero) con búsqueda web; si falla → Gemini
+async function claude(prompt: string, buscar = true): Promise<Resp> {
+  const key = Deno.env.get('ANTHROPIC_API_KEY');
+  if (!key) throw new Error('sin clave de Claude');
+  const base = Deno.env.get('IA_MODELO_CLAUDE') || 'claude-haiku-5-5';
+  const errores: string[] = [];
+  for (const modelo of [...new Set([base, 'claude-sonnet-5-5'])]) {
+    for (const conBusqueda of buscar ? [true, false] : [false]) {
+      let r: Response;
+      try {
+        r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST', signal: AbortSignal.timeout(110000),
+          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+          body: JSON.stringify({ model: modelo, max_tokens: 8000, messages: [{ role: 'user', content: prompt }],
+            ...(conBusqueda ? { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] } : {}) }),
+        });
+      } catch (e) { errores.push(`${modelo}: ${(e as Error).message}`); break; }
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const msg = `${modelo}${conBusqueda ? ' + web' : ''}: ${r.status} ${j?.error?.message || ''}`; errores.push(msg); console.error('Claude', msg);
+        if (r.status === 400 && conBusqueda && !/credit|balance|saldo/i.test(msg)) continue; // búsqueda web no habilitada: intenta sin ella
+        if (r.status === 404) break; // modelo no existe: siguiente modelo
+        throw new Error('Claude: ' + msg);
+      }
+      const bloques = j.content || [];
+      const texto = bloques.filter((c: any) => c.type === 'text').map((c: any) => c.text || '').join('').trim();
+      if (!texto) { errores.push(`${modelo}: respuesta vacía`); continue; }
+      const vistos = new Set<string>(); const fuentes: { titulo: string; url: string }[] = []; const consultas: string[] = [];
+      for (const c of bloques) {
+        if (c.type === 'server_tool_use' && c.input?.query) consultas.push(String(c.input.query));
+        if (c.type === 'web_search_tool_result' && Array.isArray(c.content)) for (const x of c.content) if (x.url && !vistos.has(x.url)) { vistos.add(x.url); fuentes.push({ titulo: x.title || 'Fuente', url: x.url }); }
+      }
+      return { texto, modelo, fuentes, consultas, sugerencias: '', sinBusqueda: buscar && !conBusqueda };
+    }
+  }
+  throw new Error('Claude: ' + (errores.at(-1) || 'sin respuesta'));
+}
+
+async function ia(prompt: string, buscar = true): Promise<Resp> {
+  const errores: string[] = [];
+  if (Deno.env.get('ANTHROPIC_API_KEY')) { try { return await claude(prompt, buscar); } catch (e) { errores.push((e as Error).message); console.error('Claude falló, se usa Gemini:', errores[0]); } }
+  try { return await gemini(prompt, buscar); } catch (e) { throw new Error([...errores, (e as Error).message].join(' · ')); }
 }
 
 function extraerJSON(t: string) {
@@ -225,13 +271,13 @@ Deno.serve(async (req) => {
     const b = await req.json();
     if (b.accion === 'descargar') return json(await descargar(String(b.url || '')));
     if (b.accion === 'investigar') {
-      const r = await gemini(promptInvestigar(b.equipo || {}, b.que || []));
+      const r = await ia(promptInvestigar(b.equipo || {}, b.que || []));
       const datos = extraerJSON(r.texto);
       if (!datos) return json({ error: 'La IA no devolvió los datos en el formato esperado. Intente de nuevo.', texto: r.texto.slice(0, 2000) }, 502);
       return json({ datos, fuentes: r.fuentes, consultas: r.consultas, sugerencias: r.sugerencias, modelo: r.modelo, sin_busqueda: !!r.sinBusqueda });
     }
     if (b.accion === 'mantenimiento') {
-      const r = await gemini(promptMantenimiento(b), b.google !== false);
+      const r = await ia(promptMantenimiento(b), b.google !== false);
       const datos = extraerJSON(r.texto);
       if (!datos) return json({ error: 'La IA no devolvió los datos en el formato esperado. Intente de nuevo.' }, 502);
       return json({ datos, fuentes: r.fuentes, consultas: r.consultas, sugerencias: r.sugerencias, modelo: r.modelo, sin_busqueda: !!r.sinBusqueda });
