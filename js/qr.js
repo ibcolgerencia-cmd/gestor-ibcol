@@ -116,35 +116,79 @@
   // texto con tildes en UTF-8 (los lectores de QR lo muestran bien)
   const utf8 = (t) => unescape(encodeURIComponent(t));
 
-  const TAM = { peq: { t: 'Pequeño · 50 × 25 mm', w: 50, h: 25 }, med: { t: 'Mediano · 70 × 35 mm', w: 70, h: 35 }, gra: { t: 'Grande · 100 × 50 mm', w: 100, h: 50 } };
+  // versión corta del QR (rótulos pequeños y cinta): menos datos = módulos más grandes = se lee mejor
+  A.textoQRCorto = ({ ent, eq, cons = [], mtos = [] }) => {
+    const t = A.textoQR({ ent, eq, cons, mtos }).split('\n'); const v = (k) => (t.find((l) => l.startsWith(k)) || '').split(': ').slice(1).join(': ');
+    return [`${v('INSTITUCIÓN')} · ${v('SEDE')} · ${v('CONSULTORIO')}`, `${v('EQUIPO')} · CÓD. INVENTARIO: ${v('CÓDIGO INVENTARIO')}`, `${v('MARCA')} ${v('MODELO')} · S/N ${v('SERIE')}`, `Ubic.: ${v('UBICACIÓN')} · Riesgo ${String(v('CLASIFICACIÓN DE RIESGO')).replace('Clase ', '')} · RS ${v('REGISTRO SANITARIO')}`,
+      `Calib./Valid.: ${t.find((l) => l.startsWith('CALIBRACIÓN'))?.split(': ').slice(1).join(': ') || ''}`, `Mto. prev.: ${v('MANTENIMIENTO PREVENTIVO')}`, (t.find((l) => l.startsWith('Información al')) || '').replace(' · IBCOL Ingeniería Biomédica', '')].join('\n');
+  };
 
-  A.pdfRotulos = async ({ ent, eqs, cons = [], mtos = [], tipo = 'ambos', tam = 'med', datos = {} }) => {
-    const T = TAM[tam] || TAM.med;
+  // tamaños: hojas adhesivas (varios rótulos por hoja carta) y cinta Brother PT-P700 (un rótulo por página, del ancho de la cinta)
+  //  · PT-P700: cabezal de 128 puntos a 180 ppp; altura imprimible ≈ 18 mm en cinta TZe de 24 mm, ≈ 15 mm en 18 mm y ≈ 9,5 mm en 12 mm
+  const TAM = {
+    peq: { t: '50 × 25 mm', w: 50, h: 25 }, h5030: { t: '50 × 30 mm', w: 50, h: 30 }, h6040: { t: '60 × 40 mm', w: 60, h: 40 }, med: { t: '70 × 35 mm', w: 70, h: 35 },
+    h8050: { t: '80 × 50 mm', w: 80, h: 50 }, gra: { t: '100 × 50 mm (recomendado para el QR con todos los datos)', w: 100, h: 50 }, pers: { t: 'Personalizado (ancho × alto)', w: 70, h: 35, pers: true },
+    pt24: { t: 'Brother PT-P700 · cinta TZe 24 mm', cinta: 24, ph: 18, largo: 75 }, pt18: { t: 'Brother PT-P700 · cinta TZe 18 mm', cinta: 18, ph: 15, largo: 65 }, pt12: { t: 'Brother PT-P700 · cinta TZe 12 mm', cinta: 12, ph: 9.5, largo: 55 },
+  };
+  A.TAM_ROTULO = TAM;
+
+  const textoDe = (e, ent, cons, mtos, datos, corto) => (datos.qrDatos === false ? A.urlEquipo(e.id) : (corto || datos.corto) ? A.textoQRCorto({ ent, eq: e, cons, mtos }) + (datos.enlace ? `\n${A.urlEquipo(e.id)}` : '') : A.textoQR({ ent, eq: e, cons, mtos, enlace: !!datos.enlace }));
+  const lineasDe = (e, cons, datos) => [datos.marca !== false ? [e.marca, e.modelo].filter(Boolean).join(' · ') : '', datos.serie !== false && e.serie ? `S/N ${e.serie}` : '', datos.servicio !== false ? (cons.find((c) => c.id === e.consultorio_id)?.nombre || e.ubicacion || '') : ''].filter(Boolean);
+
+  // rótulo de hoja adhesiva (w × h mm) con su esquina en (x, y)
+  const rotuloHoja = async (doc, e, x, y, T, { ent, cons, mtos, tipo, datos, logo, borde = true }) => {
+    if (borde) { doc.setDrawColor(150); doc.setLineWidth(0.2); doc.setLineDashPattern([1, 1], 0); doc.roundedRect(x, y, T.w, T.h, 1.5, 1.5); doc.setLineDashPattern([], 0); }
+    const pad = Math.max(1.5, T.h * 0.07), codigo = e.codigo_inv || e.activo_fijo || e.serie || '';
+    const conQR = tipo !== 'barras', conBar = tipo !== 'qr' && !!codigo;
+    const barH = conBar ? Math.max(6, T.h * 0.2) : 0; const lq = conQR ? Math.min(T.h - 2 * pad - (conBar ? barH + 1 : 0), T.w * 0.5) : 0;
+    if (conQR) await dibQR(doc, textoDe(e, ent, cons, mtos, datos, T.h < 35 || T.w < 60), x + pad, y + pad, lq);
+    const tx = x + pad + (conQR ? lq + pad : 0), tw = x + T.w - pad - tx; let ty = y + pad;
+    const hLogo = T.h * 0.18; if (datos.logo !== false && logo && T.h >= 30) { fitImg(doc, logo, tx, ty, tw * 0.55, hLogo); ty += hLogo + 0.8; }
+    const fs = Math.min(T.h / 35 * 7, T.w / 70 * 8); doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'bold'); let fN = fs * 1.12; const larga = String(e.nombre || '').toUpperCase().split(/\s+/).sort((p, q) => q.length - p.length)[0] || ''; while (fN > 4.5) { doc.setFontSize(fN); if (doc.getTextWidth(larga) <= tw) break; fN -= 0.25; }
+    doc.setFontSize(fN); const nom = doc.splitTextToSize(String(e.nombre || '').toUpperCase(), tw).slice(0, 2); doc.text(nom, tx, ty + fs * 0.38); ty += nom.length * fs * 0.45 + 0.4;
+    doc.setFontSize(fs * 1.05); if (codigo) { doc.text(codigo, tx, ty + fs * 0.36); ty += fs * 0.45; }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(fs * 0.82);
+    const resto = y + T.h - pad - (conBar ? barH + 1 : 0);
+    for (const l of lineasDe(e, cons, datos)) { const ls = doc.splitTextToSize(l, tw).slice(0, 1); if (ty + fs * 0.36 > resto) break; doc.text(ls, tx, ty + fs * 0.33); ty += fs * 0.4; }
+    // código de barras a todo el ancho del rótulo (barras más anchas = se lee mejor)
+    if (conBar) { try { const b = await pngBarras(codigo); doc.addImage(b.src, 'PNG', x + pad, y + T.h - pad - barH, T.w - 2 * pad, barH); } catch (er) { /* código no válido para barras */ } }
+  };
+
+  // rótulo en cinta Brother: página = largo × ancho de la cinta; todo dentro de la franja imprimible centrada
+  const rotuloCinta = async (doc, e, L, T, { ent, cons, mtos, tipo, datos }) => {
+    const ph = T.ph, y0 = (T.cinta - ph) / 2, m = 2, codigo = e.codigo_inv || e.activo_fijo || e.serie || '';
+    const conQR = tipo !== 'barras', conBar = tipo !== 'qr' && !!codigo; let x = m;
+    if (conQR) { await dibQR(doc, textoDe(e, ent, cons, mtos, datos, true), x, y0, ph); x += ph + 1.5; }
+    const libre = L - m - x, barW = conBar ? (conQR ? libre * 0.5 : libre * 0.55) : 0, tw = libre - (conBar ? barW + 1.5 : 0);
+    let fs = Math.min(ph / 18 * 8.5, 9); doc.setTextColor(0, 0, 0); let ty = y0;
+    // la palabra más larga del nombre debe caber completa (sin partirla)
+    doc.setFont('helvetica', 'bold'); const larga = String(e.nombre || '').toUpperCase().split(/\s+/).sort((p, q) => q.length - p.length)[0] || '';
+    while (fs > 4.5) { doc.setFontSize(fs); if (doc.getTextWidth(larga) <= tw) break; fs -= 0.25; }
+    doc.setFontSize(fs); const nom = doc.splitTextToSize(String(e.nombre || '').toUpperCase(), tw).slice(0, ph >= 15 ? 2 : 1); doc.text(nom, x, ty + fs * 0.36); ty += nom.length * fs * 0.42;
+    if (codigo) { doc.setFontSize(fs * 0.95); doc.text(codigo, x, ty + fs * 0.36); ty += fs * 0.42; }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(fs * 0.75);
+    for (const l of lineasDe(e, cons, datos)) { if (ty + fs * 0.3 > y0 + ph) break; doc.text(doc.splitTextToSize(l, tw).slice(0, 1), x, ty + fs * 0.3); ty += fs * 0.34; }
+    if (conBar) { try { const b = await pngBarras(codigo); const bx = L - m - barW, bh = ph - (ph >= 12 ? fs * 0.45 : 0); doc.addImage(b.src, 'PNG', bx, y0, barW, bh); if (ph >= 12) { doc.setFont('helvetica', 'normal'); doc.setFontSize(fs * 0.7); doc.text(codigo, bx + barW / 2, y0 + ph - 0.3, { align: 'center' }); } } catch (er) { /* código no válido */ } }
+  };
+
+  A.pdfRotulos = async ({ ent, eqs, cons = [], mtos = [], tipo = 'ambos', tam = 'med', datos = {}, ancho = 0, alto = 0, largo = 0 }) => {
+    let T = { ...(TAM[tam] || TAM.med) }; if (T.pers) { T.w = Math.max(20, +ancho || T.w); T.h = Math.max(12, +alto || T.h); }
+    const logo = ent?.logo || window.IBCOL_LOGO || null;
+    if (T.cinta) {
+      const L = Math.max(30, +largo || T.largo);
+      const doc = new window.jspdf.jsPDF({ unit: 'mm', format: [T.cinta, L], orientation: 'landscape' });
+      for (const [i, e] of eqs.entries()) { if (i) doc.addPage([T.cinta, L], 'landscape'); await rotuloCinta(doc, e, L, T, { ent, cons, mtos, tipo, datos }); }
+      return doc.output('blob');
+    }
     const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'letter' });
     const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 8, gap = 3;
     const cols = Math.max(1, Math.floor((W - 2 * M + gap) / (T.w + gap))), filas = Math.max(1, Math.floor((H - 2 * M + gap) / (T.h + gap)));
     const ox = (W - (cols * T.w + (cols - 1) * gap)) / 2;
-    const logo = ent?.logo || null, logoIb = window.IBCOL_LOGO || null;
     let i = 0;
     for (const e of eqs) {
       const pos = i % (cols * filas); if (i && pos === 0) doc.addPage();
-      const x = ox + (pos % cols) * (T.w + gap), y = M + Math.floor(pos / cols) * (T.h + gap);
-      doc.setDrawColor(150); doc.setLineWidth(0.2); doc.setLineDashPattern([1, 1], 0); doc.roundedRect(x, y, T.w, T.h, 1.5, 1.5); doc.setLineDashPattern([], 0);
-      const pad = T.h * 0.07, codigo = e.codigo_inv || e.activo_fijo || e.serie || '';
-      const conQR = tipo !== 'barras', conBar = tipo !== 'qr' && !!codigo;
-      const barH = conBar ? T.h * 0.2 : 0; const lq = conQR ? T.h - 2 * pad - (conBar ? barH + 1 : 0) : 0;
-      if (conQR) await dibQR(doc, datos.qrDatos === false ? A.urlEquipo(e.id) : A.textoQR({ ent, eq: e, cons, mtos, enlace: !!datos.enlace }), x + pad, y + pad, lq);
-      const tx = x + pad + (conQR ? lq + pad : 0), tw = x + T.w - pad - tx; let ty = y + pad;
-      const hLogo = T.h * 0.2; if (datos.logo !== false && (logo || logoIb)) { fitImg(doc, logo || logoIb, tx, ty, tw * 0.55, hLogo); ty += hLogo + 0.8; }
-      const fs = T.h / 35 * 7; doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(fs * 1.12); const nom = doc.splitTextToSize(String(e.nombre || '').toUpperCase(), tw).slice(0, 2); doc.text(nom, tx, ty + fs * 0.38); ty += nom.length * fs * 0.45 + 0.4;
-      doc.setFontSize(fs * 1.05); if (codigo) { doc.text(codigo, tx, ty + fs * 0.36); ty += fs * 0.45; }
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(fs * 0.82);
-      const lin = [datos.marca !== false ? [e.marca, e.modelo].filter(Boolean).join(' · ') : '', datos.serie !== false && e.serie ? `S/N ${e.serie}` : '', datos.servicio !== false ? (cons.find((c) => c.id === e.consultorio_id)?.nombre || e.ubicacion || '') : ''].filter(Boolean);
-      const resto = y + T.h - pad - (conBar ? barH + 1 : 0);
-      for (const l of lin) { const ls = doc.splitTextToSize(l, tw).slice(0, 1); if (ty + fs * 0.36 > resto) break; doc.text(ls, tx, ty + fs * 0.33); ty += fs * 0.4; }
-      // código de barras a todo el ancho del rótulo (barras más anchas = se lee mejor)
-      if (conBar) { try { const b = await pngBarras(codigo); doc.addImage(b.src, 'PNG', x + pad, y + T.h - pad - barH, T.w - 2 * pad, barH); } catch (er) { /* código no válido para barras */ } }
+      await rotuloHoja(doc, e, ox + (pos % cols) * (T.w + gap), M + Math.floor(pos / cols) * (T.h + gap), T, { ent, cons, mtos, tipo, datos, logo });
       i++;
     }
     return doc.output('blob');
@@ -168,8 +212,11 @@
     modal({ titulo: 'Rótulos con código QR y de barras', size: 'wide',
       cuerpo: `<form class="form" onsubmit="return false"><p class="muted" style="font-size:.85rem;margin:0 0 8px">Genere los rótulos para pegar en los equipos. El <b>código QR</b> lleva los datos del equipo (institución, sede, consultorio, equipo, código, marca, modelo, serie, ubicación, riesgo, registro sanitario, calibración / validación y mantenimiento preventivo vigentes) y se lee con la cámara de cualquier celular; dentro del gestor, «Escanear» abre la hoja del equipo. Los datos quedan con la fecha en que se imprime el rótulo: vuelva a imprimirlo después de cada mantenimiento o calibración. El <b>código de barras</b> lleva el código de inventario y se lee con «Escanear» o con un lector USB.</p>
         <div class="fields">${UI.f.sel('ent', 'Entidad', [['', '— Elegir —'], ...ents.map((e) => [e.id, e.razon_social])], ent?.id || '')}<div class="field" data-rosedebox></div>
-        ${UI.f.sel('tipo', 'Tipo de código', [['ambos', 'QR + código de barras'], ['qr', 'Solo QR'], ['barras', 'Solo código de barras']], 'ambos')}${UI.f.sel('tam', 'Tamaño del rótulo', Object.entries(TAM).map(([k, v]) => [k, v.t]), 'gra')}
-        ${UI.f.sel('qrc', 'Contenido del código QR', [['datos', 'Datos del equipo (se leen con cualquier celular)'], ['datos_enlace', 'Datos del equipo + enlace al gestor'], ['enlace', 'Solo enlace al gestor (pide usuario y contraseña)']], 'datos')}
+        ${UI.f.sel('tipo', 'Tipo de código', [['ambos', 'QR + código de barras'], ['qr', 'Solo QR'], ['barras', 'Solo código de barras']], 'ambos')}<div class="field"><label for="ro_tam">Tamaño del rótulo</label><select id="ro_tam" name="tam"><optgroup label="Hoja adhesiva (carta)">${Object.entries(TAM).filter(([, v]) => !v.cinta).map(([k, v]) => `<option value="${k}" ${k === 'gra' ? 'selected' : ''}>${h(v.t)}</option>`).join('')}</optgroup><optgroup label="Rotuladora Brother PT-P700">${Object.entries(TAM).filter(([, v]) => v.cinta).map(([k, v]) => `<option value="${k}">${h(v.t)}</option>`).join('')}</optgroup></select></div>
+        <div class="field" data-ropers hidden><label>Ancho × alto (mm)</label><div style="display:flex;gap:6px"><input name="ancho" type="number" min="20" max="200" value="70" aria-label="Ancho en mm"><input name="alto" type="number" min="12" max="150" value="35" aria-label="Alto en mm"></div></div>
+        <div class="field" data-rolargo hidden><label for="ro_largo">Largo de cada rótulo en la cinta (mm)</label><input id="ro_largo" name="largo" type="number" min="30" max="200" value="75"></div>
+        <p class="muted full" data-roayuda hidden style="font-size:.8rem;margin:0">Para la <b>Brother PT-P700</b>: abra el PDF, elija la impresora Brother PT-P700, en <i>Propiedades</i> ponga el ancho de cinta elegido y el largo indicado (cada página es un rótulo), escala <b>100 % / tamaño real</b> y margen mínimo. El QR lleva la versión corta de los datos para que se lea en la cinta. También puede abrir el PDF en P-touch Editor (Archivo › Importar imagen).</p>
+        ${UI.f.sel('qrc', 'Contenido del código QR', [['datos', 'Datos del equipo (se leen con cualquier celular)'], ['corto', 'Datos resumidos (QR más pequeño, para rótulos chicos)'], ['datos_enlace', 'Datos del equipo + enlace al gestor'], ['enlace', 'Solo enlace al gestor (pide usuario y contraseña)']], 'datos')}
         <div class="field full" style="display:flex;flex-wrap:wrap;gap:4px 16px"><label class="chk"><input type="checkbox" name="d_logo" checked> Logo de la entidad</label><label class="chk"><input type="checkbox" name="d_marca" checked> Marca y modelo</label><label class="chk"><input type="checkbox" name="d_serie" checked> Serie</label><label class="chk"><input type="checkbox" name="d_servicio" checked> Servicio</label></div>
         <div class="field full"><label for="ro_q">Buscar equipo</label><input id="ro_q" data-roq placeholder="Código, nombre, serie o marca"></div></div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0"><button type="button" class="btn sm" data-rotodos>Marcar todos</button><button type="button" class="btn sm" data-ronada>Quitar todos</button><span class="muted" data-ron></span></div>
@@ -178,6 +225,8 @@
         const b = m.body, q = () => b.querySelector('[data-roq]').value, sd = () => b.querySelector('[name=sede]')?.value || '';
         const pintaSede = () => { const s = sedes(); b.querySelector('[data-rosedebox]').innerHTML = s.length > 1 ? `<label for="ro_sede">Sede</label><select id="ro_sede" name="sede"><option value="">Todas</option>${s.map((x) => `<option>${h(x)}</option>`).join('')}</select>` : ''; const se = b.querySelector('[name=sede]'); if (se) se.onchange = () => lista(b, q(), sd()); };
         pintaSede(); lista(b);
+        const tamSel = b.querySelector('[name=tam]'), tamCambio = () => { const T = TAM[tamSel.value] || {}; b.querySelector('[data-ropers]').hidden = !T.pers; b.querySelector('[data-rolargo]').hidden = !T.cinta; b.querySelector('[data-roayuda]').hidden = !T.cinta; if (T.cinta) b.querySelector('[name=largo]').value = T.largo; };
+        tamSel.onchange = tamCambio; tamCambio();
         b.querySelector('[name=ent]').onchange = async (e) => { ent = ents.find((x) => x.id === e.target.value) || null; await cargar(); pintaSede(); lista(b, q()); };
         b.querySelector('[data-roq]').oninput = () => lista(b, q(), sd());
         b.querySelector('[data-rotodos]').onclick = () => { b.querySelectorAll('[data-roeq]').forEach((x) => sel.add(x.dataset.roeq)); lista(b, q(), sd()); };
@@ -193,7 +242,7 @@
         if (!elegidos.length) { toast('Marque al menos un equipo', true); return false; }
         toast('Generando rótulos…');
         try {
-          const blob = await A.pdfRotulos({ ent, eqs: elegidos, cons, mtos, tipo: v.tipo, tam: v.tam, datos: { qrDatos: v.qrc !== 'enlace', enlace: v.qrc === 'datos_enlace', logo: !!v.d_logo, marca: !!v.d_marca, serie: !!v.d_serie, servicio: !!v.d_servicio } });
+          const blob = await A.pdfRotulos({ ent, eqs: elegidos, cons, mtos, tipo: v.tipo, tam: v.tam, ancho: v.ancho, alto: v.alto, largo: v.largo, datos: { qrDatos: v.qrc !== 'enlace', corto: v.qrc === 'corto', enlace: v.qrc === 'datos_enlace', logo: !!v.d_logo, marca: !!v.d_marca, serie: !!v.d_serie, servicio: !!v.d_servicio } });
           S.log('DESCARGA', 'equipos', ent.id, `Rótulos QR / código de barras (${elegidos.length})`);
           UI.verPDF({ titulo: `Rótulos · ${ent.razon_social} (${elegidos.length})`, blob, nombre: `Rotulos equipos ${ent.razon_social}.pdf`.replace(/[\\/:*?"<>|]/g, '-') });
         } catch (er) { toast(er.message, true); return false; }
