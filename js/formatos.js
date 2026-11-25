@@ -83,15 +83,37 @@ window.FMT = (() => {
   }
 
   // hojas: lista de objetos {campo: valor}; cada objeto es una copia completa del formato
+  // v191: márgenes. Las plantillas exportadas de Excel quedaron corridas (ej. el cronograma pegado al borde izquierdo).
+  // Se centra el contenido de cada página en la hoja: [dx, dy] en puntos (dx > 0 = a la derecha, dy > 0 = hacia arriba),
+  // medido sobre el área impresa de cada plantilla (márgenes izquierdo/derecho y superior/inferior).
+  const CENTRAR = {
+    cronograma: [[28.75, 1.25]], alertas: [[26.75, -1.5]], inventario: [[9, 15]], hoja_vida: [[26.25, 0], [26.25, 0]],
+    mto_preventivo: [[-4.25, 0]], mto_correctivo: [[-4.25, 0]], metrologia: [[-4.25, 0]], cuenta_cobro: [[-15, 0]],
+    acta_baja: [[3.5, 0]], acta_baja_7: [[3.5, 0]], acta_entrega: [[3.5, 0]], acta_entrega_7: [[3.5, 0]],
+  };
   async function render(k, hojas) {
     const [bytes, mapa] = await cargar(k);
-    const { PDFDocument, StandardFonts } = PDFLib;
+    const { PDFDocument, StandardFonts, pushGraphicsState, popGraphicsState, concatTransformationMatrix } = PDFLib;
     const src = await PDFDocument.load(bytes);
     const out = await PDFDocument.create();
     const fN = await out.embedFont(StandardFonts.Helvetica), fB = await out.embedFont(StandardFonts.HelveticaBold);
+    const off = CENTRAR[k] || [];
+    const emb = off.length ? await out.embedPages(src.getPages()) : null;
     for (const vals of hojas) {
-      const pags = await out.copyPages(src, src.getPageIndices());
-      pags.forEach((p) => out.addPage(p));
+      let pags;
+      if (emb) {
+        // la plantilla y todo lo que se escribe encima se desplaza igual (misma matriz), así los campos siguen en su casilla
+        pags = emb.map((e, i) => {
+          const { width, height } = src.getPage(i).getSize(); const [dx, dy] = off[i] || off[0] || [0, 0];
+          const pg = out.addPage([width, height]);
+          pg.pushOperators(pushGraphicsState(), concatTransformationMatrix(1, 0, 0, 1, dx, dy));
+          pg.drawPage(e, { x: 0, y: 0 });
+          return pg;
+        });
+      } else {
+        pags = await out.copyPages(src, src.getPageIndices());
+        pags.forEach((p) => out.addPage(p));
+      }
       for (const [key, c] of Object.entries(mapa.campos)) {
         let v = vals[key];
         if (v === undefined || (c.img && !v)) v = c.default;
@@ -117,6 +139,7 @@ window.FMT = (() => {
         if (x.bg) pg.drawRectangle({ x: x.x, y: x.y, width: x.w, height: x.h, color: hex(x.bg) });
         if (x.texto) escribir(pg, { align: 'center', bold: true, size: 6, ...x }, x.texto, fN, fB);
       }
+      if (emb) pags.forEach((pg) => pg.pushOperators(popGraphicsState()));
     }
     out.setTitle(k); out.setProducer('Gestor Biomédico IBCOL');
     return new Blob([await out.save()], { type: 'application/pdf' });
@@ -278,7 +301,8 @@ window.FMT = (() => {
     const y1 = ventana[0].y, y2 = ventana[11].y;
     // Etiquetas de año: el formato tiene dos (sobre ene–may y jun–dic). Si el periodo cruza dos años, se escriben los meses de cada uno.
     const rango = (y) => { const ms = ventana.filter((v) => v.y === y); return `AÑO ${y}: ${MES[ms[0].m - 1].slice(0, 3)} – ${MES[ms[ms.length - 1].m - 1].slice(0, 3)}`; };
-    const extra = [];
+    // la última línea del pie de la plantilla («Popayán - Cauca») quedó cortada por el recorte de la hoja de Excel: se vuelve a escribir
+    const extra = [{ x: 372, y: 9.5, w: 98, h: 14, bg: 'FFFFFF', texto: 'Popayán - Cauca', size: 6.8, bold: false, color: '000000' }];
     if (cruza) {
       // Reescribe los nombres de los meses de cada columna en el orden del periodo (oct, nov, dic, ene…)
       ventana.forEach((v, p) => {

@@ -198,7 +198,10 @@
     const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise; const filas = [];
     for (let p = 1; p <= pdf.numPages; p++) {
       const pg = await pdf.getPage(p), esc = pg.getViewport({ scale: 1 }).width / 841.89;
-      const its = (await pg.getTextContent()).items.filter((i) => i.str.trim()).map((i) => { const cx = (i.transform[4] + 2) / esc; return { t: i.str.trim(), x: i.transform[4], y: i.transform[5] / esc, col: COLS_AL.find(([, lim]) => cx < lim)[0] }; });
+      const crudos = (await pg.getTextContent()).items.filter((i) => i.str.trim());
+      // desplazamiento del formato (v191: las bitácoras nuevas salen centradas en la hoja): se mide con el rótulo «No.» del encabezado
+      const no = crudos.find((i) => i.str.trim() === 'No.'); const off = no ? no.transform[4] / esc - 31.514 : 0;
+      const its = crudos.map((i) => { const cx = (i.transform[4] + 2) / esc - off; return { t: i.str.trim(), x: i.transform[4], y: i.transform[5] / esc, col: COLS_AL.find(([, lim]) => cx < lim)[0] }; });
       const anclas = its.filter((i) => i.col === 'n' && /^\d{1,3}$/.test(i.t)).sort((a, b) => b.y - a.y); if (!anclas.length) continue;
       const tope = anclas[0].y + 13;
       const rows = anclas.map(() => ({}));
