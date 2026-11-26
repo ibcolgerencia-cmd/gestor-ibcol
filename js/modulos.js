@@ -1001,7 +1001,7 @@
     const als = A.ordenarAlertas(als0), docs = docs0.filter((d) => d.carpeta === 'alertas');
     const porAnio = {}; als.forEach((a) => { const p = A.periodoAlerta(a); (porAnio[p.anio] = porAnio[p.anio] || []).push(a); });
     const anios = Object.keys(porAnio).map(Number).sort((a, b) => b - a), hoy = new Date();
-    const abierto = (y) => (st.alAnioAbierto[ent.id]?.[y] ?? (y === anios[0]));
+    const abierto = (y) => st.alAnioAbierto[ent.id]?.[y] === true;
     const fila = (a, i) => { const sp = soporteDe(a, docs), ap = a.aplicabilidad || 'No aplica';
       return `<tr><td class="num">${i + 1}</td><td><b>${h(a.mes_consulta || '')}</b></td><td>${h(a.tipo_notificacion || '')}${a.dispositivo ? `<div class="muted" style="font-size:.8rem">${h(a.dispositivo)}${a.registro_sanitario ? ` · <span class="mono">${h(a.registro_sanitario)}</span>` : ''}</div>` : ''}</td><td>${h(a.agencia || '')}</td><td class="num">${UI.fecha(a.fecha_publicacion) || '—'}</td><td>${h(a.responsable || '')}</td>
         <td style="min-width:200px;font-size:.85rem">${h(String(a.analisis || '').replace(/\s*·?\s*Soporte:\s*[^·\n]+/i, '').trim() || '—')}</td><td><span class="pill ${/^aplica/i.test(ap) ? 'warn' : ''}">${h(ap)}</span></td>

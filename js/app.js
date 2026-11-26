@@ -258,7 +258,7 @@ window.APP = (() => {
   // alertas en una pestaña desplegable (cerrada por defecto; se recuerda si el usuario la abre)
   A.alertasPlegables = (v, sub, clave = 'general') => {
     const venc = v.filter((x) => x.d < 0).length, prox = v.length - venc;
-    let abierto = false; try { abierto = localStorage.getItem('ibcol_alertas_' + clave) === '1'; } catch { /* */ }
+    const abierto = false; // v193: siempre plegada; se abre solo con clic
     return `<details class="panel alertas-plegables" data-alertas="${h(clave)}" ${abierto ? 'open' : ''}>
       <summary style="display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;flex-wrap:wrap">
         <span class="chev" aria-hidden="true" style="display:inline-block;transition:transform .2s">▸</span>
@@ -269,7 +269,7 @@ window.APP = (() => {
   };
   document.addEventListener('toggle', (e) => {
     const d = e.target; if (!d?.matches?.('details[data-alertas]')) return;
-    try { localStorage.setItem('ibcol_alertas_' + d.dataset.alertas, d.open ? '1' : '0'); } catch { /* */ }
+    try { localStorage.removeItem('ibcol_alertas_' + d.dataset.alertas); } catch { /* */ }
     const m = d.querySelector('summary .muted'); if (m) m.textContent = m.textContent.replace(/clic para (ver|ocultar)/, d.open ? 'clic para ocultar' : 'clic para ver');
     const c = d.querySelector('.chev'); if (c) c.style.transform = d.open ? 'rotate(90deg)' : '';
   }, true);
@@ -517,7 +517,7 @@ window.APP = (() => {
         if (hechos.has(cp)) return; hechos.add(cp);
         const miembros = A.numerado(lista.filter((x) => carpDe(x) === cp));
         const nEq = eqsR.filter((e) => miembros.some((x) => x.id === e.consultorio_id)).length;
-        const k = `${id}|${sd}|${cp}`, abierta = st.carpAbierta[k] !== false;
+        const k = `${id}|${sd}|${cp}`, abierta = st.carpAbierta[k] === true;
         html += `<details class="srv-folder" ${abierta ? 'open' : ''} data-k="${h(k)}"><summary><span class="ic-f">${I.carpeta}</span><b>${h(cp)}</b><span class="muted">${miembros.length} servicio${miembros.length === 1 ? '' : 's'} · ${nEq} equipo${nEq === 1 ? '' : 's'}</span>${esProp() ? `<span class="sp"></span><button class="btn sm" data-act="carpEditar" data-s="${h(sd)}" data-n="${h(cp)}">${I.edit} Servicios / nombre</button><button class="btn sm" data-act="carpQuitar" data-s="${h(sd)}" data-n="${h(cp)}" title="Quitar la carpeta (los servicios y equipos no se borran)">${I.x} Quitar carpeta</button>` : ''}</summary>
           <div class="srv-folder-in">${miembros.map((x) => sala(x, A.numerado(eqsR.filter((e) => e.consultorio_id === x.id)))).join('')}</div></details>`;
       });
@@ -731,7 +731,7 @@ window.APP = (() => {
     content().innerHTML = `${migas(ruta)}
       <div class="page-head"><div><span class="eyebrow">${eq ? `Equipo ${h(eq.codigo_inv)}` : sede ? `Sede ${h(sede)}` : 'Carpeta de la entidad'}</span><h1>${h(nomDef)}</h1></div>${esProp() && (def.ia || eq) ? `<div class="actions">${eq && k === 'hoja_vida' ? `<button class="btn pri" data-act="iaHV" title="La IA lee manual, ficha técnica, inventario, registro sanitario y factura del equipo y propone los datos">${I.ia} Actualizar hoja de vida con IA</button>` : ''}${eq ? `<button class="btn" data-act="google">${I.ia} Buscar con Google</button>` : ''}<button class="btn pri" data-act="ia">${I.ia} Redactar con IA</button></div>` : ''}</div>
       ${def.gen ? '<div id="gen" style="display:grid;gap:18px"></div>' : ''}
-      ${def.gen ? `<details class="plegable" id="archWrap"${(() => { try { return localStorage.getItem('ibcol.plegable.' + k) === '1' ? ' open' : ''; } catch { return ''; } })()}><summary><span>Archivos y subcarpetas</span><span class="muted" data-arch-n></span></summary><section class="panel" id="archivos"></section></details>` : '<section class="panel" id="archivos"></section>'}`;
+      ${def.gen ? `<details class="plegable" id="archWrap"><summary><span>Archivos y subcarpetas</span><span class="muted" data-arch-n></span></summary><section class="panel" id="archivos"></section></details>` : '<section class="panel" id="archivos"></section>'}`;
     const ctx = { ent, eq, k, def, sede };
     A.acts({ ia: () => A.asistenteIA({ ent, eq, carpeta: k }), iaHV: () => A.asistenteIA({ ent, eq, auto: 'hv' }), google: () => A.buscarGoogleEquipo(eq, ent) });
     if (def.gen) {
@@ -746,7 +746,7 @@ window.APP = (() => {
     });
     const wrap = document.getElementById('archWrap');
     if (wrap) {
-      wrap.addEventListener('toggle', () => { try { localStorage.setItem('ibcol.plegable.' + k, wrap.open ? '1' : '0'); } catch {} });
+      try { localStorage.removeItem('ibcol.plegable.' + k); } catch {}
       const nDocs = (await S.list('documentos', { entidad_id: entId }).catch(() => [])).filter((d) => d.carpeta === (def.carpetaReal || k) && (!eqId || def.rel || d.equipo_id === eqId)).length;
       const nEl = wrap.querySelector('[data-arch-n]'); if (nEl) nEl.textContent = `${nDocs} documento${nDocs === 1 ? '' : 's'} · ${wrap.open ? 'ocultar' : 'ver'}`;
       wrap.addEventListener('toggle', () => { if (nEl) nEl.textContent = `${nDocs} documento${nDocs === 1 ? '' : 's'} · ${wrap.open ? 'ocultar' : 'ver'}`; });
