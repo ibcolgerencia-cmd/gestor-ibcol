@@ -46,12 +46,15 @@ window.FMT = (() => {
     const font = c.bold ? fB : fN;
     const txt = limpiar(valor, font);
     const pad = 1.5, ancho = c.w - 2 * pad;
-    let size = c.size || 8, lineas;
+    const base = c.size || 8; let size = base, lineas, cabe = false;
     const multilinea = c.wrap || c.h >= size * 2.3 || txt.includes('\n');
-    for (; size >= (c.wrap ? 2.4 : 3.5); size -= 0.25) {
-      lineas = multilinea ? partir(txt, font, size, ancho) : [txt];
-      const cabe = lineas.every((l) => font.widthOfTextAtSize(l, size) <= ancho) && lineas.length * size * 1.12 <= c.h + 0.5;
-      if (cabe) break;
+    const prueba = (mult, min) => { for (size = base; size >= min; size -= 0.25) { lineas = mult ? partir(txt, font, size, ancho) : [txt]; cabe = lineas.every((l) => font.widthOfTextAtSize(l, size) <= ancho) && lineas.length * size * 1.12 <= c.h + 0.5; if (cabe) return true; } return false; };
+    // v192: un texto largo en una casilla de una sola línea (ej. «Descripción» de componentes y accesorios en la hoja de vida)
+    // ya no se sale del cuadro: primero se reduce un poco; si no cabe, se parte en varias líneas dentro de la casilla
+    if (!prueba(multilinea, multilinea ? (c.wrap ? 2.4 : 3.5) : Math.min(5, base)) && !prueba(true, 2.4)) {
+      // último recurso: letra mínima y se recorta con «…» lo que no cabe en el alto de la casilla
+      size = 2.4; lineas = partir(txt, font, size, ancho); const max = Math.max(1, Math.floor((c.h + 0.5) / (size * 1.12)));
+      if (lineas.length > max) { lineas = lineas.slice(0, max); let u = lineas[max - 1]; while (u && font.widthOfTextAtSize(u + '…', size) > ancho) u = u.slice(0, -1); lineas[max - 1] = u.trimEnd() + '…'; }
     }
     const alto = lineas.length * size * 1.12;
     const arriba = c.wrap && c.align === 'left' && c.h > size * 3;
