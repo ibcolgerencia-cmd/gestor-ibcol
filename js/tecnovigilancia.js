@@ -166,8 +166,8 @@
     const com = String(TV.cfg(ent).comunicacion_sedes || '').trim() ? String(TV.cfg(ent).comunicacion_sedes).split('\n').map((l) => l.trim()).filter(Boolean) : TV.COMUNICACION_SEDES;
     const bloque = ['## Sedes en las que aplica el programa',
       `El Programa Institucional de Tecnovigilancia de {ENTIDAD} aplica en todas sus sedes: ${lista}. En cada sede se cumplen los mismos procedimientos de este documento: identificación, reporte, análisis y gestión de eventos e incidentes adversos (incluidos los reportes en cero), consulta de alertas sanitarias y retiros de producto contra el inventario de la sede, y capacitación del personal.`,
-      '| **Sede** | **Enlace local de tecnovigilancia** | **Contacto** | **Equipos** | **Servicios** |',
-      ...sedes.map((x) => { const c = sc[x] || {}; return `| ${cel(x)} | ${cel(c.enlace ? `${c.enlace}${c.cargo ? ' – ' + c.cargo : ''}` : '[ENLACE LOCAL]')} | ${cel([c.telefono, c.correo].filter(Boolean).join(' · ') || '—')} | ${eqDe(x).length} | ${consDe(x).length} |`; }),
+      '| **Sede** | **Enlace local de tecnovigilancia** | **Equipos** | **Servicios** |',
+      ...sedes.map((x) => { const c = sc[x] || {}; return `| ${cel(x)} | ${cel(c.enlace ? `${c.enlace}${c.cargo ? ' – ' + c.cargo : ''}` : '[ENLACE LOCAL]')} | ${eqDe(x).length} | ${consDe(x).length} |`; }),
       ...(() => { const pro = sedes.filter((x) => sc[x]?.codigo_rnt), resto = sedes.filter((x) => !sc[x]?.codigo_rnt); if (!pro.length) return []; return ['## Inscripciones en la Red Nacional de Tecnovigilancia',
         `{ENTIDAD} tiene ${pro.length + (resto.length ? 1 : 0)} inscripciones ante la Red Nacional de Tecnovigilancia del INVIMA. Cada inscripción reporta al INVIMA los eventos e incidentes adversos (serios en 72 horas y no serios en el reporte trimestral, incluido el reporte en cero) de las sedes que cubre:`,
         '| **Inscripción** | **Código RNT** | **Usuario del aplicativo** | **Correo de notificaciones** | **Sedes que cubre** |',
