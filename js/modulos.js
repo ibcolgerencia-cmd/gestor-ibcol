@@ -274,8 +274,20 @@
     const cons = A.ordenar(consAll);
     const titulo = { mantenimiento: 'Cronograma de mantenimiento preventivo', metrologia: 'Cronograma de metrología y calibración', capacitacion: 'Cronograma de capacitación' }[tipo];
     const cap = tipo === 'capacitacion';
-    const fk = `${ent.id}|${tipo}`; st.cronoF = st.cronoF || {}; const F = (st.cronoF[fk] = st.cronoF[fk] || { mes: 0, q: '', estado: '', editar: false, mesIni: 1, serv: '' });
+    const fk = `${ent.id}|${tipo}`; st.cronoF = st.cronoF || {}; const nuevoF = !st.cronoF[fk]; const F = (st.cronoF[fk] = st.cronoF[fk] || { mes: 0, q: '', estado: '', editar: false, mesIni: 1, serv: '' });
     if (!F.mesIni) F.mesIni = 1;
+    // v214: el periodo que se ve (año o entre dos años, ej. abr 2026 – mar 2027) se guarda por entidad, sede y tipo de cronograma,
+    // así al cerrar y volver a abrir el gestor (en cualquier equipo) el cronograma abre en el mismo periodo
+    const kPer = `${tipo}|${sedeCtx || ''}`, perG = ent.config?.crono_periodo?.[kPer];
+    st.cronoPerVisto = st.cronoPerVisto || {};
+    if (perG && (nuevoF || !st.cronoPerVisto[`${ent.id}|${kPer}`])) { F.mesIni = +perG.mesIni || 1; if (+perG.anio) anio = +perG.anio; }
+    st.cronoPerVisto[`${ent.id}|${kPer}`] = true;
+    let tPer = null;
+    const guardarPeriodo = () => { clearTimeout(tPer); tPer = setTimeout(async () => {
+      const act = ent.config?.crono_periodo?.[kPer]; if (act && +act.mesIni === F.mesIni && +act.anio === anio) return;
+      if (!A.esProp?.()) return;
+      try { const fr = await S.get('entidades', ent.id); const cfg = { ...(fr?.config || ent.config || {}) }; cfg.crono_periodo = { ...(cfg.crono_periodo || {}), [kPer]: { mesIni: F.mesIni, anio } }; await A.guardarConfig(ent, cfg); } catch (e) { console.warn('periodo', e); }
+    }, 800); };
     if (sedeCtx) F.serv = 'sede:' + sedeCtx;
     const eqd = (id) => eqs.find((e) => e.id === id) || {};
     const sedeC = (c) => c?.sede || 'Sede principal';
@@ -284,7 +296,7 @@
     const mesDe = (c, m) => Object.entries(c?.plan || {}).filter(([k, v]) => v && +k.split('-')[0] === m).map(([k, v]) => ({ k, v }));
     const M3 = (m) => CAT.MESES[m - 1].slice(0, 3);
     const pintar = async () => {
-      st.cronoAnio = anio;
+      st.cronoAnio = anio; guardarPeriodo();
       // Periodo de 12 meses: de enero a diciembre, o desde otro mes hasta el mismo mes del año siguiente (ej. oct 2026 – sep 2027)
       const ventana = [...Array(12).keys()].map((i) => { const abs = F.mesIni - 1 + i; return { y: anio + Math.floor(abs / 12), m: (abs % 12) + 1, p: i }; });
       const dosAnios = F.mesIni > 1;
