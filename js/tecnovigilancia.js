@@ -471,8 +471,8 @@
     A.acts({
       ...accionesEventos(ent, evs, eqs, 3),
       tvSelT: (d) => { st.tvTrim[ent.id] = { ...sel, t: +d.t }; A.recargar(); },
-      tvCargaTri: () => (regs === null ? toast('Falta actualizar la base de datos', true) : TV.cargarTrimestrales(ent)),
-      tvLeerTri: () => (regs === null ? toast('Falta actualizar la base de datos', true) : TV.cargarTrimestrales(ent, { existentes: true })),
+      tvCargaTri: () => (regs === null ? toast('Falta actualizar la base de datos', true) : TV.cargarTrimestrales(ent, { sede: sedeTV })),
+      tvLeerTri: () => (regs === null ? toast('Falta actualizar la base de datos', true) : TV.cargarTrimestrales(ent, { existentes: true, sede: sedeTV })),
       tvSoporte: async (d) => { const doc = await S.get('documentos', d.id); if (doc) A.abrirDoc(doc); },
       tvNuevoNoSerio: () => TV.formEvento(ent, null, { serio: false, sede: sedeTV }),
       tvTrimPDF: () => { const doc = TV.pdfTrimestral(ent, { anio: sel.anio, t: sel.t, evs: lista, reg: { ...(r?.datos || {}), serios: serTrim(sel.anio, sel.t).length }, sede: sedeTV && !TV.rntSede(ent, sedeTV) ? sedeTV : null, sedeRnt: sedeTV && TV.rntSede(ent, sedeTV) ? { sede: sedeTV, ...TV.rntSede(ent, sedeTV) } : null, enlace: sedeTV ? TV.sedesCfg(ent)[sedeTV] || {} : null, resumenSedes }); verDoc(ent, doc, `Reporte trimestral ${TV.TRIM[sel.t - 1]} ${sel.anio}${sedeTV ? ' · ' + sedeTV : ''}`, `${sedeTV ? 'Reporte_trimestral_sede_' + slug(sedeTV) : 'RETEIM-002'}_T${sel.t}_${sel.anio}_${lista.length ? 'consolidado' : 'en_cero'}_${slug(ent.razon_social)}.pdf`, 3); },

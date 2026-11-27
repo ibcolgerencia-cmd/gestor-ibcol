@@ -94,11 +94,14 @@
 
   // ================================================================== REPORTES TRIMESTRALES
   // items: [{ file? | doc?, nombre, blob }]
-  TV.cargarTrimestrales = async (ent, { existentes = false } = {}) => {
-    const sub4 = await TV.subDestino(ent, 3);
+  // v200: con «sede» (pestaña de la sede) los reportes van a «4. REPORTES TRIMESTRALES/SEDE …/AÑO/TRIMESTRE» y quedan como reporte de esa sede
+  TV.subSedeTrim = (sede) => `SEDE ${String(sede).toUpperCase()}`;
+  TV.cargarTrimestrales = async (ent, { existentes = false, sede = null } = {}) => {
+    const sub4 = await TV.subDestino(ent, 3), subS = sede ? TV.subSedeTrim(sede) : null, rnt = sede ? TV.rntSede?.(ent, sede) : null;
+    const esDeSede = (d) => (d.subcarpeta || '').split('/')[1]?.startsWith('SEDE ');
     let items = [];
     if (existentes) {
-      const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => d.carpeta === 'tecnovigilancia' && /\.pdf$/i.test(d.nombre || '') && ((d.subcarpeta || '').split('/')[0] === sub4 || /trimestr|reteim|en cero|tcvg|reporte masivo/i.test(d.nombre || '')));
+      const docs = (await S.list('documentos', { entidad_id: ent.id })).filter((d) => d.carpeta === 'tecnovigilancia' && /\.pdf$/i.test(d.nombre || '') && ((d.subcarpeta || '').split('/')[0] === sub4 || /trimestr|reteim|en cero|tcvg|reporte masivo/i.test(d.nombre || '')) && (sede ? (d.subcarpeta || '').split('/')[1] === subS : !esDeSede(d)));
       if (!docs.length) { toast(`No hay PDF en "${sub4}"`, true); return; }
       items = docs.map((d) => ({ doc: d, nombre: d.nombre }));
     } else {
@@ -121,7 +124,7 @@
       <td><select data-k="cero" aria-label="Tipo">${opt([['0', 'Con eventos (RETEIM-002)'], ['1', 'Reporte en cero']], it.det.cero ? '1' : '0')}</select></td>
       <td><input type="date" data-k="fecha" value="${h(it.det.fecha)}" aria-label="Fecha de reporte"></td><td><input data-k="radicado" value="${h(it.det.radicado)}" aria-label="Radicado" style="width:120px"></td>
       <td>${it.det.seguro ? '<span class="pill ok">Detectado</span>' : it.det.t ? '<span class="pill">Por fecha: revisar</span>' : '<span class="pill warn">Revisar</span>'}</td></tr>`;
-    modal({ titulo: `Reportes trimestrales cargados (${items.length})`, size: 'wide', cuerpo: `<p class="muted" style="font-size:.85rem">Revise lo que el sistema leyó de cada PDF. Al guardar, cada archivo queda en "${h(sub4)}/AÑO/TRIMESTRE" y ese trimestre queda como <b>reportado</b>.</p>
+    modal({ titulo: `Reportes trimestrales cargados (${items.length})${sede ? ` · sede ${sede}` : ''}`, size: 'wide', cuerpo: `<p class="muted" style="font-size:.85rem">Revise lo que el sistema leyó de cada PDF. Al guardar, cada archivo queda en "${h(sub4)}/AÑO/TRIMESTRE" y ese trimestre queda como <b>reportado</b>.</p>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Archivo</th><th>Año</th><th>Trimestre</th><th>Tipo</th><th>Fecha de reporte</th><th>Radicado</th><th></th></tr></thead><tbody>${items.map(fila).join('')}</tbody></table></div>`,
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar y organizar', cls: 'pri', fn: async (m) => {
         const vals = [...m.body.querySelectorAll('tr[data-i]')].map((tr) => { const o = {}; tr.querySelectorAll('[data-k]').forEach((x) => { o[x.dataset.k] = x.value; }); return { it: items[+tr.dataset.i], ...o }; });
@@ -130,13 +133,14 @@
         let n = 0;
         for (const v of vals) {
           if (v.t === 'x') continue;
-          const anio = +v.anio, t = +v.t, subcarpeta = `${sub4}/${anio}/${ROM[t - 1]} TRIMESTRE`;
+          const anio = +v.anio, t = +v.t, subcarpeta = sede ? `${sub4}/${subS}/${anio}/${ROM[t - 1]} TRIMESTRE` : `${sub4}/${anio}/${ROM[t - 1]} TRIMESTRE`;
           let doc = v.it.doc;
           if (doc) { if (doc.subcarpeta !== subcarpeta) await S.update('documentos', doc.id, { subcarpeta }); }
           else doc = await subirArchivo({ blob: v.it.blob, nombre: v.it.nombre, ent, carpeta: 'tecnovigilancia', subcarpeta });
-          const r = regs.find((x) => x.tipo === 'trimestral' && x.anio === anio && x.periodo === `T${t}`);
-          const datos = { ...(r?.datos || {}), fecha_envio: v.fecha || r?.datos?.fecha_envio || doc.fecha_documento || hoy(), radicado: v.radicado || r?.datos?.radicado || '', en_cero: v.cero === '1', soportes: [...new Set([...(r?.datos?.soportes || []), doc.id])], fuente: 'pdf' };
-          if (r) { await S.update(TB, r.id, { datos, fecha: datos.fecha_envio }); r.datos = datos; } else regs.push(await S.insert(TB, { entidad_id: ent.id, tipo: 'trimestral', anio, periodo: `T${t}`, fecha: datos.fecha_envio, datos }));
+          const tipo = sede ? 'trimestral_sede' : 'trimestral';
+          const r = regs.find((x) => x.tipo === tipo && x.anio === anio && x.periodo === `T${t}` && (!sede || x.datos?.sede === sede));
+          const datos = { ...(r?.datos || {}), ...(sede ? { sede, ...(rnt ? { invima: true, codigo_rnt: rnt.codigo_rnt } : {}) } : {}), fecha_envio: v.fecha || r?.datos?.fecha_envio || doc.fecha_documento || hoy(), radicado: v.radicado || r?.datos?.radicado || '', en_cero: v.cero === '1', soportes: [...new Set([...(r?.datos?.soportes || []), doc.id])], fuente: 'pdf' };
+          if (r) { await S.update(TB, r.id, { datos, fecha: datos.fecha_envio }); r.datos = datos; } else regs.push(await S.insert(TB, { entidad_id: ent.id, tipo, anio, periodo: `T${t}`, fecha: datos.fecha_envio, datos }));
           n++;
         }
         toast(`${n} reporte(s) organizados y trimestres marcados como reportados`); A.recargar();
