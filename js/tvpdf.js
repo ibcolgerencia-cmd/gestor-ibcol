@@ -383,12 +383,12 @@
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); [a.rep_cc ? `C.C. ${a.rep_cc}${a.rep_exp ? ` expedida en ${a.rep_exp}` : ''}` : '', a.rep_cargo || 'Representante legal', ent.razon_social].filter(Boolean).forEach((l) => { doc.text(l, M, y); y += 4.3; });
     // aceptación de la designación: referente y enlaces (dos por fila)
     if (enl.length) {
-      const fir = [{ nombre: ref, cc: a.ref_cc, exp: a.ref_exp, cargo: 'Referente de tecnovigilancia' }, ...enl.map((x) => ({ ...x, cargo: `Enlace local · ${x.sedes || ''}` }))];
+      const fir = [{ nombre: ref, cc: a.ref_cc, exp: a.ref_exp, cargo: 'Referente de tecnovigilancia', firma: a.firma_ref }, ...enl.map((x) => ({ ...x, cargo: `Enlace local · ${x.sedes || ''}` }))];
       y += 6; salto(40); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text('ACEPTAN LA DESIGNACIÓN:', M, y); y += 4;
       const cw = (ancho - 10) / 2;
       for (let i = 0; i < fir.length; i += 2) {
         salto(32); y += 18;
-        fir.slice(i, i + 2).forEach((x, k) => { const x0 = M + k * (cw + 10); doc.setDrawColor(...NG); doc.line(x0, y, x0 + cw - 10, y); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(String(x.nombre || '').toUpperCase(), x0, y + 4.5);
+        fir.slice(i, i + 2).forEach((x, k) => { const x0 = M + k * (cw + 10); if (x.firma) { try { img(doc, x.firma, x0, y - 17, 55, 16); } catch {} } doc.setDrawColor(...NG); doc.line(x0, y, x0 + cw - 10, y); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(String(x.nombre || '').toUpperCase(), x0, y + 4.5);
           doc.setFont('helvetica', 'normal'); doc.setFontSize(8.3); const ls = [x.cc ? `C.C. ${x.cc}${x.exp ? ` de ${x.exp}` : ''}` : 'C.C. __________', ...doc.splitTextToSize(x.cargo || '', cw - 10)]; ls.forEach((l, j) => doc.text(l, x0, y + 8.8 + j * 3.9)); });
         y += 16;
       }
