@@ -210,7 +210,8 @@ window.APP = (() => {
     const c = content(); c.innerHTML = '<div class="loading">Cargando…</div>';
     try { await V[vista](params); } catch (e) { console.error(e); c.innerHTML = `<div class="panel"><b>No se pudo cargar esta sección.</b><span class="muted">${h(e.message)}</span></div>`; }
     // al volver a una lista de equipos se queda en el último equipo abierto (no regresa al primero)
-    const ult = vista !== 'equipo' && st.ultEq ? c.querySelector(`[data-act="abrirEq"][data-id="${st.ultEq}"]`) : null;
+    // v213: no se toma el botón del equipo que está dentro de «Alertas de vencimiento» (abría la pestaña sin desplegarla el usuario)
+    const ult = vista !== 'equipo' && st.ultEq ? [...c.querySelectorAll(`[data-act="abrirEq"][data-id="${st.ultEq}"]`)].find((b) => !b.closest('details[data-alertas]')) || null : null;
     if (ult) { ult.closest('details')?.setAttribute('open', ''); ult.classList.add('eq-ultimo'); requestAnimationFrame(() => ult.scrollIntoView({ block: 'center' })); setTimeout(() => ult.classList.remove('eq-ultimo'), 2600); }
     else window.scrollTo(0, 0);
     if (vista === 'equipo') st.ultEq = params?.id || null;
@@ -244,6 +245,8 @@ window.APP = (() => {
   A.vencimientos = (equipos, docs = [], entidades = []) => {
     const out = [], en = (id) => entidades.find((e) => e.id === id)?.razon_social || '';
     const add = (fecha, txt, eq, extra = {}) => {
+      // v213: fechas inválidas o de relleno (año < 1900, ej. 0001-01-01) no generan alerta
+      const y = +String(fecha || '').slice(0, 4); if (!fecha || !(y >= 1900)) return;
       const d = UI.diasHasta(fecha); if (d === null || d > 30) return;
       out.push({ d, nivel: d < 0 ? 'bad' : d <= 7 ? 'warn' : 'acc', txt, sub: `${eq ? eq.nombre + ' · ' + eq.codigo_inv : ''}${entidades.length ? ' · ' + en(eq?.entidad_id || extra.entidad_id) : ''}`, eq, ...extra });
     };
