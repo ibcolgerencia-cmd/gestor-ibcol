@@ -470,23 +470,24 @@
 
   // ------------------------------------------------------------------ PLAN DE CAPACITACIÓN SEMESTRAL
   // verificación mensual de alertas sanitarias / recalls contra el inventario de una sede
-  TV.pdfAlertasSede = (ent, { sede, anio, mes, filas, reg, nEq, enlace = {} }) => {
+  TV.pdfAlertasSede = (ent, { sede, principal = false, anio, mes, filas, reg, nEq, enlace = {} }) => {
+    const lug = principal ? sede : `sede ${sede}`, deL = principal ? 'de la institución' : 'de la sede';
     const fmt = fmtDe('alertas'), doc = nuevo('l'), W = doc.internal.pageSize.getWidth(), M = 12; const c = TV.cfg(ent);
-    let y = TV.encabezado(doc, { fmt: { ...fmt, codigo: fmt.codigo || 'FT-PGTV-015', version: fmt.version || '001' }, ent, titulo: `Verificación de alertas sanitarias y recalls contra el inventario · sede ${sede} · ${CAT.MESES[mes - 1]} ${anio}` });
+    let y = TV.encabezado(doc, { fmt: { ...fmt, codigo: fmt.codigo || 'FT-PGTV-015', version: fmt.version || '001' }, ent, titulo: `Verificación de alertas sanitarias y recalls contra el inventario · ${lug} · ${CAT.MESES[mes - 1]} ${anio}` });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...NG);
-    const txt = `Se revisaron las ${filas.length} alertas sanitarias, retiros de producto (recall) e informes de seguridad registrados en la bitácora institucional de ${CAT.MESES[mes - 1].toLowerCase()} de ${anio} contra los ${nEq} equipos biomédicos activos del inventario de la sede ${sede}, comparando el registro sanitario. ${filas.filter((x) => x.aplica).length ? `${filas.filter((x) => x.aplica).length} alerta(s) aplican a dispositivos de la sede y se gestionan según el programa.` : 'Ninguna alerta aplica a los dispositivos de la sede.'}`;
+    const txt = `Se revisaron las ${filas.length} alertas sanitarias, retiros de producto (recall) e informes de seguridad registrados en la bitácora institucional de ${CAT.MESES[mes - 1].toLowerCase()} de ${anio} contra los ${nEq} equipos biomédicos activos del inventario ${principal ? 'de ' + sede : 'de la sede ' + sede}, comparando el registro sanitario. ${filas.filter((x) => x.aplica).length ? `${filas.filter((x) => x.aplica).length} alerta(s) aplican a dispositivos ${deL} y se gestionan según el programa.` : `Ninguna alerta aplica a los dispositivos ${deL}.`}`;
     const ls = doc.splitTextToSize(txt, W - 2 * M); doc.text(ls, M, y + 3, { lineHeightFactor: 1.4, maxWidth: W - 2 * M }); y += ls.length * 4.2 + 4;
     doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, bottom: 26 }, styles: { fontSize: 7.4, cellPadding: 1.1, lineColor: NG, lineWidth: 0.2, textColor: NG, valign: 'middle' }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold', halign: 'center' },
-      head: [['#', 'Alerta / dispositivo', 'Registro sanitario', 'Tipo', 'Agencia', 'Fecha publicación', 'Resultado en la sede']],
+      head: [['#', 'Alerta / dispositivo', 'Registro sanitario', 'Tipo', 'Agencia', 'Fecha publicación', `Resultado ${deL}`]],
       body: (filas.length ? filas : [{}]).map((x, i) => [filas.length ? i + 1 : '', x.alerta || '', x.rs || '', x.tipo || '', x.agencia || '', fF(x.fecha), x.resultado || '']),
       columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 70 }, 6: { cellWidth: 70 } },
       didParseCell: (d) => { if (d.section === 'body' && d.column.index === 6 && /^APLICA/.test(String(d.cell.raw))) { d.cell.styles.fillColor = [248, 203, 203]; d.cell.styles.fontStyle = 'bold'; } } });
     y = doc.lastAutoTable.finalY + 5;
     doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, bottom: 26 }, styles: { fontSize: 8, cellPadding: 1.3, lineColor: NG, lineWidth: 0.2, textColor: NG }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60, fillColor: CL } },
-      body: [['Fecha de verificación', fF(reg?.fecha) || 'Pendiente'], ['Verificó (enlace local)', [reg?.verifico || enlace.enlace, reg?.cargo || enlace.cargo].filter(Boolean).join(' – ')], ['Acciones / observaciones', reg?.obs || ''], ['Referente del programa', [c.referente, c.cargo].filter(Boolean).join(' – ')]] });
+      body: [['Fecha de verificación', fF(reg?.fecha) || 'Pendiente'], [principal ? 'Verificó (referente / delegado)' : 'Verificó (enlace local)', [reg?.verifico || enlace.enlace, reg?.cargo || enlace.cargo].filter(Boolean).join(' – ')], ['Acciones / observaciones', reg?.obs || ''], ['Referente del programa', [c.referente, c.cargo].filter(Boolean).join(' – ')]] });
     y = doc.lastAutoTable.finalY + 18; if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = 50; }
     doc.setDrawColor(...NG); doc.line(M, y, M + 70, y); doc.line(W - M - 70, y, W - M, y); doc.setFontSize(8);
-    doc.text([reg?.verifico || enlace.enlace || 'Enlace local de tecnovigilancia', `Enlace local · sede ${sede}`], M, y + 4); doc.text([c.referente || 'Referente del programa', 'Referente de tecnovigilancia'], W - M - 70, y + 4);
+    doc.text([reg?.verifico || enlace.enlace || (principal ? '' : 'Enlace local de tecnovigilancia'), principal ? (reg?.cargo || enlace.cargo || 'Delegado de tecnovigilancia') : `Enlace local · sede ${sede}`], M, y + 4); doc.text([c.referente || 'Referente del programa', 'Referente de tecnovigilancia'], W - M - 70, y + 4);
     TV.pie(doc, fmt); return doc;
   };
   TV.pdfPlan = (ent, { anio, sesiones, sede = null }) => {
