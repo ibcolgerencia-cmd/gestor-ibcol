@@ -137,9 +137,11 @@
   };
 
   // ------------------------------------------------------------------ consolidado trimestral RETEIM-002 / reporte en cero
-  TV.pdfTrimestral = (ent, { anio, t, evs, reg, sede = null, enlace = null, resumenSedes = [] }) => {
+  TV.pdfTrimestral = (ent, { anio, t, evs, reg, sede = null, enlace = null, resumenSedes = [], sedeRnt = null }) => {
     const fmt = fmtDe('evento'), doc = nuevo(evs.length ? 'l' : 'p'), W = doc.internal.pageSize.getWidth(), M = 12;
-    let y = TV.encabezado(doc, { fmt: { ...fmt, codigo: 'RETEIM-002', version: '002' }, ent, titulo: sede ? (evs.length ? `Reporte trimestral de la sede ${sede} · eventos e incidentes no serios` : `Reporte trimestral en cero · sede ${sede}`) : evs.length ? `Reporte trimestral de eventos e incidentes adversos no serios · RETEIM-002` : 'Reporte trimestral de tecnovigilancia en cero' });
+    // sede con inscripción propia ante la RNT: reporte institucional de esa inscripción (código, usuario y correo de la sede)
+    const nomEnt = sedeRnt ? `${ent.razon_social || ''} – sede ${sedeRnt.sede}` : ent.razon_social || '';
+    let y = TV.encabezado(doc, { fmt: { ...fmt, codigo: 'RETEIM-002', version: '002' }, ent, titulo: sedeRnt ? (evs.length ? `Reporte trimestral RETEIM-002 · sede ${sedeRnt.sede} (RNT ${sedeRnt.codigo_rnt})` : `Reporte trimestral en cero · sede ${sedeRnt.sede} (RNT ${sedeRnt.codigo_rnt})`) : sede ? (evs.length ? `Reporte trimestral de la sede ${sede} · eventos e incidentes no serios` : `Reporte trimestral en cero · sede ${sede}`) : evs.length ? `Reporte trimestral de eventos e incidentes adversos no serios · RETEIM-002` : 'Reporte trimestral de tecnovigilancia en cero' });
     const per = `${TV.TRIM[t - 1]} de ${anio} (${TV.mesesTrim(t)})`;
     // reporte de una sede al referente (incluye el reporte en cero de la sede)
     if (sede) {
@@ -162,16 +164,16 @@
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
     if (!evs.length) {
       y += 6;
-      const txt = `${ent.razon_social || ''}${ent.nit ? `, identificada con NIT ${ent.nit}` : ''}, a través del referente de su Programa Institucional de Tecnovigilancia, certifica que durante el ${per} NO se presentaron ni se identificaron eventos ni incidentes adversos asociados al uso de dispositivos médicos en sus servicios, por lo cual se realiza el reporte trimestral EN CERO ante el INVIMA a través del aplicativo web de Tecnovigilancia, conforme a la Resolución 4816 de 2008.`;
+      const txt = `${nomEnt}${ent.nit ? `, identificada con NIT ${ent.nit}` : ''}${sedeRnt ? `, con inscripción propia en la Red Nacional de Tecnovigilancia (código ${sedeRnt.codigo_rnt})` : ''}, a través del referente de su Programa Institucional de Tecnovigilancia, certifica que durante el ${per} NO se presentaron ni se identificaron eventos ni incidentes adversos asociados al uso de dispositivos médicos en sus servicios${sedeRnt ? ` de la sede ${sedeRnt.sede}` : ''}, por lo cual se realiza el reporte trimestral EN CERO ante el INVIMA a través del aplicativo web de Tecnovigilancia, conforme a la Resolución 4816 de 2008.`;
       doc.text(doc.splitTextToSize(txt, W - 2 * M), M, y, { lineHeightFactor: 1.5, align: 'justify', maxWidth: W - 2 * M }); y += 34;
       doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M }, styles: { fontSize: 8.5, cellPadding: 1.6, lineColor: NG, lineWidth: 0.2, textColor: NG }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 70, fillColor: CL } },
-        body: [['Periodo reportado', per], ['Eventos / incidentes adversos no serios', '0 (cero)'], ['Eventos / incidentes adversos serios', String(reg?.serios ?? 0)], ['Fecha de reporte al INVIMA', fF(reg?.fecha_envio) || 'Pendiente'], ['Número de radicado / constancia', reg?.radicado || ''], ['Referente del programa', TV.cfg(ent).referente || ''], ['Observaciones', reg?.obs || '']] });
+        body: [...(sedeRnt ? [['Sede', sedeRnt.sede], ['Código de inscripción RNT', sedeRnt.codigo_rnt], ['Usuario del aplicativo INVIMA', sedeRnt.usuario_invima || ''], ['Correo de notificaciones', sedeRnt.correo_not || '']] : []), ['Periodo reportado', per], ['Eventos / incidentes adversos no serios', '0 (cero)'], ['Eventos / incidentes adversos serios', String(reg?.serios ?? 0)], ['Fecha de reporte al INVIMA', fF(reg?.fecha_envio) || 'Pendiente'], ['Número de radicado / constancia', reg?.radicado || ''], ['Referente del programa', TV.cfg(ent).referente || ''], ['Observaciones', reg?.obs || '']] });
       y = doc.lastAutoTable.finalY + 6;
       if (resumenSedes.length) { doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, bottom: 24 }, styles: { fontSize: 8, cellPadding: 1.3, lineColor: NG, lineWidth: 0.2, textColor: NG }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold' }, head: [['Sede', 'Enlace local', 'No serios', 'Serios', 'Reporte de la sede al referente']], body: resumenSedes.map((x) => [x.sede, x.enlace || '', String(x.ns), String(x.se), x.estado]) }); y = doc.lastAutoTable.finalY + 6; }
       y += 16;
       doc.line(M, y, M + 70, y); doc.setFontSize(8); doc.text([TV.cfg(ent).referente || 'Referente del programa de tecnovigilancia', TV.cfg(ent).cargo || 'Referente de tecnovigilancia'], M, y + 4);
     } else {
-      doc.text(`Periodo: ${per} · ${evs.length} evento(s) / incidente(s) adverso(s) no serio(s) · Fecha de reporte INVIMA: ${fF(reg?.fecha_envio) || 'pendiente'}${reg?.radicado ? ' · Radicado ' + reg.radicado : ''}`, M, y + 2);
+      doc.text(`${sedeRnt ? `Sede ${sedeRnt.sede} · RNT ${sedeRnt.codigo_rnt} · ` : ''}Periodo: ${per} · ${evs.length} evento(s) / incidente(s) adverso(s) no serio(s) · Fecha de reporte INVIMA: ${fF(reg?.fecha_envio) || 'pendiente'}${reg?.radicado ? ' · Radicado ' + reg.radicado : ''}`, M, y + 2);
       doc.autoTable({ startY: y + 5, theme: 'grid', margin: { left: M, right: M, bottom: 24 }, styles: { fontSize: 6.4, cellPadding: 0.9, lineColor: NG, lineWidth: 0.15, textColor: NG, valign: 'top' }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold' },
         head: [['#', 'Código', 'Fecha evento', 'Servicio', 'Dispositivo médico (RS · lote/serie)', 'Clasificación', 'Detección', 'Descripción', 'Desenlace', 'Causa (NTC 5736)', 'Acciones', 'Estado']],
         body: evs.map((ev, i) => { const d = ev.datos || {}; return [i + 1, d.codigo || '', fF(ev.fecha_evento), d.area || ev.servicio || '', [d.dm_generico, d.dm_rs, d.dm_lote || d.dm_serie].filter(Boolean).join(' · '), ev.clasificacion || '', d.deteccion || '', ev.descripcion || '', d.desenlace || '', TV.causaTxt(d.causa), d.acciones || '', TV.estadoTxt(d.estado_reporte)]; }),
