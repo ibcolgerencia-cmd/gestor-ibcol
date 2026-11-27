@@ -137,10 +137,28 @@
   };
 
   // ------------------------------------------------------------------ consolidado trimestral RETEIM-002 / reporte en cero
-  TV.pdfTrimestral = (ent, { anio, t, evs, reg }) => {
+  TV.pdfTrimestral = (ent, { anio, t, evs, reg, sede = null, enlace = null, resumenSedes = [] }) => {
     const fmt = fmtDe('evento'), doc = nuevo(evs.length ? 'l' : 'p'), W = doc.internal.pageSize.getWidth(), M = 12;
-    let y = TV.encabezado(doc, { fmt: { ...fmt, codigo: 'RETEIM-002', version: '002' }, ent, titulo: evs.length ? `Reporte trimestral de eventos e incidentes adversos no serios · RETEIM-002` : 'Reporte trimestral de tecnovigilancia en cero' });
+    let y = TV.encabezado(doc, { fmt: { ...fmt, codigo: 'RETEIM-002', version: '002' }, ent, titulo: sede ? (evs.length ? `Reporte trimestral de la sede ${sede} · eventos e incidentes no serios` : `Reporte trimestral en cero · sede ${sede}`) : evs.length ? `Reporte trimestral de eventos e incidentes adversos no serios · RETEIM-002` : 'Reporte trimestral de tecnovigilancia en cero' });
     const per = `${TV.TRIM[t - 1]} de ${anio} (${TV.mesesTrim(t)})`;
+    // reporte de una sede al referente (incluye el reporte en cero de la sede)
+    if (sede) {
+      const c = TV.cfg(ent), en = enlace || {};
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); y += 4;
+      const txt = evs.length ? `El enlace local de tecnovigilancia de la sede ${sede} de ${ent.razon_social || ''} entrega al referente del Programa Institucional de Tecnovigilancia los eventos e incidentes adversos NO serios identificados en la sede durante el ${per}, para el consolidado institucional RETEIM-002.`
+        : `El enlace local de tecnovigilancia de la sede ${sede} de ${ent.razon_social || ''} certifica que durante el ${per} NO se presentaron ni se identificaron eventos ni incidentes adversos asociados al uso de dispositivos médicos en los servicios de la sede, por lo que se entrega al referente el reporte trimestral de la sede en cero (0).`;
+      doc.text(doc.splitTextToSize(txt, W - 2 * M), M, y, { lineHeightFactor: 1.5, align: 'justify', maxWidth: W - 2 * M }); y += doc.splitTextToSize(txt, W - 2 * M).length * 5 + 4;
+      doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, bottom: 24 }, styles: { fontSize: 8.5, cellPadding: 1.6, lineColor: NG, lineWidth: 0.2, textColor: NG }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 70, fillColor: CL } },
+        body: [['Sede', sede], ['Periodo', per], ['Eventos / incidentes adversos no serios', evs.length ? String(evs.length) : '0 (cero)'], ['Eventos / incidentes adversos serios (reportados en 72 h)', String(reg?.serios ?? 0)], ['Enlace local de la sede', [en.enlace, en.cargo].filter(Boolean).join(' – ') || ''], ['Contacto del enlace', [en.telefono, en.correo].filter(Boolean).join(' · ')], ['Referente del programa', [c.referente, c.cargo].filter(Boolean).join(' – ')], ['Fecha de entrega al referente', fF(reg?.fecha_envio) || 'Pendiente']] });
+      y = doc.lastAutoTable.finalY + 6;
+      if (evs.length) { doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, bottom: 24 }, styles: { fontSize: 6.6, cellPadding: 0.9, lineColor: NG, lineWidth: 0.15, textColor: NG, valign: 'top' }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold' },
+        head: [['#', 'Código', 'Fecha', 'Servicio', 'Dispositivo médico', 'Clasificación', 'Descripción', 'Acciones', 'Estado']],
+        body: evs.map((ev, i) => { const d = ev.datos || {}; return [i + 1, d.codigo || '', fF(ev.fecha_evento), d.area || ev.servicio || '', [d.dm_generico, d.dm_rs, d.dm_lote || d.dm_serie].filter(Boolean).join(' · '), ev.clasificacion || '', ev.descripcion || '', d.acciones || '', TV.estadoTxt(d.estado_reporte) || ev.estado || '']; }) }); y = doc.lastAutoTable.finalY + 6; }
+      if (y > doc.internal.pageSize.getHeight() - 60) { doc.addPage(); y = 40; }
+      y += 16; doc.setDrawColor(...NG); doc.line(M, y, M + 70, y); doc.line(W - M - 70, y, W - M, y); doc.setFontSize(8);
+      doc.text([reg?.entrega || en.enlace || 'Enlace local de tecnovigilancia', `Enlace local · sede ${sede}`], M, y + 4); doc.text([reg?.recibe || c.referente || 'Referente del programa', 'Recibe: referente de tecnovigilancia'], W - M - 70, y + 4);
+      TV.pie(doc, fmt); return doc;
+    }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
     if (!evs.length) {
       y += 6;
@@ -148,7 +166,9 @@
       doc.text(doc.splitTextToSize(txt, W - 2 * M), M, y, { lineHeightFactor: 1.5, align: 'justify', maxWidth: W - 2 * M }); y += 34;
       doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M }, styles: { fontSize: 8.5, cellPadding: 1.6, lineColor: NG, lineWidth: 0.2, textColor: NG }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 70, fillColor: CL } },
         body: [['Periodo reportado', per], ['Eventos / incidentes adversos no serios', '0 (cero)'], ['Eventos / incidentes adversos serios', String(reg?.serios ?? 0)], ['Fecha de reporte al INVIMA', fF(reg?.fecha_envio) || 'Pendiente'], ['Número de radicado / constancia', reg?.radicado || ''], ['Referente del programa', TV.cfg(ent).referente || ''], ['Observaciones', reg?.obs || '']] });
-      y = doc.lastAutoTable.finalY + 22;
+      y = doc.lastAutoTable.finalY + 6;
+      if (resumenSedes.length) { doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, bottom: 24 }, styles: { fontSize: 8, cellPadding: 1.3, lineColor: NG, lineWidth: 0.2, textColor: NG }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold' }, head: [['Sede', 'Enlace local', 'No serios', 'Serios', 'Reporte de la sede al referente']], body: resumenSedes.map((x) => [x.sede, x.enlace || '', String(x.ns), String(x.se), x.estado]) }); y = doc.lastAutoTable.finalY + 6; }
+      y += 16;
       doc.line(M, y, M + 70, y); doc.setFontSize(8); doc.text([TV.cfg(ent).referente || 'Referente del programa de tecnovigilancia', TV.cfg(ent).cargo || 'Referente de tecnovigilancia'], M, y + 4);
     } else {
       doc.text(`Periodo: ${per} · ${evs.length} evento(s) / incidente(s) adverso(s) no serio(s) · Fecha de reporte INVIMA: ${fF(reg?.fecha_envio) || 'pendiente'}${reg?.radicado ? ' · Radicado ' + reg.radicado : ''}`, M, y + 2);
@@ -443,8 +463,28 @@
   };
 
   // ------------------------------------------------------------------ PLAN DE CAPACITACIÓN SEMESTRAL
-  TV.pdfPlan = (ent, { anio, sesiones }) => {
-    const fmt = fmtDe('plan_cap_tv'), doc = nuevo('l'), M = 12; let y = TV.encabezado(doc, { fmt, ent, titulo: `${fmt.titulo} · ${anio}` });
+  // verificación mensual de alertas sanitarias / recalls contra el inventario de una sede
+  TV.pdfAlertasSede = (ent, { sede, anio, mes, filas, reg, nEq, enlace = {} }) => {
+    const fmt = fmtDe('alertas'), doc = nuevo('l'), W = doc.internal.pageSize.getWidth(), M = 12; const c = TV.cfg(ent);
+    let y = TV.encabezado(doc, { fmt: { ...fmt, codigo: fmt.codigo || 'FT-PGTV-015', version: fmt.version || '001' }, ent, titulo: `Verificación de alertas sanitarias y recalls contra el inventario · sede ${sede} · ${CAT.MESES[mes - 1]} ${anio}` });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...NG);
+    const txt = `Se revisaron las ${filas.length} alertas sanitarias, retiros de producto (recall) e informes de seguridad registrados en la bitácora institucional de ${CAT.MESES[mes - 1].toLowerCase()} de ${anio} contra los ${nEq} equipos biomédicos activos del inventario de la sede ${sede}, comparando el registro sanitario. ${filas.filter((x) => x.aplica).length ? `${filas.filter((x) => x.aplica).length} alerta(s) aplican a dispositivos de la sede y se gestionan según el programa.` : 'Ninguna alerta aplica a los dispositivos de la sede.'}`;
+    const ls = doc.splitTextToSize(txt, W - 2 * M); doc.text(ls, M, y + 3, { lineHeightFactor: 1.4, maxWidth: W - 2 * M }); y += ls.length * 4.2 + 4;
+    doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, bottom: 26 }, styles: { fontSize: 7.4, cellPadding: 1.1, lineColor: NG, lineWidth: 0.2, textColor: NG, valign: 'middle' }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold', halign: 'center' },
+      head: [['#', 'Alerta / dispositivo', 'Registro sanitario', 'Tipo', 'Agencia', 'Fecha publicación', 'Resultado en la sede']],
+      body: (filas.length ? filas : [{}]).map((x, i) => [filas.length ? i + 1 : '', x.alerta || '', x.rs || '', x.tipo || '', x.agencia || '', fF(x.fecha), x.resultado || '']),
+      columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 70 }, 6: { cellWidth: 70 } },
+      didParseCell: (d) => { if (d.section === 'body' && d.column.index === 6 && /^APLICA/.test(String(d.cell.raw))) { d.cell.styles.fillColor = [248, 203, 203]; d.cell.styles.fontStyle = 'bold'; } } });
+    y = doc.lastAutoTable.finalY + 5;
+    doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, bottom: 26 }, styles: { fontSize: 8, cellPadding: 1.3, lineColor: NG, lineWidth: 0.2, textColor: NG }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60, fillColor: CL } },
+      body: [['Fecha de verificación', fF(reg?.fecha) || 'Pendiente'], ['Verificó (enlace local)', [reg?.verifico || enlace.enlace, reg?.cargo || enlace.cargo].filter(Boolean).join(' – ')], ['Acciones / observaciones', reg?.obs || ''], ['Referente del programa', [c.referente, c.cargo].filter(Boolean).join(' – ')]] });
+    y = doc.lastAutoTable.finalY + 18; if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = 50; }
+    doc.setDrawColor(...NG); doc.line(M, y, M + 70, y); doc.line(W - M - 70, y, W - M, y); doc.setFontSize(8);
+    doc.text([reg?.verifico || enlace.enlace || 'Enlace local de tecnovigilancia', `Enlace local · sede ${sede}`], M, y + 4); doc.text([c.referente || 'Referente del programa', 'Referente de tecnovigilancia'], W - M - 70, y + 4);
+    TV.pie(doc, fmt); return doc;
+  };
+  TV.pdfPlan = (ent, { anio, sesiones, sede = null }) => {
+    const fmt = fmtDe('plan_cap_tv'), doc = nuevo('l'), M = 12; let y = TV.encabezado(doc, { fmt, ent, titulo: `${fmt.titulo} · ${anio}${sede ? ' · sede ' + sede : ''}` });
     ['S1', 'S2'].forEach((p) => {
       const l = sesiones.filter((s) => s.periodo === p); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...AZ); doc.text(p === 'S1' ? `PRIMER SEMESTRE ${anio} (enero – junio)` : `SEGUNDO SEMESTRE ${anio} (julio – diciembre)`, M, y + 3); doc.setTextColor(...NG);
       doc.autoTable({ startY: y + 5, theme: 'grid', margin: { left: M, right: M, bottom: 26 }, styles: { fontSize: 7.6, cellPadding: 1.1, lineColor: NG, lineWidth: 0.2, textColor: NG, valign: 'middle' }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold', halign: 'center' },

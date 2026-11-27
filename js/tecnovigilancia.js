@@ -124,15 +124,55 @@
   // ================================================================== VISTA PRINCIPAL
   st.tvTab = st.tvTab || {};
   const TABS = ['Programa', 'Reportes serios 72 h', 'Trimestral RETEIM-002', 'Comités', 'Capacitaciones', 'Indicadores', 'Alertas e informes'];
+  // v195: sedes del programa. Las sedes marcadas con «pestaña propia» en Datos del programa tienen su pestaña en
+  // Reportes serios 72 h, Trimestral RETEIM-002, Capacitaciones y Alertas e informes (ej. SIEMPREE TIMBÍO).
+  st.tvSede = st.tvSede || {};
+  const TABS_SEDE = new Set([1, 2, 4, 6]);
+  TV.sedesCfg = (ent) => TV.cfg(ent).sedes_tv || {};
+  TV.sedesPestana = (ent, cons) => A.sedesDe(cons, ent).filter((x) => TV.sedesCfg(ent)[x]?.pestana);
+  const sedeEq = (eq, cons) => (cons.find((c) => c.id === eq?.consultorio_id)?.sede) || 'Sede principal';
+  TV.sedeEvento = (ev, eqs, cons) => ev?.datos?.sede || (ev?.equipo_id ? sedeEq(eqs.find((e) => e.id === ev.equipo_id), cons) : '');
+  const enlaceTxt = (ent, sede) => { const c = TV.sedesCfg(ent)[sede] || {}; return c.enlace ? `${c.enlace}${c.cargo ? ` (${c.cargo})` : ''}${c.telefono ? ` · ${c.telefono}` : ''}${c.correo ? ` · ${c.correo}` : ''}` : ''; };
+  const avisoSede = (ent, sede) => sede ? `<div class="panel" style="background:var(--soft,#eef8fb);border-left:4px solid var(--accent);padding:10px 14px"><b>Sede ${h(sede)}</b> · Enlace local de tecnovigilancia: ${h(enlaceTxt(ent, sede) || 'sin designar (regístrelo en Programa › Datos del programa)')} · Referente institucional: ${h(TV.cfg(ent).referente || '—')}</div>` : '';
   A.G.tecnovigilancia = async (el, ctx) => {
     const { ent } = ctx; const tab = st.tvTab[ent.id] ?? 0;
-    el.innerHTML = `<section class="panel tv-nav" style="padding-top:6px;padding-bottom:0"><div class="tabs" role="tablist" aria-label="Programa de tecnovigilancia">${TABS.map((t, i) => `<button type="button" role="tab" class="${i === tab ? 'on' : ''}" aria-selected="${i === tab}" data-act="tvTab" data-i="${i}">${h(t)}</button>`).join('')}</div></section><div data-tv style="display:grid;gap:18px"></div>`;
-    A.acts({ tvTab: (d) => { st.tvTab[ent.id] = +d.i; A.G.tecnovigilancia(el, ctx); } });
+    const cons = await S.list('consultorios', { entidad_id: ent.id }).catch(() => []);
+    const sedesP = TABS_SEDE.has(tab) ? TV.sedesPestana(ent, cons) : [];
+    const sede = sedesP.includes(st.tvSede[ent.id]) ? st.tvSede[ent.id] : null;
+    el.innerHTML = `<section class="panel tv-nav" style="padding-top:6px;padding-bottom:0"><div class="tabs" role="tablist" aria-label="Programa de tecnovigilancia">${TABS.map((t, i) => `<button type="button" role="tab" class="${i === tab ? 'on' : ''}" aria-selected="${i === tab}" data-act="tvTab" data-i="${i}">${h(t)}</button>`).join('')}</div>
+      ${sedesP.length ? `<div class="tabs" role="tablist" aria-label="Sede" style="margin-top:4px;border-top:1px dashed var(--line);padding-top:4px"><button type="button" role="tab" class="${!sede ? 'on' : ''}" data-act="tvSedeTab" data-s="">General · toda la institución</button>${sedesP.map((x) => `<button type="button" role="tab" class="${sede === x ? 'on' : ''}" data-act="tvSedeTab" data-s="${h(x)}">Sede ${h(x)}</button>`).join('')}</div>` : ''}</section><div data-tv style="display:grid;gap:18px"></div>`;
+    A.acts({ tvTab: (d) => { st.tvTab[ent.id] = +d.i; A.G.tecnovigilancia(el, ctx); }, tvSedeTab: (d) => { st.tvSede[ent.id] = d.s || null; A.G.tecnovigilancia(el, ctx); } });
     const box = el.querySelector('[data-tv]');
-    try { await [vPrograma, vSerios, vTrimestral, (b) => A.G.comites(b, ctx), vCapacitacion, vIndicadores, vAlertas][tab](box, ctx); } catch (er) { console.error(er); box.innerHTML = `<section class="panel">${faltaSQL(er) ? avisoSQL() : `<div class="empty">${h(er.message)}</div>`}</section>`; }
+    const ctx2 = { ...ctx, sedeTV: sede, cons, sedesAll: A.sedesDe(cons, ent) };
+    try { await [vPrograma, vSerios, vTrimestral, (b) => A.G.comites(b, ctx), vCapacitacion, vIndicadores, vAlertas][tab](box, ctx2); } catch (er) { console.error(er); box.innerHTML = `<section class="panel">${faltaSQL(er) ? avisoSQL() : `<div class="empty">${h(er.message)}</div>`}</section>`; }
   };
 
   // ================================================================== 1. PROGRAMA (documento adaptable por entidad)
+  TV.COMUNICACION_SEDES = [
+    'Eventos e incidentes adversos SERIOS: el personal de la sede atiende al paciente, retira y conserva el dispositivo y avisa de inmediato al enlace local; el enlace informa el mismo día al referente {REFERENTE} (llamada o WhatsApp) y le envía el formato FT-PGTV-016 diligenciado en máximo 24 horas, para que el referente o el delegado notifique al INVIMA dentro de las 72 horas.',
+    'Eventos e incidentes NO serios: se registran en el FT-PGTV-016 y se envían al referente durante el mes. Al cierre de cada trimestre el enlace entrega el reporte trimestral de la sede, o el reporte en cero si no hubo casos, dentro de los cinco (5) primeros días hábiles, para el consolidado institucional RETEIM-002.',
+    'Alertas sanitarias y retiros de producto (recall): el referente o el delegado consulta cada mes las alertas del INVIMA y de agencias internacionales y las envía al enlace; el enlace las verifica contra el inventario de la sede y deja registro de la verificación (aplica / no aplica) con las acciones tomadas.',
+    'Capacitación: el personal asistencial y administrativo de la sede participa en el plan semestral de capacitación en tecnovigilancia, con pre y post test y lista de asistencia de la sede.',
+    'Comité de tecnovigilancia: el enlace participa en el comité (presencial o virtual) y presenta el informe de su sede: eventos, reportes, alertas verificadas y capacitaciones.',
+  ];
+  // sección «Sedes en las que aplica el programa» (solo si la entidad tiene dos o más sedes incluidas en Datos del programa)
+  TV.conSedes = (texto, ent, cons = [], eqs = []) => {
+    const sc = TV.sedesCfg(ent), todas = A.sedesDe(cons, ent), sedes = todas.filter((x) => sc[x] && sc[x].incluida !== false);
+    if (sedes.length < 2 || /# SEDES EN LAS QUE APLICA/i.test(texto)) return texto;
+    const consDe = (x) => cons.filter((c) => (c.sede || 'Sede principal') === x), eqDe = (x) => eqs.filter((e) => e.estado !== 'Dado de baja' && consDe(x).some((c) => c.id === e.consultorio_id));
+    const cel = (t) => String(t || '').replace(/\|/g, '/');
+    const lista = sedes.length > 1 ? `${sedes.slice(0, -1).join(', ')} y ${sedes.at(-1)}` : sedes[0];
+    const com = String(TV.cfg(ent).comunicacion_sedes || '').trim() ? String(TV.cfg(ent).comunicacion_sedes).split('\n').map((l) => l.trim()).filter(Boolean) : TV.COMUNICACION_SEDES;
+    const bloque = ['## Sedes en las que aplica el programa',
+      `El Programa Institucional de Tecnovigilancia de {ENTIDAD} aplica en todas sus sedes: ${lista}. En cada sede se cumplen los mismos procedimientos de este documento: identificación, reporte, análisis y gestión de eventos e incidentes adversos (incluidos los reportes en cero), consulta de alertas sanitarias y retiros de producto contra el inventario de la sede, y capacitación del personal.`,
+      '| **Sede** | **Enlace local de tecnovigilancia** | **Contacto** | **Equipos** | **Servicios** |',
+      ...sedes.map((x) => { const c = sc[x] || {}; return `| ${cel(x)} | ${cel(c.enlace ? `${c.enlace}${c.cargo ? ' – ' + c.cargo : ''}` : '[ENLACE LOCAL]')} | ${cel([c.telefono, c.correo].filter(Boolean).join(' · ') || '—')} | ${eqDe(x).length} | ${consDe(x).length} |`; }),
+      '## Enlace local de cada sede y comunicación con el referente',
+      `En cada sede se designa un enlace local de tecnovigilancia, que apoya al referente institucional {REFERENTE}${TV.cfg(ent).delegado ? ' y al delegado {DELEGADO}' : ''}. El enlace no reemplaza al referente: recibe los reportes del personal de su sede, los entrega al referente y mantiene la comunicación así:`,
+      ...com.map((l) => '- ' + l), ''].join('\n');
+    const i = texto.search(/^# AUTORIDAD/m);
+    return i >= 0 ? texto.slice(0, i) + bloque + '\n' + texto.slice(i) : texto + '\n' + bloque;
+  };
   const textoDe = (ent) => TV.cfg(ent).texto || st.fmt.programa_tv_texto?.texto || '';
   const vPrograma = async (box, { ent }) => {
     const cfg = TV.cfg(ent), plantilla = st.fmt.programa_tv_texto?.texto || '', fmt = { ...TV.fmtDe('programa_tv'), ...(cfg.codigo ? { codigo: cfg.codigo } : {}), ...(cfg.version ? { version: cfg.version } : {}) };
@@ -151,6 +191,7 @@
       <section class="panel"><header><h2>Estado del programa ${anioAct}</h2></header><ul style="list-style:none;margin:0;padding:0">
         ${item(!!cfg.fecha_generado, 'Documento del programa institucional', cfg.fecha_generado ? `Generado el ${UI.fecha(cfg.fecha_generado)}` : 'Genere el documento y guárdelo en "1. PROGRAMA DE TECNOVIGILANCIA".')}
         ${item(!!cfg.referente, 'Referente y delegado designados', cfg.referente ? `${cfg.referente}${cfg.delegado ? ' · delegado ' + cfg.delegado : ''}` : 'Registre el referente inscrito ante el INVIMA en "Datos del programa".')}
+        ${Object.values(cfg.sedes_tv || {}).some((x) => x.incluida !== false) && Object.keys(cfg.sedes_tv || {}).length > 1 ? item(Object.entries(cfg.sedes_tv).filter(([, x]) => x.incluida !== false).every(([, x]) => x.enlace), 'Sedes del programa y enlaces locales', Object.entries(cfg.sedes_tv).filter(([, x]) => x.incluida !== false).map(([k, x]) => `${k}: ${x.enlace || 'sin enlace'}`).join(' · ')) : ''}
         ${item(!!cfg.codigo_rnt, 'Inscripción en la Red Nacional de Tecnovigilancia', cfg.codigo_rnt ? `Código ${cfg.codigo_rnt}` : 'Registre el código de inscripción (tecnoyreactivo@invima.gov.co).')}
         ${item(trimDebidos <= 0 || trimOk >= trimDebidos, 'Reportes trimestrales al INVIMA', `${trimOk} de ${Math.max(0, trimDebidos)} trimestres cerrados con reporte (incluye reportes en cero).`)}
         ${item(actas.some((a) => String(a.fecha || '').startsWith(String(anioAct))), 'Comité de tecnovigilancia', `${actas.filter((a) => String(a.fecha || '').startsWith(String(anioAct))).length} acta(s) en ${anioAct}.`)}
@@ -166,18 +207,23 @@
       tvTextoRef: async () => { if (!(await confirmar('¿Quitar el texto personalizado y usar otra vez el texto de referencia?', 'Usar referencia'))) return; await guardarCfg(ent, { texto: null }); toast('Se usará el texto de referencia'); A.recargar(); },
       tvPlantilla: () => formPlantilla(),
       tvGenerar: async () => {
-        const eqs = await S.list('equipos', { entidad_id: ent.id });
-        const doc = await TV.pdfPrograma(ent, { texto: textoDe(ent), cfg: TV.cfg(ent), eqs });
+        const [eqs, cons] = await Promise.all([S.list('equipos', { entidad_id: ent.id }), S.list('consultorios', { entidad_id: ent.id })]);
+        const doc = await TV.pdfPrograma(ent, { texto: TV.conSedes(textoDe(ent), ent, cons, eqs), cfg: TV.cfg(ent), eqs });
         if (esProp()) guardarCfg(ent, { fecha_generado: UI.hoy() }).catch(() => {});
         verDoc(ent, doc, 'Programa institucional de tecnovigilancia', `${fmt.codigo}_Programa_Tecnovigilancia_${slug(ent.razon_social)}.pdf`, 0);
       },
     });
   };
-  const formDatos = (ent) => {
+  const formDatos = async (ent) => {
     const c = TV.cfg(ent), fmt = TV.fmtDe('programa_tv'); const firmas = { reviso: c.firma_reviso || null, aprobo: c.firma_aprobo || null };
+    const sedesE = A.sedesDe(await S.list('consultorios', { entidad_id: ent.id }).catch(() => []), ent), sc = c.sedes_tv || {};
+    const fsSedes = sedesE.length < 2 ? '' : `<fieldset><legend>Sedes del programa y enlaces locales</legend><p class="muted" style="font-size:.82rem;margin:0 0 6px">Marque las sedes donde aplica el programa (salen en el documento con su enlace local). «Pestaña propia» crea la pestaña de la sede en Reportes serios, Trimestral, Capacitaciones y Alertas.</p>
+      ${sedesE.map((x, i) => { const v = sc[x] || {}; return `<div data-sede-tv="${h(x)}" style="display:grid;grid-template-columns:1.2fr .9fr 1.2fr .9fr .9fr 1.1fr;gap:6px;align-items:center;margin-bottom:6px"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-k="incluida" ${v.incluida !== false ? 'checked' : ''}> <b>${h(x)}</b></label><label style="display:flex;gap:6px;align-items:center;font-size:.85rem"><input type="checkbox" data-k="pestana" ${v.pestana ? 'checked' : ''}> Pestaña propia</label><input data-k="enlace" placeholder="Enlace local (nombre)" value="${h(v.enlace || '')}" aria-label="Enlace ${i + 1}"><input data-k="cargo" placeholder="Cargo" value="${h(v.cargo || '')}" aria-label="Cargo"><input data-k="telefono" placeholder="Teléfono" value="${h(v.telefono || '')}" aria-label="Teléfono"><input data-k="correo" placeholder="Correo" value="${h(v.correo || '')}" aria-label="Correo"></div>`; }).join('')}
+      ${f.area('comunicacion_sedes', 'Comunicación entre el enlace de cada sede y el referente (una línea por punto; vacío = texto de referencia)', c.comunicacion_sedes || '', { rows: 3 })}</fieldset>`;
     const cambios = (c.cambios || []).map((x) => [x.version, x.fecha, x.desc, x.resp].join(' | ')).join('\n');
     modal({ titulo: 'Datos del programa de tecnovigilancia', size: 'wide', cuerpo: `<form class="form" onsubmit="return false">
       <fieldset><legend>Responsables (Resolución 4816 de 2008)</legend><div class="fields">${f.input('referente', 'Referente del programa (inscrito ante el INVIMA)', c.referente)}${f.input('cargo', 'Cargo del referente', c.cargo)}${f.input('delegado', 'Delegado del referente', c.delegado)}${f.input('cargo_delegado', 'Cargo del delegado', c.cargo_delegado)}</div></fieldset>
+      ${fsSedes}
       <fieldset><legend>Inscripción y aplicativo web del INVIMA</legend><div class="fields">${f.input('codigo_rnt', 'Código de inscripción a la Red Nacional de Tecnovigilancia', c.codigo_rnt)}${f.input('usuario_invima', 'Usuario del aplicativo web', c.usuario_invima)}${f.input('correo', 'Correo de notificaciones', c.correo, { type: 'email' })}
         ${f.input('departamento', 'Departamento (RETEIM A2)', c.departamento)}${f.sel('nivel', 'Nivel de complejidad (RETEIM A5)', ['1', '2', '3'], c.nivel || '1')}${f.sel('naturaleza', 'Naturaleza (RETEIM A6)', ['Privada', 'Pública', 'Mixta'], c.naturaleza || 'Privada')}
         <p class="muted full" style="font-size:.82rem">Por seguridad, la contraseña del aplicativo web del INVIMA no se guarda en el gestor ni se imprime en el documento.</p></div></fieldset>
@@ -193,6 +239,7 @@
       }),
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
         const v = leer(m.body); v.firma_reviso = firmas.reviso || null; v.firma_aprobo = firmas.aprobo || null;
+        if (sedesE.length >= 2) { const o = {}; m.body.querySelectorAll('[data-sede-tv]').forEach((r) => { const g = (k) => r.querySelector(`[data-k=${k}]`); o[r.dataset.sedeTv] = { incluida: g('incluida').checked, pestana: g('pestana').checked, enlace: g('enlace').value.trim(), cargo: g('cargo').value.trim(), telefono: g('telefono').value.trim(), correo: g('correo').value.trim() }; }); v.sedes_tv = o; Object.keys(v).filter((k) => /^(incluida|pestana|enlace|telefono)$/.test(k)).forEach((k) => delete v[k]); }
         v.cambios = String(v.cambios || '').split('\n').map((l) => l.split('|').map((x) => x.trim())).filter((x) => x[0]).map(([version, fecha, desc, resp]) => { const m = String(fecha || '').match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/); return { version, fecha: m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : fecha, desc, resp }; });
         await guardarCfg(ent, v); toast('Datos del programa guardados'); A.recargar();
       } }] });
@@ -375,32 +422,41 @@
   });
 
   // ------------------------------------------------------------------ 2. Reportes serios (72 h)
-  const vSerios = async (box, { ent }) => {
-    const [evs, eqs] = await Promise.all([S.list('eventos', { entidad_id: ent.id }, '-fecha_evento'), S.list('equipos', { entidad_id: ent.id })]);
+  const vSerios = async (box, { ent, sedeTV = null, cons = [] }) => {
+    const [evs0, eqs] = await Promise.all([S.list('eventos', { entidad_id: ent.id }, '-fecha_evento'), S.list('equipos', { entidad_id: ent.id })]);
+    const evs = sedeTV ? evs0.filter((e) => TV.sedeEvento(e, eqs, cons) === sedeTV) : evs0;
     const serios = evs.filter(TV.esSerio);
     box.innerHTML = `<section class="panel"><header><div><h2>Eventos e incidentes adversos SERIOS · reporte inmediato (72 h)</h2><span class="muted" style="font-size:.85rem">Formato FT-PGTV-016. Todo evento o incidente adverso serio se notifica al INVIMA dentro de las 72 horas siguientes en el <a href="https://farmacoweb.invima.gov.co/TecnoVigilancia/" target="_blank" rel="noopener">aplicativo web de Tecnovigilancia</a>. El PDF se guarda en “5. REPORTES SERIOS 72 HORAS”.</span></div>
       <div class="actions"><button class="btn" data-act="tvBlanco">${I.pdf} Formato en blanco</button>${esProp() ? `<button class="btn pri" data-act="tvNuevoSerio">${I.alerta} Reportar evento / incidente serio</button>` : ''}</div></header>
-      ${tablaEventos(serios, eqs) || '<div class="empty">No hay eventos ni incidentes adversos serios registrados.</div>'}</section>`;
-    A.acts({ ...accionesEventos(ent, evs, eqs, 4), tvNuevoSerio: () => TV.formEvento(ent, null, { serio: true }) });
+      ${tablaEventos(serios, eqs) || `<div class="empty">No hay eventos ni incidentes adversos serios registrados${sedeTV ? ` en la sede ${h(sedeTV)}` : ''}.</div>`}</section>`;
+    if (sedeTV) box.insertAdjacentHTML('afterbegin', avisoSede(ent, sedeTV));
+    A.acts({ ...accionesEventos(ent, evs, eqs, 4), tvNuevoSerio: () => TV.formEvento(ent, null, { serio: true, sede: sedeTV }) });
   };
 
   // ------------------------------------------------------------------ 3. Trimestral RETEIM-002 (no serios / en cero)
   st.tvTrim = st.tvTrim || {};
-  const vTrimestral = async (box, { ent }) => {
+  const vTrimestral = async (box, { ent, sedeTV = null, cons = [], sedesAll = [] }) => {
     const sel = st.tvTrim[ent.id] || { anio: anioAct, t: Math.max(1, trimDe(UI.hoy()) - (new Date().getMonth() % 3 === 0 ? 1 : 0)) };
-    const [evs, eqs, regs] = await Promise.all([S.list('eventos', { entidad_id: ent.id }, 'fecha_evento'), S.list('equipos', { entidad_id: ent.id }), regsDe(ent)]);
+    const [evs0, eqs, regs] = await Promise.all([S.list('eventos', { entidad_id: ent.id }, 'fecha_evento'), S.list('equipos', { entidad_id: ent.id }), regsDe(ent)]);
+    const evs = sedeTV ? evs0.filter((e) => TV.sedeEvento(e, eqs, cons) === sedeTV) : evs0;
+    // reporte de cada sede al referente (incluye en cero): tv_registros tipo «trimestral_sede»
+    const regSede = (sd, a, t) => (regs || []).find((r) => r.tipo === 'trimestral_sede' && r.anio === a && r.periodo === `T${t}` && r.datos?.sede === sd);
     const delTrim = (a, t) => evs.filter((e) => !TV.esSerio(e) && anioDe(e.fecha_evento) === a && trimDe(e.fecha_evento) === t);
     const serTrim = (a, t) => evs.filter((e) => TV.esSerio(e) && anioDe(e.fecha_evento) === a && trimDe(e.fecha_evento) === t);
-    const regT = (a, t) => (regs || []).find((r) => r.tipo === 'trimestral' && r.anio === a && r.periodo === `T${t}`);
+    const regT = (a, t) => (sedeTV ? regSede(sedeTV, a, t) : (regs || []).find((r) => r.tipo === 'trimestral' && r.anio === a && r.periodo === `T${t}`));
     const hoyT = anioDe(UI.hoy()) * 10 + trimDe(UI.hoy());
-    const estado = (a, t) => { const r = regT(a, t), n = delTrim(a, t).length; if (r?.datos?.fecha_envio) return pill(n && !r.datos.en_cero ? `Reportado ${UI.fecha(r.datos.fecha_envio)}` : `En cero reportado ${UI.fecha(r.datos.fecha_envio)}`, 'ok'); if (a * 10 + t === hoyT) return pill('En curso', ''); if (a * 10 + t > hoyT) return pill('Por venir', ''); return pill(n ? 'Pendiente de reporte' : 'Pendiente reporte en cero', 'bad'); };
+    const estado = (a, t) => { const r = regT(a, t), n = delTrim(a, t).length; if (r?.datos?.fecha_envio) return pill(n && !r.datos.en_cero ? `${sedeTV ? 'Entregado al referente' : 'Reportado'} ${UI.fecha(r.datos.fecha_envio)}` : `En cero ${sedeTV ? 'entregado' : 'reportado'} ${UI.fecha(r.datos.fecha_envio)}`, 'ok'); if (a * 10 + t === hoyT) return pill('En curso', ''); if (a * 10 + t > hoyT) return pill('Por venir', ''); return pill(n ? 'Pendiente de reporte' : 'Pendiente reporte en cero', 'bad'); };
     const lista = delTrim(sel.anio, sel.t), r = regT(sel.anio, sel.t);
     box.innerHTML = `<section class="panel"><header><div><h2>Reporte trimestral · eventos e incidentes adversos NO serios (RETEIM-002)</h2><span class="muted" style="font-size:.85rem">Cada trimestre se reportan al INVIMA los eventos e incidentes no serios en el consolidado RETEIM-002. Si no hubo casos, se envía el <b>reporte trimestral en cero</b>. Plazo INVIMA: los primeros ocho (8) días calendario de abril, julio, octubre y enero. Los soportes se guardan en “4. REPORTES TRIMESTRALES”.</span></div>
         <div class="actions">${esProp() ? `<button class="btn" data-act="tvCargaTri">${I.subir} Cargar reportes realizados (PDF)</button><button class="btn" data-act="tvLeerTri" title="Lee los PDF que ya están en la subcarpeta de reportes trimestrales">Organizar los PDF de la carpeta</button>` : ''}<select data-tv-anio aria-label="Año">${[anioAct, anioAct - 1, anioAct - 2, anioAct - 3].map((a) => `<option ${a === sel.anio ? 'selected' : ''}>${a}</option>`).join('')}</select></div></header>
       <div class="kpis">${[1, 2, 3, 4].map((t) => `<button type="button" class="kpi ${t === sel.t ? 'ok' : ''}" data-act="tvSelT" data-t="${t}" style="text-align:left;cursor:pointer;${t === sel.t ? 'outline:2px solid var(--accent)' : ''}"><span class="l">${TV.TRIM[t - 1]}</span><span class="v">${delTrim(sel.anio, t).length}</span><span class="meta">no serios · ${serTrim(sel.anio, t).length} serios</span><div style="margin-top:6px">${estado(sel.anio, t)}</div></button>`).join('')}</div></section>
       <section class="panel"><header><div><h2>${TV.TRIM[sel.t - 1]} ${sel.anio} <span class="muted" style="font-size:.85rem">(${TV.mesesTrim(sel.t)})</span></h2>${r?.datos?.fecha_envio ? `<span class="muted" style="font-size:.85rem">${r.datos.en_cero ? 'Reporte en cero' : 'Reportado'} al INVIMA el ${UI.fecha(r.datos.fecha_envio)}${r.datos.radicado ? ' · radicado ' + h(r.datos.radicado) : ''}</span>${(r.datos.soportes || []).map((id, k) => ` <button class="btn sm" data-act="tvSoporte" data-id="${id}">${I.pdf} Soporte${r.datos.soportes.length > 1 ? ' ' + (k + 1) : ''}</button>`).join('')}` : ''}</div>
-        <div class="actions"><button class="btn" data-act="tvTrimPDF">${I.pdf} ${lista.length ? 'Consolidado (PDF)' : 'Reporte en cero (PDF)'}</button>${esProp() ? `${lista.length ? `<button class="btn" data-act="tvReteim">${I.bajar} Plantilla RETEIM-002 (Excel)</button>` : ''}<button class="btn" data-act="tvEnvio">${I.cal} Registrar reporte al INVIMA</button><button class="btn pri" data-act="tvNuevoNoSerio">${I.mas} Evento / incidente no serio</button>` : ''}</div></header>
+        <div class="actions"><button class="btn" data-act="tvTrimPDF">${I.pdf} ${lista.length ? (sedeTV ? 'Reporte de la sede (PDF)' : 'Consolidado (PDF)') : (sedeTV ? 'Reporte en cero de la sede (PDF)' : 'Reporte en cero (PDF)')}</button>${esProp() ? `${lista.length && !sedeTV ? `<button class="btn" data-act="tvReteim">${I.bajar} Plantilla RETEIM-002 (Excel)</button>` : ''}<button class="btn" data-act="tvEnvio">${I.cal} ${sedeTV ? 'Registrar entrega al referente' : 'Registrar reporte al INVIMA'}</button><button class="btn pri" data-act="tvNuevoNoSerio">${I.mas} Evento / incidente no serio</button>` : ''}</div></header>
         ${tablaEventos(lista, eqs, { trimestral: true }) || `<div class="empty">Sin eventos ni incidentes adversos no serios en este trimestre.${esProp() ? ' Si el trimestre terminó sin casos, genere el reporte en cero y regístrelo como enviado.' : ''}</div>`}</section>`;
+    const sedesInc = Object.entries(TV.sedesCfg(ent)).filter(([, x]) => x.incluida !== false).map(([k]) => k).filter((k) => sedesAll.includes(k));
+    const resumenSedes = !sedeTV && sedesInc.length >= 2 ? sedesInc.map((sd) => { const l = evs0.filter((e) => anioDe(e.fecha_evento) === sel.anio && trimDe(e.fecha_evento) === sel.t && TV.sedeEvento(e, eqs, cons) === sd); const ns = l.filter((e) => !TV.esSerio(e)).length, se = l.length - ns, rr = regSede(sd, sel.anio, sel.t); return { sede: sd, ns, se, enlace: TV.sedesCfg(ent)[sd]?.enlace || '', estado: rr?.datos?.fecha_envio ? `${rr.datos.en_cero ? 'En cero' : 'Con casos'} · entregado ${UI.fecha(rr.datos.fecha_envio)}` : 'Pendiente', ok: !!rr?.datos?.fecha_envio }; }) : [];
+    if (resumenSedes.length) box.insertAdjacentHTML('beforeend', `<section class="panel"><header><div><h2>Reporte de cada sede al referente · ${TV.TRIM[sel.t - 1]} ${sel.anio}</h2><span class="muted" style="font-size:.85rem">Cada enlace local entrega al referente el reporte trimestral de su sede (o el reporte en cero) antes del consolidado RETEIM-002.</span></div></header><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Sede</th><th>Enlace local</th><th class="num">No serios</th><th class="num">Serios</th><th>Reporte de la sede</th></tr></thead><tbody>${resumenSedes.map((x) => `<tr><td><b>${h(x.sede)}</b></td><td>${h(x.enlace || '—')}</td><td class="num">${x.ns}</td><td class="num">${x.se}</td><td>${pill(x.estado, x.ok ? 'ok' : 'warn')}</td></tr>`).join('')}</tbody></table></div></section>`);
+    if (sedeTV) box.insertAdjacentHTML('afterbegin', avisoSede(ent, sedeTV));
     box.querySelector('[data-tv-anio]').onchange = (e) => { st.tvTrim[ent.id] = { ...sel, anio: +e.target.value }; A.recargar(); };
     A.acts({
       ...accionesEventos(ent, evs, eqs, 3),
@@ -408,16 +464,16 @@
       tvCargaTri: () => (regs === null ? toast('Falta actualizar la base de datos', true) : TV.cargarTrimestrales(ent)),
       tvLeerTri: () => (regs === null ? toast('Falta actualizar la base de datos', true) : TV.cargarTrimestrales(ent, { existentes: true })),
       tvSoporte: async (d) => { const doc = await S.get('documentos', d.id); if (doc) A.abrirDoc(doc); },
-      tvNuevoNoSerio: () => TV.formEvento(ent, null, { serio: false }),
-      tvTrimPDF: () => { const doc = TV.pdfTrimestral(ent, { anio: sel.anio, t: sel.t, evs: lista, reg: { ...(r?.datos || {}), serios: serTrim(sel.anio, sel.t).length } }); verDoc(ent, doc, `Reporte trimestral ${TV.TRIM[sel.t - 1]} ${sel.anio}`, `RETEIM-002_T${sel.t}_${sel.anio}_${lista.length ? 'consolidado' : 'en_cero'}_${slug(ent.razon_social)}.pdf`, 3); },
+      tvNuevoNoSerio: () => TV.formEvento(ent, null, { serio: false, sede: sedeTV }),
+      tvTrimPDF: () => { const doc = TV.pdfTrimestral(ent, { anio: sel.anio, t: sel.t, evs: lista, reg: { ...(r?.datos || {}), serios: serTrim(sel.anio, sel.t).length }, sede: sedeTV, enlace: sedeTV ? TV.sedesCfg(ent)[sedeTV] || {} : null, resumenSedes }); verDoc(ent, doc, `Reporte trimestral ${TV.TRIM[sel.t - 1]} ${sel.anio}${sedeTV ? ' · ' + sedeTV : ''}`, `${sedeTV ? 'Reporte_trimestral_sede_' + slug(sedeTV) : 'RETEIM-002'}_T${sel.t}_${sel.anio}_${lista.length ? 'consolidado' : 'en_cero'}_${slug(ent.razon_social)}.pdf`, 3); },
       tvReteim: () => exportarReteim(ent, lista, eqs, sel),
       tvEnvio: () => {
         if (regs === null) { toast('Falta actualizar la base de datos: ejecute supabase/tecnovigilancia.sql', true); return; }
-        modal({ titulo: `Reporte al INVIMA · ${TV.TRIM[sel.t - 1]} ${sel.anio}`, cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('fecha_envio', 'Fecha de reporte en el aplicativo web *', r?.datos?.fecha_envio || UI.hoy(), { type: 'date' })}${f.input('radicado', 'Radicado / constancia', r?.datos?.radicado)}${f.area('obs', 'Observaciones', r?.datos?.obs, { rows: 2 })}
+        modal({ titulo: sedeTV ? `Reporte de la sede ${sedeTV} al referente · ${TV.TRIM[sel.t - 1]} ${sel.anio}` : `Reporte al INVIMA · ${TV.TRIM[sel.t - 1]} ${sel.anio}`, cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('fecha_envio', sedeTV ? 'Fecha de entrega al referente *' : 'Fecha de reporte en el aplicativo web *', r?.datos?.fecha_envio || UI.hoy(), { type: 'date' })}${sedeTV ? f.input('entrega', 'Entregó (enlace local de la sede)', r?.datos?.entrega || TV.sedesCfg(ent)[sedeTV]?.enlace || '') + f.input('recibe', 'Recibió (referente / delegado)', r?.datos?.recibe || TV.cfg(ent).referente || '') : f.input('radicado', 'Radicado / constancia', r?.datos?.radicado)}${f.area('obs', 'Observaciones', r?.datos?.obs, { rows: 2 })}
           <p class="muted full" style="font-size:.85rem">${lista.length ? `Se reportan ${lista.length} evento(s) / incidente(s) no serio(s).` : 'Se registra como <b>reporte trimestral en cero</b>.'}</p></div></form>`,
           acciones: [...(r ? [{ t: 'Quitar registro', cls: 'danger', fn: async () => { await S.remove(TB, r.id); A.recargar(); } }] : []), { t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
             const v = leer(m.body); if (!v.fecha_envio) { toast('Indique la fecha', true); return false; }
-            const o = { entidad_id: ent.id, tipo: 'trimestral', anio: sel.anio, periodo: `T${sel.t}`, fecha: v.fecha_envio, datos: { ...v, n: lista.length, en_cero: !lista.length, serios: serTrim(sel.anio, sel.t).length } };
+            const o = { entidad_id: ent.id, tipo: sedeTV ? 'trimestral_sede' : 'trimestral', anio: sel.anio, periodo: `T${sel.t}`, fecha: v.fecha_envio, datos: { ...v, ...(sedeTV ? { sede: sedeTV } : {}), n: lista.length, en_cero: !lista.length, serios: serTrim(sel.anio, sel.t).length } };
             r ? await S.update(TB, r.id, o) : await S.insert(TB, o); toast('Reporte trimestral registrado'); A.recargar();
           } }] });
       },
@@ -447,29 +503,30 @@
   st.tvCapAnio = st.tvCapAnio || {};
   const puntos = (preg, resp) => { let ok = 0; preg.forEach((q, i) => { const r = [...(resp[i] || [])].sort().join(','); if (r === [...q.c].sort().join(',')) ok++; }); return { correctas: ok, puntaje: preg.length ? Math.round((ok / preg.length) * 100) : 0 }; };
   const prom = (l) => (l.length ? Math.round(l.reduce((s, t) => s + (t.datos.puntaje || 0), 0) / l.length) : null);
-  const vCapacitacion = async (box, { ent }) => {
+  const vCapacitacion = async (box, { ent, sedeTV = null, sedesAll = [] }) => {
     const anio = st.tvCapAnio[ent.id] || anioAct;
     const regs = await regsDe(ent); if (regs === null) { box.innerHTML = `<section class="panel"><header><h2>Capacitaciones</h2></header>${avisoSQL()}</section>`; return; }
-    const ses = regs.filter((r) => r.tipo === 'sesion' && r.datos?.programa !== 'equipos' && r.anio === anio).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    const ses = regs.filter((r) => r.tipo === 'sesion' && r.datos?.programa !== 'equipos' && r.anio === anio && (!sedeTV || r.datos?.sede === sedeTV)).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
     const tests = regs.filter((r) => r.tipo === 'test');
     const tDe = (s, fase) => tests.filter((t) => t.datos.sesion_id === s.id && t.datos.fase === fase);
     ses.forEach((s) => { const a = prom(tDe(s, 'pre')), b = prom(tDe(s, 'post')); s._pre = a === null ? '' : a + '%'; s._post = b === null ? '' : b + '%'; });
     const ej = ses.filter((s) => s.datos?.estado === 'Ejecutada').length;
-    const fila = (s) => { const d = s.datos || {}, nA = (d.asistentes || []).filter((x) => x.nombre).length; return `<tr><td class="num">${UI.fecha(s.fecha)}</td><td><b>${h(d.tema || '')}</b><div class="muted" style="font-size:.8rem">${h(d.dirigido || '')}${d.capacitador ? ' · ' + h(d.capacitador) : ''}</div></td>
+    const fila = (s) => { const d = s.datos || {}, nA = (d.asistentes || []).filter((x) => x.nombre).length; return `<tr><td class="num">${UI.fecha(s.fecha)}</td><td><b>${h(d.tema || '')}</b><div class="muted" style="font-size:.8rem">${d.sede && !sedeTV ? `<span class="pill">${h(d.sede)}</span> ` : ''}${h(d.dirigido || '')}${d.capacitador ? ' · ' + h(d.capacitador) : ''}</div></td>
       <td>${pill(d.estado || 'Programada', d.estado === 'Ejecutada' ? 'ok' : d.estado === 'Cancelada' ? 'bad' : s.fecha < UI.hoy() ? 'warn' : '')}</td><td class="num">${nA}</td><td class="num">${h(s._pre)}</td><td class="num">${h(s._post)}</td>
       <td><div class="row-actions" style="flex-wrap:wrap"><button class="btn sm" data-act="tvPres" data-id="${s.id}" title="Presentación de la capacitación">${I.pdf} Presentación</button>${d.virtual?.meet ? `<a class="btn sm pri" href="${h(d.virtual.meet)}" target="_blank" rel="noopener" title="Unirse a la capacitación virtual por Google Meet">${A.ICO_MEET || ''} Unirse</a>` : ''}${esProp() ? `<button class="btn sm" data-act="tvVirtual" data-id="${s.id}" title="Programar la capacitación por Google Meet, enviar la invitación con el pre / post test y tomar fotos de evidencia">${A.ICO_MEET || ''} Virtual (Meet)</button>` : ''}${esProp() ? `<button class="btn sm ${d.enlace?.abierto ? 'pri' : ''}" data-act="tvEnlace" data-id="${s.id}" title="Enlace para que cada persona responda el test desde su celular">Enlace virtual${d.enlace?.abierto ? ' · abierto' : ''}</button><button class="btn sm" data-act="tvAplicar" data-id="${s.id}" title="Aplicar pre o post test en esta pantalla">Aplicar test</button>` : ''}<button class="btn sm" data-act="tvRes" data-id="${s.id}">Resultados</button><button class="btn sm" data-act="tvAsis" data-id="${s.id}">${I.pdf} Asistencia</button><button class="btn sm ${d.estado === 'Ejecutada' || (d.fotos || []).length || d.acta_pdf ? 'pri' : ''}" data-act="tvActa" data-id="${s.id}" title="Acta de la capacitación (FMB-010) con asistentes, resultados del pre y post test y evidencia fotográfica">${I.pdf} Acta${(d.fotos || []).length ? ` · ${(d.fotos || []).length} foto${(d.fotos || []).length === 1 ? '' : 's'}` : ''}</button>
         ${esProp() ? `<button class="icon-btn" data-act="tvEditSes" data-id="${s.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn bad" data-act="tvDelSes" data-id="${s.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`; };
-    box.innerHTML = `<section class="panel"><header><div><h2>Plan de capacitación semestral en tecnovigilancia · ${anio}</h2><span class="muted" style="font-size:.85rem">Sesiones por semestre con presentación (casos reales serios y no serios, cómo reportar e incentivos al reporte), pre y post test (${h(TV.fmtDe('test_tv').codigo)}) y lista de asistencia (${h(TV.fmtDe('asistencia_tv').codigo)}). Adherencia: ${ej} de ${ses.length} ejecutadas${ses.length ? ` (${Math.round((ej / ses.length) * 100)}%)` : ''} · meta 95%.</span></div>
+    box.innerHTML = `<section class="panel"><header><div><h2>Plan de capacitación semestral en tecnovigilancia · ${anio}${sedeTV ? ` · sede ${h(sedeTV)}` : ''}</h2><span class="muted" style="font-size:.85rem">Sesiones por semestre con presentación (casos reales serios y no serios, cómo reportar e incentivos al reporte), pre y post test (${h(TV.fmtDe('test_tv').codigo)}) y lista de asistencia (${h(TV.fmtDe('asistencia_tv').codigo)}). Adherencia: ${ej} de ${ses.length} ejecutadas${ses.length ? ` (${Math.round((ej / ses.length) * 100)}%)` : ''} · meta 95%.</span></div>
         <div class="actions"><select data-tv-anio aria-label="Año">${[anioAct + 1, anioAct, anioAct - 1, anioAct - 2].map((a) => `<option ${a === anio ? 'selected' : ''}>${a}</option>`).join('')}</select><button class="btn" data-act="tvPlanPDF">${I.pdf} Plan (PDF)</button><button class="btn" data-act="tvPresGen">${I.pdf} Presentación general</button><button class="btn" data-act="tvTestBlanco">${I.pdf} Test en blanco</button>
           ${esProp() ? `<button class="btn" data-act="tvBanco">Preguntas del test</button><button class="btn" data-act="tvCodif">Codificación de formatos</button>${ses.length ? '' : `<button class="btn" data-act="tvPlanBase">${I.ia} Crear plan sugerido ${anio}</button>`}<button class="btn pri" data-act="tvNuevaSes">${I.mas} Sesión</button>` : ''}</div></header>
       ${['S1', 'S2'].map((p) => { const l = ses.filter((s) => s.periodo === p); return `<h3 style="margin:14px 0 6px;font-size:.95rem">${p === 'S1' ? 'Primer semestre (enero – junio)' : 'Segundo semestre (julio – diciembre)'}</h3>${l.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Tema</th><th>Estado</th><th>Asist.</th><th>Pre</th><th>Post</th><th></th></tr></thead><tbody>${l.map(fila).join('')}</tbody></table></div>` : '<div class="empty">Sin sesiones programadas.</div>'}`; }).join('')}</section>`;
+    if (sedeTV) box.insertAdjacentHTML('afterbegin', avisoSede(ent, sedeTV));
     box.querySelector('[data-tv-anio]').onchange = (e) => { st.tvCapAnio[ent.id] = +e.target.value; A.recargar(); };
     const S_ = (id) => ses.find((s) => s.id === id);
     A.acts({
-      tvNuevaSes: () => formSesion(ent, null, anio), tvEditSes: (d) => formSesion(ent, S_(d.id), anio, tests),
+      tvNuevaSes: () => formSesion(ent, null, anio, [], { sedes: sedesAll, sede: sedeTV }), tvEditSes: (d) => formSesion(ent, S_(d.id), anio, tests, { sedes: sedesAll, sede: sedeTV }),
       tvDelSes: async (d) => { const s = S_(d.id); const n = tests.filter((t) => t.datos.sesion_id === s.id).length; if (!(await confirmar(`¿Eliminar la sesión “${s.datos?.tema}”${n ? ` y sus ${n} test` : ''}?`))) return; for (const t of tests.filter((t) => t.datos.sesion_id === s.id)) await S.remove(TB, t.id); await S.remove(TB, s.id); A.recargar(); },
-      tvPlanBase: async () => { for (const [p, mes, tema, objetivo] of PLAN_BASE) await S.insert(TB, { entidad_id: ent.id, tipo: 'sesion', anio, periodo: p, fecha: `${anio}-${String(mes).padStart(2, '0')}-15`, datos: { tema, objetivo, dirigido: 'Personal asistencial y administrativo', capacitador: st.emp.responsable || '', modalidad: 'Presencial', duracion: '1 hora', estado: 'Programada', asistentes: [] } }); toast('Plan semestral creado: ajuste fechas y capacitador'); A.recargar(); },
-      tvPlanPDF: () => verDoc(ent, TV.pdfPlan(ent, { anio, sesiones: ses }), `Plan de capacitación ${anio}`, `Plan_capacitacion_TV_${anio}_${slug(ent.razon_social)}.pdf`, 5),
+      tvPlanBase: async () => { for (const [p, mes, tema, objetivo] of PLAN_BASE) await S.insert(TB, { entidad_id: ent.id, tipo: 'sesion', anio, periodo: p, fecha: `${anio}-${String(mes).padStart(2, '0')}-15`, datos: { tema, objetivo, dirigido: sedeTV ? `Personal asistencial y administrativo de la sede ${sedeTV}` : 'Personal asistencial y administrativo', capacitador: st.emp.responsable || '', modalidad: 'Presencial', duracion: '1 hora', estado: 'Programada', asistentes: [], ...(sedeTV ? { sede: sedeTV, lugar: `Sede ${sedeTV}` } : {}) } }); toast('Plan semestral creado: ajuste fechas y capacitador'); A.recargar(); },
+      tvPlanPDF: () => verDoc(ent, TV.pdfPlan(ent, { anio, sesiones: ses, sede: sedeTV }), `Plan de capacitación ${anio}${sedeTV ? ' · ' + sedeTV : ''}`, `Plan_capacitacion_TV_${anio}${sedeTV ? '_' + slug(sedeTV) : ''}_${slug(ent.razon_social)}.pdf`, 5),
       tvPresGen: async () => { const evs = (await S.list('eventos', { entidad_id: ent.id }, '-fecha_evento')).slice(0, 4); const eqs = await S.list('equipos', { entidad_id: ent.id }); verDoc(ent, TV.pdfPresentacion(ent, { casosEnt: evs, casos: TV.casosPara(ent, eqs) }), 'Presentación · Programa de tecnovigilancia', `Presentacion_Tecnovigilancia_${slug(ent.razon_social)}.pdf`, 5); },
       tvPres: async (d) => { const s = S_(d.id); const evs = (await S.list('eventos', { entidad_id: ent.id }, '-fecha_evento')).slice(0, 4); const eqs = await S.list('equipos', { entidad_id: ent.id }); verDoc(ent, TV.pdfPresentacion(ent, { ses: s, casosEnt: s.datos?.casos_ent === false ? [] : evs, casos: TV.casosPara(ent, eqs) }), `Presentación · ${s.datos?.tema}`, `Presentacion_${slug(s.datos?.tema)}_${s.fecha}.pdf`, 5); },
       tvTestBlanco: () => modal({ titulo: 'Test en blanco', cuerpo: '<p>¿Qué desea generar?</p>', acciones: [{ t: 'Pre-test', fn: () => verDoc(ent, TV.pdfTest(ent, { ses: null, preguntas: preguntasDe(ent), fase: 'pre' }), 'Pre-test en blanco', 'Pre_test_en_blanco.pdf', 5) }, { t: 'Post-test', fn: () => verDoc(ent, TV.pdfTest(ent, { ses: null, preguntas: preguntasDe(ent), fase: 'post' }), 'Post-test en blanco', 'Post_test_en_blanco.pdf', 5) }, ...(esProp() ? [{ t: 'Clave de respuestas', cls: 'pri', fn: () => verDoc(ent, TV.pdfClave(ent, { ses: null, preguntas: preguntasDe(ent) }), 'Clave de respuestas', 'Clave_respuestas_test.pdf', null) }] : [])] }),
@@ -491,10 +548,10 @@
   const filaAsis = (a = {}, i = 0) => `<div class="ac-asis tv-asis" style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr auto;gap:6px;align-items:center;margin-bottom:6px">
     <input data-k="nombre" placeholder="Nombres y apellidos" value="${h(a.nombre || '')}" aria-label="Nombre ${i + 1}"><input data-k="cedula" placeholder="Cédula" value="${h(a.cedula || '')}" aria-label="Cédula"><input data-k="cargo" placeholder="Cargo" value="${h(a.cargo || '')}" aria-label="Cargo"><input data-k="servicio" placeholder="Servicio" value="${h(a.servicio || '')}" aria-label="Servicio">
     <div style="display:flex;gap:4px;align-items:center"><span class="tv-firma" data-firma="${h(a.firma || '')}" style="display:inline-flex;width:70px;height:26px;border:1px dashed var(--line);border-radius:6px;align-items:center;justify-content:center;font-size:.7rem;overflow:hidden">${a.firma ? `<img src="${a.firma}" alt="Firma" style="max-height:24px">` : 'Sin firma'}</span><button type="button" class="btn sm" data-fdib>${I.firma}</button><button type="button" class="icon-btn bad" data-fdel aria-label="Quitar">${I.x}</button></div></div>`;
-  const formSesion = (ent, s, anio, tests = []) => {
+  const formSesion = (ent, s, anio, tests = [], { sedes = [], sede = null } = {}) => {
     const d = s?.datos || {};
     modal({ titulo: s ? 'Sesión de capacitación' : 'Nueva sesión de capacitación', size: 'wide', cuerpo: `<form class="form" onsubmit="return false">
-      <fieldset><legend>Programación</legend><div class="fields">${f.input('tema', 'Tema *', d.tema, { full: true })}${f.area('objetivo', 'Objetivo / contenido', d.objetivo, { rows: 2 })}${f.input('dirigido', 'Dirigido a', d.dirigido || 'Personal asistencial y administrativo')}${f.input('capacitador', 'Capacitador', d.capacitador || st.emp.responsable || '')}
+      <fieldset><legend>Programación</legend><div class="fields">${f.input('tema', 'Tema *', d.tema, { full: true })}${f.area('objetivo', 'Objetivo / contenido', d.objetivo, { rows: 2 })}${f.input('dirigido', 'Dirigido a', d.dirigido || 'Personal asistencial y administrativo')}${f.input('capacitador', 'Capacitador', d.capacitador || st.emp.responsable || '')}${sedes.length >= 2 ? f.sel('sede', 'Sede', [['', 'Toda la institución'], ...sedes], d.sede ?? sede ?? '') : ''}
         ${f.input('fecha', 'Fecha programada *', s?.fecha || `${anio}-${String(new Date().getMonth() + 1).padStart(2, '0')}-15`, { type: 'date' })}${f.sel('modalidad', 'Modalidad', ['Presencial', 'Virtual', 'Mixta'], d.modalidad || 'Presencial')}${f.input('lugar', 'Lugar', d.lugar)}${f.input('duracion', 'Intensidad', d.duracion || '1 hora')}</div></fieldset>
       <fieldset><legend>Ejecución</legend><div class="fields">${f.sel('estado', 'Estado', ['Programada', 'Ejecutada', 'Reprogramada', 'Cancelada'], d.estado || 'Programada')}${f.input('fecha_ejec', 'Fecha de ejecución', d.fecha_ejec, { type: 'date' })}${f.input('hora_ini', 'Hora inicial', d.hora_ini, { type: 'time' })}${f.input('hora_fin', 'Hora final', d.hora_fin, { type: 'time' })}
         ${f.sel('casos_ent', 'Incluir en la presentación los casos registrados de la entidad (sin datos del paciente)', [['true', 'Sí'], ['false', 'No']], String(d.casos_ent !== false))}</div></fieldset>
@@ -652,8 +709,48 @@
   };
 
   // ================================================================== 7. ALERTAS E INFORMES DE SEGURIDAD (enlace a la carpeta 5. ALERTAS SANITARIAS)
+  // v195: verificación mensual de alertas sanitarias y recalls contra el inventario de una sede (tv_registros tipo «alertas_sede»)
+  st.tvAlSede = st.tvAlSede || {};
+  const nrmRS = (t) => String(t || '').toUpperCase().replace(/REGISTRO\s*SANITARIO|INVIMA|RS\b/g, '').replace(/[^A-Z0-9]/g, '');
+  const vAlertasSede = async (box, { ent, sedeTV, cons }) => {
+    const [als, eqs, regs] = await Promise.all([S.list('alertas', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id }), regsDe(ent)]);
+    const eqSede = eqs.filter((e) => e.estado !== 'Dado de baja' && sedeEq(e, cons) === sedeTV);
+    const per = (a) => A.periodoAlerta(a), clave = (p) => p.anio * 100 + p.mes;
+    const periodos = [...new Set(als.map((a) => clave(per(a))).filter((k) => k > 0))].sort((a, b) => b - a);
+    const selK = st.tvAlSede[ent.id] && periodos.includes(st.tvAlSede[ent.id]) ? st.tvAlSede[ent.id] : periodos[0];
+    const anio = Math.floor((selK || 0) / 100), mes = (selK || 0) % 100;
+    const delMes = als.filter((a) => clave(per(a)) === selK);
+    const filas = delMes.map((a) => { const rs = nrmRS(a.registro_sanitario); const q = rs ? eqSede.filter((e) => nrmRS(e.registro_sanitario) === rs) : [];
+      return { alerta: a.dispositivo || a.tipo_notificacion || '', rs: a.registro_sanitario || '', tipo: a.tipo_notificacion || '', agencia: a.agencia || '', fecha: a.fecha_publicacion || '', aplica: q.length > 0, equipos: q.map((e) => `${e.codigo_inv || ''} ${e.nombre || ''}`.trim()), resultado: q.length ? `APLICA: ${q.map((e) => e.codigo_inv || e.nombre).join(', ')}` : rs ? 'No aplica: ningún dispositivo de la sede tiene este registro sanitario' : 'Sin registro sanitario: verificar por nombre / lote' }; });
+    const regDe = (k) => (regs || []).find((r) => r.tipo === 'alertas_sede' && r.datos?.sede === sedeTV && r.anio === Math.floor(k / 100) && r.periodo === `M${k % 100}`);
+    const reg = selK ? regDe(selK) : null;
+    const anioV = anio || anioAct, meses12 = Array.from({ length: 12 }, (_, i) => anioV * 100 + i + 1);
+    box.innerHTML = `${avisoSede(ent, sedeTV)}<section class="panel"><header><div><h2>Alertas sanitarias y recalls revisados contra el inventario · sede ${h(sedeTV)}</h2><span class="muted" style="font-size:.85rem">Cada mes las alertas, retiros de producto (recall) e informes de seguridad de la bitácora institucional se comparan con los ${eqSede.length} equipos activos de la sede por registro sanitario. El enlace local confirma la verificación y las acciones.</span></div>
+      <div class="actions">${periodos.length ? `<select data-al-per aria-label="Mes">${periodos.map((k) => `<option value="${k}" ${k === selK ? 'selected' : ''}>${CAT.MESES[k % 100 - 1]} ${Math.floor(k / 100)}</option>`).join('')}</select><button class="btn" data-act="tvAlSedePDF">${I.pdf} Verificación de la sede (PDF)</button>${esProp() ? `<button class="btn pri" data-act="tvAlSedeReg">${I.firma || ''} Registrar verificación</button>` : ''}` : ''}</div></header>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${meses12.map((k) => { const r0 = regDe(k), hay = periodos.includes(k); return `<span class="pill ${r0 ? 'ok' : hay ? 'warn' : ''}" title="${r0 ? 'Verificada ' + UI.fecha(r0.datos.fecha) : hay ? 'Pendiente de verificación' : 'Sin alertas en la bitácora'}">${CAT.MESES[k % 100 - 1].slice(0, 3)} ${r0 ? '✓' : hay ? '!' : '–'}</span>`; }).join('')}</div>
+      ${!periodos.length ? '<div class="empty">La bitácora de alertas de la entidad no tiene consultas registradas. Regístrelas en la pestaña General.</div>' : `
+      ${reg ? `<p class="muted" style="font-size:.85rem">Verificada el ${UI.fecha(reg.datos.fecha)} por ${h(reg.datos.verifico || '')}${reg.datos.obs ? ' · ' + h(reg.datos.obs) : ''}</p>` : `<p class="muted" style="font-size:.85rem">Pendiente de verificación por el enlace de la sede.</p>`}
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Alerta / dispositivo</th><th>Registro sanitario</th><th>Tipo</th><th>Agencia</th><th>Resultado en la sede</th></tr></thead><tbody>${filas.map((x, i) => `<tr><td class="num">${i + 1}</td><td>${h(x.alerta)}</td><td class="mono">${h(x.rs || '—')}</td><td>${h(x.tipo)}</td><td>${h(x.agencia)}</td><td>${pill(x.resultado, x.aplica ? 'bad' : x.rs ? 'ok' : 'warn')}</td></tr>`).join('')}</tbody></table></div>`}</section>`;
+    const sp = box.querySelector('[data-al-per]'); if (sp) sp.onchange = (e) => { st.tvAlSede[ent.id] = +e.target.value; A.recargar(); };
+    const pdf = () => TV.pdfAlertasSede(ent, { sede: sedeTV, anio, mes, filas, reg: reg?.datos || null, nEq: eqSede.length, enlace: TV.sedesCfg(ent)[sedeTV] || {} });
+    A.acts({
+      tvAlSedePDF: () => { const doc = pdf(); UI.verPDF({ titulo: `Verificación de alertas · ${sedeTV} · ${CAT.MESES[mes - 1]} ${anio}`, blob: doc.output('blob'), nombre: `Verificacion_alertas_${slug(sedeTV)}_${anio}-${String(mes).padStart(2, '0')}.pdf`,
+        extras: esProp() ? [{ t: `${I.carpeta || ''} Guardar en la carpeta`, fn: async () => { await A.guardarPDF({ blob: doc.output('blob'), nombre: `Verificacion_alertas_${slug(sedeTV)}_${anio}-${String(mes).padStart(2, '0')}.pdf`, entidad_id: ent.id, equipo_id: null, carpeta: 'alertas', subcarpeta: `${anio}/${String(mes).padStart(2, '0')}. ${CAT.MESES[mes - 1].toUpperCase()}` }); toast('Guardado en la carpeta de alertas del mes'); return false; } }] : [] }); },
+      tvAlSedeReg: () => {
+        if (regs === null) { toast('Falta actualizar la base de datos', true); return; }
+        modal({ titulo: `Verificación de alertas · sede ${sedeTV} · ${CAT.MESES[mes - 1]} ${anio}`, cuerpo: `<form class="form" onsubmit="return false"><div class="fields">${f.input('fecha', 'Fecha de verificación *', reg?.datos?.fecha || UI.hoy(), { type: 'date' })}${f.input('verifico', 'Verificó (enlace local de la sede)', reg?.datos?.verifico || TV.sedesCfg(ent)[sedeTV]?.enlace || '')}${f.input('cargo', 'Cargo', reg?.datos?.cargo || TV.sedesCfg(ent)[sedeTV]?.cargo || '')}${f.area('obs', 'Acciones / observaciones (ej. equipos retirados, proveedor informado)', reg?.datos?.obs || (filas.some((x) => x.aplica) ? '' : 'Ninguna alerta del mes aplica a los dispositivos de la sede.'), { rows: 3 })}</div>
+          <p class="muted" style="font-size:.85rem">${filas.filter((x) => x.aplica).length} de ${filas.length} alerta(s) aplican a equipos de la sede.</p></form>`,
+          acciones: [...(reg ? [{ t: 'Quitar registro', cls: 'danger', fn: async () => { await S.remove(TB, reg.id); A.recargar(); } }] : []), { t: 'Cancelar' }, { t: 'Guardar', cls: 'pri', fn: async (m) => {
+            const v = leer(m.body); if (!v.fecha) { toast('Indique la fecha', true); return false; }
+            const o = { entidad_id: ent.id, tipo: 'alertas_sede', anio, periodo: `M${mes}`, fecha: v.fecha, datos: { ...v, sede: sedeTV, n: filas.length, aplican: filas.filter((x) => x.aplica).length, filas } };
+            reg ? await S.update(TB, reg.id, o) : await S.insert(TB, o); toast('Verificación registrada'); A.recargar();
+          } }] });
+      },
+    });
+  };
   const vAlertas = async (box, ctx) => {
     const { ent } = ctx;
+    if (ctx.sedeTV) return vAlertasSede(box, ctx);
     box.innerHTML = `<section class="panel"><header><div><h2>Alertas sanitarias e informes de seguridad</h2><span class="muted" style="font-size:.85rem">Consulta mensual de alertas, retiros de producto (recall) e informes de seguridad del INVIMA y agencias internacionales (RISARH). La bitácora y sus soportes quedan aquí, dentro del programa de tecnovigilancia, y se anexan a las actas de comité.</span></div>
       <div class="actions"><a class="btn" href="https://app.invima.gov.co/alertas/" target="_blank" rel="noopener">Consultar alertas INVIMA</a></div></header></section><div data-al></div>
       <details class="plegable" data-al-docs><summary><span>Soportes: consultas, alertas e informes de seguridad</span><span class="muted">por año y mes</span></summary><section class="panel" data-al-arch></section></details>`;
