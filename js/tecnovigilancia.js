@@ -760,8 +760,13 @@
   };
   const vAlertas = async (box, ctx) => {
     const { ent } = ctx;
-    if (ctx.sedeTV) return vAlertasSede(box, ctx);
-    box.innerHTML = `<section class="panel"><header><div><h2>Alertas sanitarias e informes de seguridad</h2><span class="muted" style="font-size:.85rem">Consulta mensual de alertas, retiros de producto (recall) e informes de seguridad del INVIMA y agencias internacionales (RISARH). La bitácora y sus soportes quedan aquí, dentro del programa de tecnovigilancia, y se anexan a las actas de comité.</span></div>
+    // pestaña de la sede: la bitácora de alertas e informes es la misma de la institución; arriba va la verificación contra el inventario de la sede
+    if (ctx.sedeTV) {
+      box.innerHTML = `<div data-als style="display:grid;gap:18px"></div><div data-al-inst style="display:grid;gap:18px"></div>`;
+      await vAlertasSede(box.querySelector('[data-als]'), ctx);
+      return vAlertas(box.querySelector('[data-al-inst]'), { ...ctx, sedeTV: null, institucional: true });
+    }
+    box.innerHTML = `<section class="panel"><header><div><h2>Alertas sanitarias e informes de seguridad${ctx.institucional ? ' · bitácora institucional (la misma para todas las sedes)' : ''}</h2><span class="muted" style="font-size:.85rem">Consulta mensual de alertas, retiros de producto (recall) e informes de seguridad del INVIMA y agencias internacionales (RISARH). La bitácora y sus soportes quedan aquí, dentro del programa de tecnovigilancia, y se anexan a las actas de comité.</span></div>
       <div class="actions"><a class="btn" href="https://app.invima.gov.co/alertas/" target="_blank" rel="noopener">Consultar alertas INVIMA</a></div></header></section><div data-al></div>
       <details class="plegable" data-al-docs><summary><span>Soportes: consultas, alertas e informes de seguridad</span><span class="muted">por año y mes</span></summary><section class="panel" data-al-arch></section></details>`;
     await A.G.alertas(box.querySelector('[data-al]'), ctx);
