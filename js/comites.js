@@ -381,7 +381,7 @@
   A.comiteVirtual = async (ent, acta, actas = []) => {
     let a = (await S.get('actas_comite', acta.id).catch(() => null)) || acta; const d0 = a.datos || {}, v = d0.virtual || {};
     const dest = await destinoActas(ent);
-    const nombreA = () => `${a.datos?.tipo || 'Comité'} de tecnovigilancia · Acta ${a.numero || ''}`;
+    const nombreA = () => { const t = a.datos?.tipo || 'Comité'; return `${/tecnovigilancia/i.test(t) ? t : t + ' de tecnovigilancia'} · Acta ${a.numero || ''}`; };
     const ICO = A.ICO_MEET || '';
     const m = modal({ titulo: `${nombreA()} · reunión virtual`, size: 'wide', cuerpo: `<form class="form" onsubmit="return false">
       <p class="muted" style="font-size:.86rem"><b>${h(ent.razon_social)}</b>. El gestor guarda solo el enlace de la reunión (no guarda video). La lista de asistencia se firma desde el celular con un enlace y queda en el acta; las fotos de evidencia son capturas livianas de la pestaña de Meet.</p>
