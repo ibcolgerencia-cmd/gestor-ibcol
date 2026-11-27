@@ -392,6 +392,8 @@
         <div class="fields">${f.input('meet', 'Enlace de Google Meet', v.meet || '', { full: true, attrs: 'placeholder="https://meet.google.com/abc-defg-hij" inputmode="url"' })}</div></fieldset>
       <fieldset><legend>2. Lista de asistencia virtual (firma desde el celular)</legend><div data-cv-asis></div></fieldset>
       <fieldset><legend>3. Enviar la invitación (Meet + lista de asistencia)</legend>
+        <div class="fields">${f.input('coordina', 'Coordina', v.coordina || 'Área Biomédica')}</div>
+        <p class="muted" style="font-size:.8rem;margin:4px 0 6px">El mensaje se puede modificar a mano antes de enviarlo.</p>
         <div class="actions"><button type="button" class="btn" data-cv="wa">WhatsApp</button><button type="button" class="btn" data-cv="mail">Correo</button><button type="button" class="btn" data-cv="copiar">Copiar mensaje</button></div>
         <textarea data-cv-msg rows="6" style="width:100%;margin-top:6px;font-size:.85rem" aria-label="Mensaje de invitación"></textarea></fieldset>
       <fieldset><legend>4. Durante la reunión: fotos de evidencia</legend>
@@ -409,7 +411,7 @@
         const en = () => a.datos?.enlace || {};
         const texto = () => { const tu = en().token ? urlAsis(en().token, meetV()) : ''; const fe = g('fecha').value;
           return [`${ent.razon_social} · ${g('tema').value || 'Comité de tecnovigilancia'} (acta ${a.numero || ''})`, `Fecha: ${fe ? new Date(fe + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''} · ${horaTxt(g('hora').value)}`,
-            meetV() ? `1) Únase por Google Meet: ${meetV()}` : '', tu ? `${meetV() ? '2' : '1'}) Registre su asistencia y firme (desde el celular, sin usuario): ${tu}` : '', `Coordina: ${d0.coordinador || COORD}`].filter(Boolean).join('\n'); };
+            meetV() ? `1) Únase por Google Meet: ${meetV()}` : '', tu ? `${meetV() ? '2' : '1'}) Registre su asistencia y firme (desde el celular, sin usuario): ${tu}` : '', `Coordina: ${g('coordina')?.value.trim() || 'Área Biomédica'}`].filter(Boolean).join('\n'); };
         const pintarAsis = async (recargar = false) => {
           if (recargar) a = (await S.get('actas_comite', a.id).catch(() => null)) || a;
           const e = en(), lista = (a.datos?.asistentes || []).filter((x) => x.virtual && x.nombre), box = mm.body.querySelector('[data-cv-asis]');
@@ -417,17 +419,19 @@
             <div class="actions"><button type="button" class="btn sm" data-cv="${e.abierto ? 'cerrar' : 'abrir'}">${e.abierto ? 'Cerrar la lista' : 'Abrir la lista'}</button><button type="button" class="btn sm" data-cv="cambiar">Cambiar enlace</button><button type="button" class="btn sm" data-cv="ver">↻ Ver quiénes firmaron</button></div>
             <p class="muted" style="font-size:.82rem;margin:6px 0 0">${lista.length ? `${lista.length} firmado(s): ${h(lista.map((x) => x.nombre).join(', '))}` : 'Aún nadie ha firmado.'}</p>`
             : `<p class="muted" style="font-size:.85rem;margin:0 0 6px">Cree el enlace y envíelo con la invitación: cada asistente escribe su nombre, cédula y cargo y firma en la pantalla del celular; queda en la lista de asistentes del acta.</p><button type="button" class="btn sm pri" data-cv="crear">Crear enlace de asistencia</button>`;
-          mm.body.querySelector('[data-cv-msg]').value = texto();
+          if (!mm.body.querySelector('[data-cv-msg]').dataset.ed) mm.body.querySelector('[data-cv-msg]').value = texto();
           const nf = (a.datos?.fotos || []).filter((x) => x.virtual).length; mm.body.querySelector('[data-cv-nf]').textContent = nf ? `${nf} foto(s) de evidencia guardada(s).` : '';
         };
         const guardarV = async (extra = {}) => {
           const x = leer(mm.body); const meet = meetV();
           if (x.meet && !meet) { toast('El enlace de Google Meet no es válido (https://meet.google.com/abc-defg-hij)', true); return false; }
           const fr = (await S.get('actas_comite', a.id).catch(() => null)) || a;
-          const datos = { ...(fr.datos || {}), metodologia: 'Virtual', hora_ini: x.hora || fr.datos?.hora_ini, virtual: { ...(fr.datos?.virtual || {}), meet, hora: x.hora, duracion: +x.duracion || 60, cada: +x.cada || 0, grabacion: (x.grabacion || '').trim() }, ...extra };
+          const datos = { ...(fr.datos || {}), metodologia: 'Virtual', hora_ini: x.hora || fr.datos?.hora_ini, virtual: { ...(fr.datos?.virtual || {}), meet, hora: x.hora, duracion: +x.duracion || 60, cada: +x.cada || 0, grabacion: (x.grabacion || '').trim(), coordina: (x.coordina || '').trim() || 'Área Biomédica' }, ...extra };
           await S.update('actas_comite', a.id, { fecha: x.fecha || a.fecha, tema: x.tema || a.tema, datos }); a = { ...fr, fecha: x.fecha || a.fecha, tema: x.tema || a.tema, datos }; return true;
         };
-        pintarAsis(); mm.body.addEventListener('input', () => { mm.body.querySelector('[data-cv-msg]').value = texto(); });
+        pintarAsis(); let editado = false; const msgEl = mm.body.querySelector('[data-cv-msg]');
+        msgEl.addEventListener('input', () => { editado = true; msgEl.dataset.ed = '1'; });
+        mm.body.addEventListener('input', (ev) => { if (ev.target === msgEl) return; if (!editado || confirm('¿Actualizar el mensaje con los datos nuevos? Se pierden los cambios que escribió en el mensaje.')) { msgEl.value = texto(); editado = false; delete msgEl.dataset.ed; } });
         mm.body.addEventListener('click', async (e) => {
           const bt = e.target.closest('[data-cv]'); if (!bt) return; const k = bt.dataset.cv;
           if (k === 'cal') {
@@ -450,7 +454,7 @@
         });
       },
       acciones: [{ t: 'Cerrar', fn: () => { A.recargar(); } }, { t: 'Guardar', cls: 'pri', fn: async (mm) => { const r = await (async () => { const x = leer(mm.body); const meet = A.meetUrl ? A.meetUrl(x.meet) : x.meet; if (x.meet && !meet) { toast('El enlace de Google Meet no es válido', true); return false; }
-        const fr = (await S.get('actas_comite', a.id).catch(() => null)) || a; const datos = { ...(fr.datos || {}), metodologia: 'Virtual', hora_ini: x.hora || fr.datos?.hora_ini, virtual: { ...(fr.datos?.virtual || {}), meet, hora: x.hora, duracion: +x.duracion || 60, cada: +x.cada || 0, grabacion: (x.grabacion || '').trim() } };
+        const fr = (await S.get('actas_comite', a.id).catch(() => null)) || a; const datos = { ...(fr.datos || {}), metodologia: 'Virtual', hora_ini: x.hora || fr.datos?.hora_ini, virtual: { ...(fr.datos?.virtual || {}), meet, hora: x.hora, duracion: +x.duracion || 60, cada: +x.cada || 0, grabacion: (x.grabacion || '').trim(), coordina: (x.coordina || '').trim() || 'Área Biomédica' } };
         await S.update('actas_comite', a.id, { fecha: x.fecha || a.fecha, tema: x.tema || a.tema, datos }); return true; })(); if (r === false) return false; toast('Comité virtual guardado'); A.recargar(); } }] });
     return m;
   };
