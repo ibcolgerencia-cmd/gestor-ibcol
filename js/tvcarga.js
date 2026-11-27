@@ -221,6 +221,102 @@
   const winAnsi = (t) => String(t ?? '').normalize('NFC').replace(/μ/g, 'µ').replace(/[\u2010-\u2012]/g, '-').replace(/[^\n\x20-\x7E\xA0-\xFF]/g, (c) => (W1252.includes(c) ? c : ''));
   const nrmRS = (t) => String(t || '').toUpperCase().replace(/REGISTRO\s*SANITARIO|INVIMA|RS\b/g, '').replace(/[^A-Z0-9]/g, '');
   const isoDMY = (t) => { const m = String(t || '').match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null; };
+
+  // v206: genera la bitácora FT-PGTV-015 de cada entidad (con su logo y su nombre) a partir de filas leídas
+  // (de una bitácora en PDF o de la consulta automática del INVIMA); la guarda en alertas/AAAA/MM. MES y registra la consulta.
+  // lect: [{ sub: '2026/10. OCTUBRE', nombre, filas: [{ mes, rs, dispositivo, tipo, agencia, fecha (dd/mm/aaaa), responsable, analisis, aplica }], etq }]
+  const generarBitacoras = async ({ lect, ents, pg, res }) => {
+    for (const [ie, e] of ents.entries()) {
+      const [eqs, dE, alE] = await Promise.all([S.list('equipos', { entidad_id: e.id }), S.list('documentos', { entidad_id: e.id }), S.list('alertas', { entidad_id: e.id })]);
+      const rsEq = new Map(); eqs.filter((q) => q.estado !== 'Dado de baja' && q.registro_sanitario).forEach((q) => rsEq.set(nrmRS(q.registro_sanitario), q));
+      for (const { sub, nombre, filas, etq } of lect) {
+        pg?.set(`${ie + 1} de ${ents.length}: ${e.razon_social} · ${etq}`);
+        if (dE.some((x) => x.carpeta === 'alertas' && x.subcarpeta === sub && /\.pdf$/i.test(x.nombre || ''))) { res.ya++; res.yaEnt?.push(`${e.razon_social} · ${etq}`); continue; }
+        let ap = 0;
+        const rows = filas.map((r) => { const q = String(r.rs || '').split(/\s*\/\s*/).map((x) => rsEq.get(nrmRS(x))).find(Boolean); if (q) ap++;
+          return { mes_consulta: r.mes || '', registro_sanitario: r.rs || '', dispositivo: r.dispositivo || '', tipo_notificacion: r.tipo || '', agencia: r.agencia || 'INVIMA', fecha_publicacion: isoDMY(r.fecha), responsable: r.responsable || st.emp?.responsable || '',
+            analisis: q ? `APLICA: ${q.nombre || 'equipo'} ${q.codigo_inv || ''}`.trim() : (r.analisis || 'NO APLICA'), aplicabilidad: q ? 'APLICA - VERIFICAR' : (r.aplica || 'NO APLICA') }; });
+        rows.forEach((r) => Object.keys(r).forEach((k) => { if (typeof r[k] === 'string') r[k] = winAnsi(r[k]); }));
+        let blob; try { blob = await FMT.alertas({ ent: e, alertas: rows, fmt: st.fmt.alertas || {} }); } catch (er) { res.sinFilas.push(`${etq} · ${e.razon_social} (${er.message})`); continue; }
+        await subirArchivo({ blob, nombre, ent: e, carpeta: 'alertas', subcarpeta: sub });
+        const [anio, mm] = sub.split('/'), etiqueta = `${CAT.MESES[+mm.slice(0, 2) - 1]} ${anio}`, ya = alE.find((a) => nrm(a.mes_consulta) === nrm(etiqueta));
+        const reg = { analisis: `Consulta realizada (${rows.length} alerta${rows.length === 1 ? '' : 's'} revisada${rows.length === 1 ? '' : 's'}${ap ? `, ${ap} con registro sanitario del inventario` : ''}). Soporte: ${nombre}`, aplicabilidad: ap ? 'Aplica - en gestión' : 'No aplica' };
+        if (ya) await S.update('alertas', ya.id, reg);
+        else alE.push(await S.insert('alertas', { entidad_id: e.id, mes_consulta: etiqueta, tipo_notificacion: 'Consulta periódica', agencia: 'INVIMA', responsable: rows[0]?.responsable || st.emp?.responsable || '', fecha_publicacion: rows.find((r) => r.fecha_publicacion)?.fecha_publicacion || null, ...reg }));
+        res.hechas++; if (ap) { res.aplican++; res.apEnt?.push(`${e.razon_social}: ${ap}`); }
+      }
+    }
+  };
+  const entsAlertas = async (excluir = null) => (await S.list('entidades', {}, 'razon_social')).filter((e) => e.id !== excluir && e.activo !== false && !(A.ocultas ? A.ocultas(e, 'ent').has('tecnovigilancia') : false));
+
+  // ================================================================== CONSULTA MENSUAL AUTOMÁTICA DE ALERTAS DEL INVIMA (v206)
+  // Al abrir el Panel de control (propietario), si la consulta del mes anterior no se ha hecho, el gestor lee las alertas sanitarias e
+  // informes de seguridad de dispositivos médicos publicados por el INVIMA ese mes (función buscar-equipo, acción alertas_invima),
+  // y genera la bitácora FT-PGTV-015 de cada entidad con su logo y su nombre (automático o después de revisar). Estado en formatos «alertas_auto».
+  const mesAnterior = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return { anio: d.getFullYear(), mes: d.getMonth() + 1 }; };
+  const perTxt = (p) => `${p.anio}-${String(p.mes).padStart(2, '0')}`;
+  const estadoAuto = () => st.fmt?.alertas_auto || {};
+  const guardarAuto = async (datos) => { const v = { ...estadoAuto(), ...datos }; await S.upsert('formatos', { clave: 'alertas_auto', datos: v }); st.fmt.alertas_auto = v; return v; };
+  const filasDeInvima = (alertas, p) => alertas.map((a) => ({ mes: CAT.MESES[p.mes - 1].toUpperCase(), rs: a.registro_sanitario || 'NO REGISTRA', dispositivo: a.titulo || a.producto || '', tipo: a.tipo || 'ALERTA SANITARIA', agencia: 'INVIMA', fecha: a.fecha ? a.fecha.split('-').reverse().join('/') : '', responsable: st.emp?.responsable || '' }));
+  TV.consultarInvima = async (p) => { const r = await S.buscar({ accion: 'alertas_invima', anio: p.anio, mes: p.mes }); return r.alertas || []; };
+  TV.cargarInvimaTodas = async (p, alertas, { ents = null, silencioso = false } = {}) => {
+    const sub = `${p.anio}/${String(p.mes).padStart(2, '0')}. ${CAT.MESES[p.mes - 1].toUpperCase()}`, nombre = `FT-PGTV-015 BITÁCORA ALERTAS SANITARIAS - ${String(p.mes).padStart(2, '0')} ${CAT.MESES[p.mes - 1].toUpperCase()} ${p.anio}.pdf`;
+    const lista = ents || await entsAlertas(); const res = { hechas: 0, ya: 0, aplican: 0, sinFilas: [], yaEnt: [], apEnt: [] };
+    const pg = progreso('Generando las bitácoras de alertas…');
+    try { await generarBitacoras({ lect: [{ sub, nombre, filas: filasDeInvima(alertas, p), etq: `${CAT.MESES[p.mes - 1]} ${p.anio}` }], ents: lista, pg, res }); }
+    catch (er) { pg.cerrar(); toast('Error: ' + er.message, true); return null; }
+    pg.cerrar();
+    await guardarAuto({ periodo: perTxt(p), estado: 'cargada', cargada: new Date().toISOString(), hechas: res.hechas, ya: res.ya, aplican: res.apEnt });
+    modal({ titulo: `Alertas del INVIMA · ${CAT.MESES[p.mes - 1]} ${p.anio}`, cuerpo: `<p><b>${res.hechas}</b> bitácora(s) FT-PGTV-015 generadas con el logo y el nombre de cada entidad (${alertas.length} alertas e informes de seguridad de dispositivos médicos), guardadas en la carpeta de alertas (${h(sub)}) y registradas en la bitácora.${res.ya ? ` ${res.ya} entidad(es) ya tenían la bitácora del mes y no se tocaron.` : ''}</p>${res.apEnt.length ? `<p class="pill warn">Alertas con registro sanitario de equipos del inventario: ${h(res.apEnt.join(' · '))}. Revíselas («APLICA - VERIFICAR»).</p>` : '<p>Ninguna alerta coincide con el registro sanitario de un equipo de las entidades.</p>'}${res.sinFilas.length ? `<p class="muted">No se pudieron generar: ${h(res.sinFilas.join(', '))}.</p>` : ''}`, acciones: [{ t: 'Cerrar', cls: 'pri' }] });
+    A.recargar?.(); return res;
+  };
+  // ventana para revisar la consulta, cambiar el mes, quitar filas, elegir entidades y cargar
+  TV.formInvima = async (p0 = null, alertas0 = null) => {
+    let p = p0 || mesAnterior(), alertas = alertas0;
+    const ents = await entsAlertas();
+    const tabla = () => !alertas ? '<div class="empty">Pulse «Consultar INVIMA» para leer las alertas del mes.</div>' : !alertas.length ? '<div class="empty">El INVIMA no publicó alertas ni informes de seguridad de dispositivos médicos en este mes.</div>' : `<p class="muted" style="font-size:.85rem">${alertas.length} alertas e informes de seguridad de dispositivos médicos publicados por el INVIMA. Quite con ✕ los que no van en la bitácora.</p><div class="tbl-wrap" style="max-height:340px;overflow:auto"><table class="tbl" style="font-size:.8rem"><thead><tr><th>Fecha</th><th>Tipo</th><th>Dispositivo</th><th>Registro sanitario</th><th></th></tr></thead><tbody>${alertas.map((a, i) => `<tr><td style="white-space:nowrap">${h(a.fecha.split('-').reverse().join('/'))}</td><td>${h(a.tipo)}</td><td><a href="${h(a.url)}" target="_blank" rel="noopener">${h(a.titulo)}</a></td><td class="mono">${h(a.registro_sanitario || '—')}</td><td><button type="button" class="btn sm" data-qi="${i}" title="Quitar">✕</button></td></tr>`).join('')}</tbody></table></div>`;
+    const anios0 = [p.anio, p.anio - 1];
+    modal({ titulo: 'Consulta mensual de alertas del INVIMA para todas las entidades', size: 'wide', cuerpo: `<form class="form" onsubmit="return false">
+      <p class="muted" style="font-size:.85rem">El gestor lee en www.invima.gov.co/alertas-sanitarias (Dispositivos médicos y otras tecnologías) las alertas sanitarias e informes de seguridad publicados en el mes, con su registro sanitario, y genera la bitácora FT-PGTV-015 de cada entidad con su logo y su nombre. Si el registro sanitario de una alerta coincide con un equipo del inventario de la entidad, la fila sale «APLICA - VERIFICAR». Las entidades que ya tienen la bitácora del mes no se tocan.</p>
+      <div class="actions"><select data-im aria-label="Mes">${CAT.MESES.map((m, i) => `<option value="${i + 1}" ${i + 1 === p.mes ? 'selected' : ''}>${m}</option>`).join('')}</select><select data-ia aria-label="Año">${[new Date().getFullYear(), new Date().getFullYear() - 1].map((a) => `<option ${a === p.anio ? 'selected' : ''}>${a}</option>`).join('')}</select><button type="button" class="btn" data-icon>Consultar INVIMA</button></div>
+      <div data-itab style="margin-top:8px">${tabla()}</div>
+      <fieldset style="margin-top:8px"><legend>Entidades (${ents.length})</legend><label class="chk"><input type="checkbox" data-te checked> Todas</label><div style="display:flex;flex-wrap:wrap;gap:2px 14px;max-height:150px;overflow:auto">${ents.map((e) => `<label class="chk"><input type="checkbox" data-e="${e.id}" checked> ${h(e.razon_social)}</label>`).join('')}</div></fieldset>
+      <label class="chk" style="margin-top:8px"><input type="checkbox" data-iauto ${estadoAuto().auto !== false ? 'checked' : ''}> Cada mes, al abrir el Panel de control, consultar y cargar automáticamente el mes anterior en todas las entidades</label></form>`,
+      alAbrir: (m) => {
+        const box = m.body.querySelector('[data-itab]');
+        const pintar = () => { box.innerHTML = tabla(); };
+        box.onclick = (e) => { const b = e.target.closest('[data-qi]'); if (b) { alertas.splice(+b.dataset.qi, 1); pintar(); } };
+        const cambia = () => { p = { anio: +m.body.querySelector('[data-ia]').value, mes: +m.body.querySelector('[data-im]').value }; alertas = null; pintar(); };
+        m.body.querySelector('[data-im]').onchange = cambia; m.body.querySelector('[data-ia]').onchange = cambia;
+        m.body.querySelector('[data-te]').onchange = (e) => m.body.querySelectorAll('[data-e]').forEach((x) => { x.checked = e.target.checked; });
+        m.body.querySelector('[data-iauto]').onchange = (e) => guardarAuto({ auto: e.target.checked }).then(() => toast(e.target.checked ? 'Carga automática mensual activada' : 'Carga automática mensual desactivada'));
+        m.body.querySelector('[data-icon]').onclick = async (e) => { const b = e.target; b.disabled = true; b.textContent = 'Consultando (≈30 s)…'; try { alertas = await TV.consultarInvima(p); pintar(); } catch (er) { toast(er.message, true); } b.disabled = false; b.textContent = 'Consultar INVIMA'; };
+      },
+      acciones: [{ t: 'Cerrar' }, { t: 'Generar bitácoras en las entidades', cls: 'pri', fn: async (m) => {
+        if (!alertas) { toast('Primero pulse «Consultar INVIMA»', true); return false; }
+        const sel = [...m.body.querySelectorAll('[data-e]:checked')].map((x) => ents.find((e) => e.id === x.dataset.e)); if (!sel.length) { toast('Elija al menos una entidad', true); return false; }
+        setTimeout(() => TV.cargarInvimaTodas(p, alertas, { ents: sel }), 50);
+      } }] });
+  };
+  // aviso del Panel de control y carga automática
+  let enCurso = false;
+  TV.panelAlertasAuto = async (el) => {
+    if (!el || !A.esProp?.()) return;
+    const p = mesAnterior(), est = estadoAuto(), hecho = est.periodo === perTxt(p) && est.estado === 'cargada';
+    const pintar = (txt, extra = '') => { el.hidden = false; el.innerHTML = `<header><div><h2>Alertas sanitarias del INVIMA · ${CAT.MESES[p.mes - 1]} ${p.anio}</h2><span class="muted" style="font-size:.85rem">${txt}</span></div><div class="actions">${extra}<button class="btn" data-act="alInvima">Consulta mensual INVIMA</button></div></header>`; };
+    A.acts({ alInvima: () => TV.formInvima() });
+    if (hecho) { pintar(`Bitácoras del mes cargadas el ${UI.fecha(est.cargada.slice(0, 10))}: ${est.hechas || 0} entidad(es)${est.ya ? `, ${est.ya} ya la tenían` : ''}.${est.aplican?.length ? ` Con alertas que aplican: ${est.aplican.join(' · ')}.` : ''}`); return; }
+    if (est.auto === false) { pintar('La consulta del mes anterior está pendiente (carga automática desactivada).', ''); return; }
+    if (enCurso) return; enCurso = true;
+    pintar('Consultando las alertas del INVIMA del mes anterior para cargarlas en todas las entidades…');
+    try {
+      const alertas = await TV.consultarInvima(p);
+      await guardarAuto({ periodo: perTxt(p), estado: 'consultada', consultada: new Date().toISOString(), total: alertas.length });
+      await TV.cargarInvimaTodas(p, alertas);
+    } catch (er) { pintar(`No se pudo consultar automáticamente (${h(er.message)}). Use «Consulta mensual INVIMA».`); }
+    enCurso = false;
+  };
+
   TV.compartirAlertas = async (ent) => {
     const [docs0, ents0] = await Promise.all([S.list('documentos', { entidad_id: ent.id }), S.list('entidades', {}, 'razon_social')]);
     const meses = docs0.filter((d) => d.carpeta === 'alertas' && /^\d{4}\/\d{2}\./.test(d.subcarpeta || '') && /\.pdf$/i.test(d.nombre || '') && /pgtv[\s_-]*0?15|bit[aá]cora/i.test(d.nombre))
@@ -240,26 +336,7 @@
         try {
           const lect = [];
           for (const d of selM) { pg.set(`Leyendo ${etq(d)}…`); const filas = await TV.filasBitacora(await S.fileBlob(d.archivo)).catch(() => []); if (!filas.length) res.sinFilas.push(etq(d)); else lect.push({ d, filas }); }
-          for (const [ie, e] of selE.entries()) {
-            const [eqs, dE, alE] = await Promise.all([S.list('equipos', { entidad_id: e.id }), S.list('documentos', { entidad_id: e.id }), S.list('alertas', { entidad_id: e.id })]);
-            const rsEq = new Map(); eqs.filter((q) => q.estado !== 'Dado de baja' && q.registro_sanitario).forEach((q) => rsEq.set(nrmRS(q.registro_sanitario), q));
-            for (const { d, filas } of lect) {
-              pg.set(`${ie + 1} de ${selE.length}: ${e.razon_social} · ${etq(d)}`);
-              if (dE.some((x) => x.carpeta === 'alertas' && x.subcarpeta === d.subcarpeta && /\.pdf$/i.test(x.nombre || ''))) { res.ya++; continue; }
-              let ap = 0;
-              const rows = filas.map((r) => { const q = r.rs && rsEq.get(nrmRS(r.rs)); if (q) ap++;
-                return { mes_consulta: r.mes || '', registro_sanitario: r.rs || '', dispositivo: r.dispositivo || '', tipo_notificacion: r.tipo || '', agencia: r.agencia || 'INVIMA', fecha_publicacion: isoDMY(r.fecha), responsable: r.responsable || st.emp?.responsable || '',
-                  analisis: q ? `APLICA: ${q.nombre || 'equipo'} ${q.codigo_inv || ''}`.trim() : (r.analisis || 'NO APLICA'), aplicabilidad: q ? 'APLICA - VERIFICAR' : (r.aplica || 'NO APLICA') }; });
-              rows.forEach((r) => Object.keys(r).forEach((k) => { if (typeof r[k] === 'string') r[k] = winAnsi(r[k]); }));
-              let blob; try { blob = await FMT.alertas({ ent: e, alertas: rows, fmt: st.fmt.alertas || {} }); } catch (er) { res.sinFilas.push(`${etq(d)} · ${e.razon_social} (${er.message})`); continue; }
-              await subirArchivo({ blob, nombre: d.nombre, ent: e, carpeta: 'alertas', subcarpeta: d.subcarpeta });
-              const [anio, mm] = d.subcarpeta.split('/'), etiqueta = `${CAT.MESES[+mm.slice(0, 2) - 1]} ${anio}`, ya = alE.find((a) => nrm(a.mes_consulta) === nrm(etiqueta));
-              const reg = { analisis: `Consulta realizada (${rows.length} alerta${rows.length === 1 ? '' : 's'} revisada${rows.length === 1 ? '' : 's'}${ap ? `, ${ap} con registro sanitario del inventario` : ''}). Soporte: ${d.nombre}`, aplicabilidad: ap ? 'Aplica - en gestión' : 'No aplica' };
-              if (ya) await S.update('alertas', ya.id, reg);
-              else alE.push(await S.insert('alertas', { entidad_id: e.id, mes_consulta: etiqueta, tipo_notificacion: 'Consulta periódica', agencia: 'INVIMA', responsable: rows[0]?.responsable || st.emp?.responsable || '', fecha_publicacion: rows.find((r) => r.fecha_publicacion)?.fecha_publicacion || null, ...reg }));
-              res.hechas++; if (ap) res.aplican++;
-            }
-          }
+          await generarBitacoras({ lect: lect.map(({ d, filas }) => ({ sub: d.subcarpeta, nombre: d.nombre, filas, etq: etq(d) })), ents: selE, pg, res });
         } catch (er) { pg.cerrar(); toast('Error: ' + er.message, true); return; }
         pg.cerrar();
         modal({ titulo: 'Bitácoras generadas', cuerpo: `<p><b>${res.hechas}</b> bitácora(s) generadas con el logo y el nombre de cada entidad.${res.ya ? ` ${res.ya} mes(es) ya tenían soporte y no se tocaron.` : ''}</p>${res.aplican ? `<p class="pill warn">${res.aplican} bitácora(s) tienen alertas con registro sanitario de equipos del inventario: revíselas («APLICA - VERIFICAR»).</p>` : ''}${res.sinFilas.length ? `<p class="muted">No se pudieron leer o generar: ${h(res.sinFilas.join(', '))}.</p>` : ''}`, acciones: [{ t: 'Cerrar', cls: 'pri' }] });

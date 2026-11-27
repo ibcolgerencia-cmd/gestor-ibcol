@@ -343,6 +343,7 @@ window.APP = (() => {
       <div class="page-head"><div><span class="eyebrow">${UI.fecha(UI.hoy())}</span><h1>Panel de control</h1></div>
         <div class="actions"><button class="btn" data-act="rotulos" title="Rótulos con código QR y de barras para pegar en los equipos">${A.ICO_QR || ''} Rótulos QR / código de barras</button><button class="btn" data-act="escanearP">${A.ICO_QR || ''} Escanear</button><button class="btn pri" data-act="nuevaEnt">${I.mas} Nueva entidad</button></div></div>
       ${graves.length ? `<div class="panel" style="border-color:var(--bad)"><b style="color:var(--bad)">${I.alerta.replace('<svg', '<svg width="18" height="18" style="vertical-align:-3px"')} ${graves.length} evento(s) adverso(s) grave(s) abierto(s)</b><span class="muted">Deben notificarse al Programa Nacional de Tecnovigilancia del INVIMA dentro de las 72 horas siguientes al conocimiento del evento.</span></div>` : ''}
+      <section class="panel" data-alauto hidden></section>
       <section class="panel" data-reportes></section>
       <section class="panel" data-portales></section>
       <div class="kpis">
@@ -361,6 +362,7 @@ window.APP = (() => {
       <section class="panel"><header><h2>Actividad reciente</h2><button class="btn sm" data-act="verAud">Ver auditoría completa</button></header>
         <div class="tbl-wrap"><table class="tbl"><tbody>${aud.slice(0, 8).map((a) => `<tr><td class="muted num" style="white-space:nowrap">${UI.fechaHora(a.fecha)}</td><td><b>${h(a.usuario || '')}</b></td><td>${A.accionTxt(a)}</td></tr>`).join('') || '<tr><td class="empty">Sin actividad.</td></tr>'}</tbody></table></div></section>`;
     A.panelReportes?.(content().querySelector('[data-reportes]'));
+    A.TV?.panelAlertasAuto?.(content().querySelector('[data-alauto]'));
     A.panelPortales?.(content().querySelector('[data-portales]'));
     A.acts({ rotulos: () => A.rotulos(), escanearP: () => A.escanear(), abrirEq: (d) => go('equipo', { id: d.id }), abrirEnt: (d) => go('entidad', { id: d.id }), nuevaEnt: () => A.formEntidad(), verAud: () => go('auditoria', {}, true) });
   };
