@@ -11,6 +11,8 @@
 //                    observaciones para el reporte FMB-004.
 //   - descargar:     descarga en el servidor un PDF público (manual, ficha)
 //                    para guardarlo en la carpeta del equipo.
+//   - alertas_invima: alertas sanitarias e informes de seguridad de dispositivos
+//                    médicos publicados por el INVIMA en un mes (listado + registro sanitario).
 //
 //  Secretos (Supabase > Edge Functions > Secrets):
 //   ANTHROPIC_API_KEY     (Claude, se usa primero; con búsqueda web de Claude)
@@ -255,6 +257,53 @@ async function descargar(url: string) {
   return { base64: encodeBase64(buf), mime: 'application/pdf', nombre: nombre.slice(-120), bytes: buf.length, url_final: r.url };
 }
 
+
+// ------------------------------------------------------------------ alertas sanitarias e informes de seguridad del INVIMA (dispositivos médicos) de un mes
+// Lee el listado público www.invima.gov.co/alertas-sanitarias (Dirección de Dispositivos Médicos) y la página de cada alerta (registro sanitario).
+const INV = 'https://www.invima.gov.co';
+const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36', 'Accept-Language': 'es-CO,es;q=0.9' };
+const sinTags = (t: string) => t.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&aacute;/g, 'á').replace(/&eacute;/g, 'é').replace(/&iacute;/g, 'í').replace(/&oacute;/g, 'ó').replace(/&uacute;/g, 'ú').replace(/&ntilde;/g, 'ñ').replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(+n)).replace(/\s+/g, ' ').trim();
+async function getTxt(url: string) { const r = await fetch(url, { headers: UA, redirect: 'follow', signal: AbortSignal.timeout(25000) }); if (!r.ok) throw new Error(`INVIMA respondió ${r.status} (${url})`); return await r.text(); }
+function itemsListado(html: string) {
+  const re = /href="((?:https?:\/\/www\.invima\.gov\.co)?\/alertas-sanitarias\/(?!page\/)([a-z0-9][a-z0-9\-_]*))"[^>]*>([\s\S]*?)<\/a>/gi;
+  const ms: { url: string; slug: string; titulo: string; i: number; f: number }[] = []; let m;
+  while ((m = re.exec(html))) { const titulo = sinTags(m[3]); if (!titulo || /^\d+$/.test(m[2]) || /ver pdf|descargar|^pdf$/i.test(titulo)) continue; if (ms.some((x) => x.slug === m![2])) continue; ms.push({ url: m[1].startsWith('http') ? m[1] : INV + m[1], slug: m[2], titulo, i: m.index, f: m.index + m[0].length }); }
+  return ms.map((x, k) => {
+    const antes = sinTags(html.slice(Math.max(k ? ms[k - 1].f : 0, x.i - 1500), x.i)), despues = sinTags(html.slice(x.f, k + 1 < ms.length ? ms[k + 1].i : x.f + 1500));
+    const fecha = (despues.match(/\b(\d{2})-(\d{2})-(\d{4})\b/) || antes.match(/\b(\d{2})-(\d{2})-(\d{4})\b(?!.*\d{2}-\d{2}-\d{4})/) || []);
+    const num = (antes.match(/(\d{1,4}-20\d\d)(?!.*\d{1,4}-20\d\d)/) || [])[1] || '';
+    const dir = (antes.match(/(Dispositivos m[eé]dicos[^.]{0,30}|Alimentos[^.]{0,20}|Medicamentos[^.]{0,30}|Cosm[eé]ticos[^.]{0,30})(?!.*(Dispositivos m[eé]dicos|Alimentos|Medicamentos|Cosm[eé]ticos))/i) || [])[1] || '';
+    const tipo = /informe de seguridad/i.test(despues.slice(0, 300)) ? 'INFORME DE SEGURIDAD' : /alerta sanitaria/i.test(despues.slice(0, 300)) ? 'ALERTA SANITARIA' : '';
+    return { url: x.url, titulo: x.titulo, numero: num, direccion: dir, tipo, fecha: fecha[0] ? `${fecha[3]}-${fecha[2]}-${fecha[1]}` : '' };
+  }).filter((x) => x.fecha);
+}
+async function alertasInvima(anio: number, mes: number, debug = false) {
+  const ini = `${anio}-${String(mes).padStart(2, '0')}-01`, fin = `${anio}-${String(mes).padStart(2, '0')}-31`;
+  const vistos = new Map<string, any>(); const dbg: any[] = [];
+  for (let pg = 1; pg <= 40; pg++) {
+    const url = `${INV}/alertas-sanitarias${pg > 1 ? '/page/' + pg : ''}?direccion=dd`;
+    const html = await getTxt(url); const its = itemsListado(html);
+    if (debug && pg <= 2) dbg.push({ url, n: its.length, its: its.slice(0, 4), muestra: sinTags(html).slice(0, 1500) });
+    if (!its.length) break;
+    its.forEach((x) => { if (x.fecha >= ini && x.fecha <= fin && !vistos.has(x.url) && (!x.direccion || /dispositivo/i.test(x.direccion))) vistos.set(x.url, x); });
+    if (its.every((x) => x.fecha < ini)) break;
+  }
+  const lista = [...vistos.values()].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero.localeCompare(b.numero, undefined, { numeric: true }));
+  // registro sanitario de cada alerta (página de detalle), de a 6 en paralelo
+  for (let i = 0; i < lista.length; i += 6) await Promise.all(lista.slice(i, i + 6).map(async (x) => {
+    try {
+      const t = sinTags(await getTxt(x.url));
+      const rs = [...new Set((t.match(/INVIMA\s*\d{4}\s*[A-Z]{1,5}\s*-\s*\d{3,8}(?:\s*-\s*R\d+)?/g) || []).map((r) => r.replace(/\s+/g, ' ').replace(/\s*-\s*/g, '-')))];
+      x.registro_sanitario = rs.join(' / ') || (/registro sanitario[^.]{0,40}(no aplica|n\/a|sin registro|no registra)/i.exec(t) ? 'NO APLICA' : '');
+      const prod = (t.match(/Producto\s+Registro sanitario\s+Titular\s+Lote \/ Serial\s+(.{5,250}?)\s+(?:INVIMA|No aplica|N\/A)/i) || [])[1];
+      x.producto = prod || '';
+      if (!x.tipo) x.tipo = /informe de seguridad/i.test(t.slice(0, 3000)) ? 'INFORME DE SEGURIDAD' : 'ALERTA SANITARIA';
+      if (debug && !dbg.some((d) => d.detalle)) dbg.push({ detalle: x.url, texto: t.slice(0, 2500) });
+    } catch (e) { x.error = (e as Error).message; }
+  }));
+  return { anio, mes, total: lista.length, alertas: lista, ...(debug ? { debug: dbg } : {}) };
+}
+
 // ------------------------------------------------------------------ servidor
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -270,6 +319,7 @@ Deno.serve(async (req) => {
 
     const b = await req.json();
     if (b.accion === 'descargar') return json(await descargar(String(b.url || '')));
+    if (b.accion === 'alertas_invima') return json(await alertasInvima(+b.anio, +b.mes, !!b.debug));
     if (b.accion === 'investigar') {
       const r = await ia(promptInvestigar(b.equipo || {}, b.que || []));
       const datos = extraerJSON(r.texto);
