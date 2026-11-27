@@ -29,6 +29,7 @@
     const sub = docs.filter((d) => d.carpeta === 'tecnovigilancia' && /comit/i.test(d.subcarpeta || '')).map((d) => d.subcarpeta)[0];
     return { carpeta: 'tecnovigilancia', subcarpeta: sub || '3. COMITES' };
   };
+  A.destinoActas = destinoActas;
   // Carpeta PROGRAMA DE TECNOVIGILANCIA: eventos adversos + actas de comité FAR-013
   A.G.tecnovigilancia = async (el, ctx) => {
     el.innerHTML = '<div data-tv-ev></div><div data-tv-com></div>';
@@ -43,17 +44,24 @@
     }
     const actas = lista.sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.numero || '').localeCompare(String(a.numero || '')));
     el.innerHTML = `<section class="panel"><header><div><h2>Comité de tecnovigilancia · Actas ${h(fmtFAR().codigo)}</h2><span class="muted" style="font-size:.85rem">Formato acta de reunión ${h(fmtFAR().codigo)} para comités, reuniones y capacitaciones. Cada acta genera su PDF en la subcarpeta de comités de esta carpeta.</span></div>
-        ${esProp() ? `<div class="actions">${A.TV?.cargarActas ? `<button class="btn" data-act="cargaActas">${I.subir} Cargar actas realizadas (PDF)</button>` : ''}<button class="btn pri" data-act="nuevaActa">${I.mas} Nueva acta de comité (${h(fmtFAR().codigo)})</button></div>` : ''}</header>
+        ${esProp() ? `<div class="actions">${A.TV?.cargarActas ? `<button class="btn" data-act="cargaActas">${I.subir} Cargar actas realizadas (PDF)</button>` : ''}<button class="btn" data-act="comVirtual" title="Crea el acta del comité y abre la reunión virtual: Google Meet, lista de asistencia con firma por enlace, fotos de evidencia y diligenciar el acta">${A.ICO_MEET || ''} Comité virtual</button><button class="btn pri" data-act="nuevaActa">${I.mas} Nueva acta de comité (${h(fmtFAR().codigo)})</button></div>` : ''}</header>
       ${actas.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Acta No.</th><th>Fecha</th><th>Tipo</th><th>Tema</th><th>Compromisos</th><th>Firmas</th><th>Próxima reunión</th><th></th></tr></thead><tbody>
         ${actas.map((a) => { const d = a.datos || {}; const as = (d.asistentes || []).filter((x) => x.nombre); const fir = as.filter((x) => x.firma).length; return `<tr class="clic" data-act="verActa" data-id="${a.id}">
           <td class="mono">${h(a.numero || '')}</td><td class="num">${UI.fecha(a.fecha)}</td><td>${h(d.tipo || '')}</td><td>${h(a.tema || '')}</td>
           <td>${(d.compromisos || []).filter((c) => c.actividad).length} · ${h(d.trimestre || '')} ${h(d.anio_comp || '')}</td>
           <td><span class="pill ${as.length && fir === as.length ? 'ok' : 'warn'}">${fir}/${as.length}</span></td><td class="num">${d.proxima ? UI.fechaHora ? UI.fechaHora(d.proxima) : d.proxima : '—'}</td>
-          <td><div class="row-actions"><button class="icon-btn" data-act="verActa" data-id="${a.id}" aria-label="Ver PDF">${I.pdf}</button>${esProp() ? `<button class="icon-btn" data-act="editActa" data-id="${a.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn" data-act="copiaActa" data-id="${a.id}" aria-label="Nueva acta a partir de esta" title="Nueva acta a partir de esta">${I.mas}</button><button class="icon-btn bad" data-act="delActa" data-id="${a.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`; }).join('')}
+          <td><div class="row-actions">${d.virtual?.meet ? `<a class="icon-btn" href="${h(d.virtual.meet)}" target="_blank" rel="noopener" title="Unirse a la reunión virtual (Google Meet)" aria-label="Unirse a la reunión virtual">${A.ICO_MEET || 'Meet'}</a>` : ''}<button class="icon-btn" data-act="verActa" data-id="${a.id}" aria-label="Ver PDF">${I.pdf}</button>${esProp() ? `<button class="icon-btn" data-act="virActa" data-id="${a.id}" aria-label="Comité virtual" title="Comité virtual: Google Meet, lista de asistencia por enlace, fotos de evidencia y acta">${A.ICO_MEET || 'V'}</button><button class="icon-btn" data-act="editActa" data-id="${a.id}" aria-label="Editar">${I.edit}</button><button class="icon-btn" data-act="copiaActa" data-id="${a.id}" aria-label="Nueva acta a partir de esta" title="Nueva acta a partir de esta">${I.mas}</button><button class="icon-btn bad" data-act="delActa" data-id="${a.id}" aria-label="Eliminar">${I.del}</button>` : ''}</div></td></tr>`; }).join('')}
       </tbody></table></div>` : `<div class="empty">Aún no hay actas.${esProp() ? ' Use “Nueva acta de comité”.' : ''}</div>`}</section>`;
     const reg = (id) => actas.find((x) => x.id === id);
     A.acts({
       nuevaActa: () => A.formActa(ent, null, actas),
+      virActa: (d) => A.comiteVirtual(ent, reg(d.id), actas),
+      comVirtual: async () => {
+        const nums = actas.map((x) => parseInt(String(x.numero || '').replace(/\D/g, ''), 10)).filter((n) => !isNaN(n));
+        const numero = String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0'), tr = trimDe(UI.hoy()), anio = new Date().getFullYear();
+        const nueva = await S.insert('actas_comite', { entidad_id: ent.id, numero, fecha: UI.hoy(), tema: 'Comité de tecnovigilancia', datos: { tipo: 'Comité', metodologia: 'Virtual', coordinador: COORD, empresa: ent.razon_social, meses: [tr * 3 + 1, tr * 3 + 2, tr * 3 + 3], anio_obj: anio, objetivo: objetivoDe([tr * 3 + 1, tr * 3 + 2, tr * 3 + 3], anio), orden: ORDEN, asistentes: [], fotos: [], anexos: [], borrador: true } });
+        toast(`Acta ${numero} creada para el comité virtual`); A.comiteVirtual(ent, nueva, [...actas, nueva]);
+      },
       cargaActas: () => A.TV.cargarActas(ent),
       editActa: (d) => A.formActa(ent, reg(d.id), actas),
       copiaActa: (d) => { const b = reg(d.id); A.formActa(ent, { datos: { ...b.datos, asistentes: (b.datos.asistentes || []).map((x) => ({ ...x, firma: null })), compromisos: b.datos.compromisos, fotos: [], anexos: [], desarrollo: '', conclusiones: '' }, tema: b.tema, _copia: true }, actas); },
@@ -79,7 +87,7 @@
   // ------------------------------------------------------------------ formulario (todas las indicaciones del formato FAR-013)
   const tabs = (l) => `<div class="tabs" role="tablist">${l.map((t, i) => `<button type="button" role="tab" data-tab="${i}" class="${i ? '' : 'on'}">${h(t)}</button>`).join('')}</div>`;
   const firmaCelda = (src) => (src ? `<img src="${src}" alt="Firma">` : '<span class="muted">Sin firma</span>');
-  const filaAsis = (x = {}) => `<div class="ac-asis"><input data-k="nombre" placeholder="Nombre" aria-label="Nombre" value="${h(x.nombre || '')}"><input data-k="cargo" placeholder="Cargo" aria-label="Cargo" value="${h(x.cargo || '')}">
+  const filaAsis = (x = {}) => `<div class="ac-asis" data-cedula="${h(x.cedula || '')}" data-virtual="${x.virtual ? '1' : ''}"><input data-k="nombre" placeholder="Nombre" aria-label="Nombre" value="${h(x.nombre || '')}"><input data-k="cargo" placeholder="Cargo" aria-label="Cargo" value="${h(x.cargo || '')}">
     <div class="ac-firma" data-firma="${h(x.firma || '')}">${firmaCelda(x.firma)}</div><div class="ac-fbtn"><button type="button" class="btn sm" data-fdib>${I.firma} Firmar</button><label class="btn sm">${I.subir} Cargar firma<input type="file" accept="image/*" hidden data-fimg></label><button type="button" class="icon-btn bad" data-fdel aria-label="Quitar asistente">${I.x}</button></div></div>`;
   const filaComp = (c = {}) => `<div class="ac-comp"><input data-k="responsable" placeholder="Nombre del responsable" aria-label="Responsable" value="${h(c.responsable || '')}"><input data-k="actividad" placeholder="Actividad programada" aria-label="Actividad" value="${h(c.actividad || '')}"><input data-k="fecha" type="date" aria-label="Fecha límite" value="${h(c.fecha || '')}"><button type="button" class="icon-btn bad" data-cdel aria-label="Quitar compromiso">${I.x}</button></div>`;
   const filaOrden = (t = '') => `<div class="ac-orden"><input data-k="t" value="${h(t)}" aria-label="Punto del orden del día"><button type="button" class="icon-btn bad" data-odel aria-label="Quitar punto">${I.x}</button></div>`;
@@ -92,7 +100,7 @@
     const tr = trimDe(fecha); const mesesDef = d.meses && !a?._copia ? d.meses : [tr * 3 + 1, tr * 3 + 2, tr * 3 + 3];
     const anioObj = d.anio_obj || new Date(fecha + 'T12:00:00').getFullYear();
     const asis = d.asistentes?.length ? d.asistentes : [{}, {}, {}, { nombre: st.emp.responsable || 'Laura María Pistala', cargo: 'Ingeniera Biomédica', firma: st.firma || null }];
-    let fotos = [...(d.fotos || [])], anexos = [...(d.anexos || [])]; const nuevasFotos = [], nuevosAnexos = [];
+    let fotos = [...(d.fotos || [])], anexos = [...(d.anexos || [])]; const nuevasFotos = [], nuevosAnexos = [], quitadas = new Set();
     let objetivoManual = !!d.objetivo_manual;
     const cuerpo = `<form class="form acta-form" onsubmit="return false">${tabs(['1. Encuentro', '2. Desarrollo', '3. Asistentes', '4. Compromisos y cierre', '5. Evidencia y anexos'])}
       <div data-panel="0"><div class="fields">
@@ -114,7 +122,7 @@
           <textarea id="f_desarrollo" name="desarrollo" rows="10" placeholder="Desarrollo de cada punto del orden del día. Use “- ” al inicio de una línea para viñetas.">${h(d.desarrollo || '')}</textarea><span class="muted" data-iaest style="font-size:.82rem"></span></div>
       </div></div>
       <div data-panel="2" hidden><p class="muted">Los asistentes salen en la tabla de asistentes y en la lista de asistencia del acta. Cada uno puede firmar en la pantalla o cargar su firma como imagen.</p>
-        <div class="ac-asis-h"><span>Nombre</span><span>Cargo</span><span>Firma</span><span></span></div><div data-asis>${asis.map(filaAsis).join('')}</div>
+        ${a?.id && !a._copia ? `<div class="actions" style="margin:0 0 6px"><button type="button" class="btn sm" data-traerasis title="Agrega o actualiza las personas que firmaron por el enlace de la lista de asistencia virtual">↻ Traer firmas de la lista virtual</button></div>` : ''}<div class="ac-asis-h"><span>Nombre</span><span>Cargo</span><span>Firma</span><span></span></div><div data-asis>${asis.map(filaAsis).join('')}</div>
         <button type="button" class="btn sm" data-aadd>${I.mas} Agregar asistente</button></div>
       <div data-panel="3" hidden><div class="fields">
         ${f.sel('trimestre', 'Compromisos del', TRIM, d.trimestre || TRIM[tr])}${f.sel('anio_comp', 'Año', [anioAct - 1, anioAct, anioAct + 1, anioAct + 2], d.anio_comp || new Date(fecha + 'T12:00:00').getFullYear())}</div>
@@ -147,6 +155,14 @@
     $('[data-aadd]').onclick = () => $('[data-asis]').insertAdjacentHTML('beforeend', filaAsis());
     $('[data-cadd]').onclick = () => $('[data-comps]').insertAdjacentHTML('beforeend', filaComp());
     b.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-traerasis]')) {
+        const fr = await S.get('actas_comite', a.id).catch(() => null); const vs = (fr?.datos?.asistentes || []).filter((y) => y.virtual && y.nombre); let n = 0;
+        vs.forEach((y) => { const row = [...b.querySelectorAll('.ac-asis')].find((r) => (y.cedula && r.dataset.cedula === y.cedula) || nrm(r.querySelector('[data-k=nombre]').value).trim() === nrm(y.nombre).trim());
+          if (row) { if (y.firma) { const c = row.querySelector('.ac-firma'); c.dataset.firma = y.firma; c.innerHTML = firmaCelda(y.firma); } if (y.cedula) row.dataset.cedula = y.cedula; row.dataset.virtual = '1'; if (!row.querySelector('[data-k=cargo]').value && y.cargo) row.querySelector('[data-k=cargo]').value = y.cargo; }
+          else { const vacia = [...b.querySelectorAll('.ac-asis')].find((r) => !r.querySelector('[data-k=nombre]').value.trim() && !r.querySelector('[data-k=cargo]').value.trim()); if (vacia) vacia.outerHTML = filaAsis(y); else $('[data-asis]').insertAdjacentHTML('beforeend', filaAsis(y)); }
+          n++; });
+        toast(n ? `${n} persona(s) de la lista virtual en el acta` : 'Aún nadie ha firmado por el enlace'); return;
+      }
       const del = e.target.closest('[data-odel],[data-fdel],[data-cdel]'); if (del) { del.closest('.ac-orden,.ac-asis,.ac-comp').remove(); return; }
       const dib = e.target.closest('[data-fdib]');
       if (dib) { const row = dib.closest('.ac-asis'); const nom = row.querySelector('[data-k=nombre]').value; const r = await UI.pedirFirma({ titulo: `Firma${nom ? ' · ' + nom : ''}` }); if (r) { const c = row.querySelector('.ac-firma'); c.dataset.firma = r; c.innerHTML = firmaCelda(r); } }
@@ -160,7 +176,7 @@
       const urls = await Promise.all(fotos.map(async (p) => { try { return URL.createObjectURL(await S.fileBlob(p.archivo)); } catch { return ''; } }));
       $('[data-fotos]').innerHTML = [...fotos.map((p, i) => `<figure><img src="${urls[i]}" alt="${h(p.nombre)}"><button type="button" class="icon-btn bad" data-qfoto="v${i}" aria-label="Quitar foto">${I.x}</button></figure>`),
         ...nuevasFotos.map((p, i) => `<figure><img src="${p.dataURL}" alt="${h(p.nombre)}"><button type="button" class="icon-btn bad" data-qfoto="n${i}" aria-label="Quitar foto">${I.x}</button></figure>`)].join('') || '<span class="muted">Sin fotos.</span>';
-      b.querySelectorAll('[data-qfoto]').forEach((x) => { x.onclick = () => { const k = x.dataset.qfoto; if (k[0] === 'v') fotos.splice(+k.slice(1), 1); else nuevasFotos.splice(+k.slice(1), 1); pintarFotos(); }; });
+      b.querySelectorAll('[data-qfoto]').forEach((x) => { x.onclick = () => { const k = x.dataset.qfoto; if (k[0] === 'v') { quitadas.add(fotos[+k.slice(1)]?.archivo); fotos.splice(+k.slice(1), 1); } else nuevasFotos.splice(+k.slice(1), 1); pintarFotos(); }; });
     };
     const pintarAnexos = () => {
       $('[data-anexos]').innerHTML = [...anexos.map((x, i) => `<div class="hvd-doc"><span class="ext">${h(UI.ext(x.nombre).toUpperCase())}</span><span class="nm">${h(x.nombre)}</span><button type="button" class="icon-btn bad" data-qanx="v${i}" aria-label="Quitar">${I.x}</button></div>`),
@@ -202,7 +218,12 @@
     const guardar = async (mm) => {
       const v = leer(mm.body);
       if (!v.numero.trim()) { toast('Escriba el número del acta', true); return false; }
-      const asistentes = [...b.querySelectorAll('.ac-asis')].map((r) => ({ nombre: r.querySelector('[data-k=nombre]').value.trim(), cargo: r.querySelector('[data-k=cargo]').value.trim(), firma: r.querySelector('.ac-firma').dataset.firma || null })).filter((x) => x.nombre || x.cargo || x.firma);
+      const asistentes = [...b.querySelectorAll('.ac-asis')].map((r) => ({ nombre: r.querySelector('[data-k=nombre]').value.trim(), cargo: r.querySelector('[data-k=cargo]').value.trim(), firma: r.querySelector('.ac-firma').dataset.firma || null, ...(r.dataset.cedula ? { cedula: r.dataset.cedula } : {}), ...(r.dataset.virtual ? { virtual: true } : {}) })).filter((x) => x.nombre || x.cargo || x.firma);
+      // v210: lo que llegó mientras el acta estaba abierta (firmas por el enlace virtual y fotos de la reunión) no se pierde
+      const fresco = a?.id && !a._copia ? await S.get('actas_comite', a.id).catch(() => null) : null;
+      const igual = (x, y) => (x.cedula && y.cedula && x.cedula === y.cedula) || nrm(x.nombre).trim() === nrm(y.nombre).trim();
+      (fresco?.datos?.asistentes || []).filter((y) => y.virtual && y.nombre && !asistentes.some((x) => igual(x, y))).forEach((y) => asistentes.push(y));
+      (fresco?.datos?.fotos || []).filter((p) => p.archivo && !quitadas.has(p.archivo) && !fotos.some((q) => q.archivo === p.archivo)).forEach((p) => fotos.push(p));
       const compromisos = [...b.querySelectorAll('.ac-comp')].map((r) => ({ responsable: r.querySelector('[data-k=responsable]').value.trim(), actividad: r.querySelector('[data-k=actividad]').value.trim(), fecha: r.querySelector('[data-k=fecha]').value || null })).filter((x) => x.responsable || x.actividad);
       const orden = [...b.querySelectorAll('.ac-orden [data-k=t]')].map((x) => x.value.trim()).filter(Boolean);
       toast('Guardando acta…');
@@ -211,7 +232,7 @@
       for (const [i, p] of nuevasFotos.entries()) { const blob = await (await fetch(p.dataURL)).blob(); const path = `${base}-foto${i}-${slug(p.nombre)}`.replace(/\.(png|jpe?g|webp|gif)$/i, '') + '.jpg'; await S.upload(path, new Blob([blob], { type: 'image/jpeg' })); fotos.push({ nombre: p.nombre, archivo: path }); }
       for (const [i, x] of nuevosAnexos.entries()) { const path = `${base}-anexo${i}-${slug(x.nombre)}`; await S.upload(path, x.file); anexos.push({ nombre: x.nombre, archivo: path, mime: x.file.type }); }
       nuevasFotos.length = 0; nuevosAnexos.length = 0;
-      const datos = { tipo: v.tipo, hora_ini: v.hora_ini, hora_fin: v.hora_fin, metodologia: v.metodologia, coordinador: v.coordinador, empresa: v.empresa, area: v.area, pretest: v.pretest, postest: v.postest,
+      const datos = { ...(fresco?.datos || {}), borrador: false, tipo: v.tipo, hora_ini: v.hora_ini, hora_fin: v.hora_fin, metodologia: v.metodologia, coordinador: v.coordinador, empresa: v.empresa, area: v.area, pretest: v.pretest, postest: v.postest,
         meses: v.meses.map(Number).sort((x, y) => x - y), anio_obj: +v.anio_obj, objetivo: v.objetivo, objetivo_manual: objetivoManual, orden, desarrollo: v.desarrollo, asistentes,
         trimestre: v.trimestre, anio_comp: +v.anio_comp, compromisos, proxima: v.proxima || null, proxima_lugar: v.proxima_lugar, conclusiones: v.conclusiones,
         fotos, anexos, meses_anexo: v.meses_anexo.map(Number).sort((x, y) => x - y), incluir_bitacora: !!v.incluir_bitacora };
@@ -350,5 +371,87 @@
       } catch (e) { console.warn(e); }
     }
     return blob;
+  };
+
+  // ================================================================== v210 · COMITÉ VIRTUAL
+  // Google Meet (solo se guarda el enlace) · lista de asistencia por enlace (asistencia.html: nombre, cédula, cargo y firma desde el celular,
+  // quedan en el acta) · fotos de evidencia (capturas de la pestaña de Meet) · diligenciar el acta y firmar desde la misma ventana.
+  const urlAsis = (tk, meet) => { const base = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}asistencia.html?t=${encodeURIComponent(tk)}`; const c = A.meetCodigo ? A.meetCodigo(meet) : ''; return c ? `${base}&m=${c}` : base; };
+  const token = () => { const b = new Uint8Array(24); crypto.getRandomValues(b); return [...b].map((x) => x.toString(16).padStart(2, '0')).join(''); };
+  A.comiteVirtual = async (ent, acta, actas = []) => {
+    let a = (await S.get('actas_comite', acta.id).catch(() => null)) || acta; const d0 = a.datos || {}, v = d0.virtual || {};
+    const dest = await destinoActas(ent);
+    const nombreA = () => `${a.datos?.tipo || 'Comité'} de tecnovigilancia · Acta ${a.numero || ''}`;
+    const ICO = A.ICO_MEET || '';
+    const m = modal({ titulo: `${nombreA()} · reunión virtual`, size: 'wide', cuerpo: `<form class="form" onsubmit="return false">
+      <p class="muted" style="font-size:.86rem"><b>${h(ent.razon_social)}</b>. El gestor guarda solo el enlace de la reunión (no guarda video). La lista de asistencia se firma desde el celular con un enlace y queda en el acta; las fotos de evidencia son capturas livianas de la pestaña de Meet.</p>
+      <fieldset><legend>1. Programar la reunión</legend>
+        <div class="fields">${f.input('fecha', 'Fecha', a.fecha || UI.hoy(), { type: 'date' })}${f.input('hora', 'Hora de inicio', v.hora || d0.hora_ini || '08:00', { type: 'time' })}${f.sel('duracion', 'Duración', [[30, '30 minutos'], [45, '45 minutos'], [60, '1 hora'], [90, '1 hora 30 min'], [120, '2 horas']], v.duracion || 60)}${f.input('tema', 'Tema', a.tema || 'Comité de tecnovigilancia')}</div>
+        <div class="actions" style="margin-top:6px"><button type="button" class="btn pri" data-cv="cal">📅 Programar en Google Calendar</button><button type="button" class="btn" data-cv="nueva">${ICO} Crear reunión ahora</button></div>
+        <p class="muted" style="font-size:.8rem;margin:6px 0">En Google Calendar revise que diga «Unirse con Google Meet», guarde y copie aquí el enlace. Con la cuenta gratuita las reuniones de 3 o más personas duran máximo 60 minutos.</p>
+        <div class="fields">${f.input('meet', 'Enlace de Google Meet', v.meet || '', { full: true, attrs: 'placeholder="https://meet.google.com/abc-defg-hij" inputmode="url"' })}</div></fieldset>
+      <fieldset><legend>2. Lista de asistencia virtual (firma desde el celular)</legend><div data-cv-asis></div></fieldset>
+      <fieldset><legend>3. Enviar la invitación (Meet + lista de asistencia)</legend>
+        <div class="actions"><button type="button" class="btn" data-cv="wa">WhatsApp</button><button type="button" class="btn" data-cv="mail">Correo</button><button type="button" class="btn" data-cv="copiar">Copiar mensaje</button></div>
+        <textarea data-cv-msg rows="6" style="width:100%;margin-top:6px;font-size:.85rem" aria-label="Mensaje de invitación"></textarea></fieldset>
+      <fieldset><legend>4. Durante la reunión: fotos de evidencia</legend>
+        <p class="muted" style="font-size:.82rem;margin:0 0 6px">Abra la reunión en otra pestaña, pulse «Iniciar fotos» y elija la pestaña de Google Meet. Tome fotos cuando quiera (barra abajo a la derecha) o déjelas automáticas. Quedan en el acta (evidencia fotográfica) y en ${h(dest.subcarpeta)}.</p>
+        <div class="fields">${f.sel('cada', 'Fotos automáticas', [[0, 'No (solo cuando yo pulse)'], [5, 'Cada 5 minutos'], [10, 'Cada 10 minutos'], [15, 'Cada 15 minutos'], [20, 'Cada 20 minutos']], v.cada ?? 10)}</div>
+        <div class="actions"><button type="button" class="btn" data-cv="unirse">${ICO} Unirse a la reunión</button><button type="button" class="btn pri" data-cv="fotos">📷 Iniciar fotos de evidencia</button></div>
+        <p class="muted" data-cv-nf style="font-size:.82rem"></p></fieldset>
+      <fieldset><legend>5. Diligenciar el acta y firmar</legend>
+        <p class="muted" style="font-size:.82rem;margin:0 0 6px">Abra el acta ${h(fmtFAR().codigo)} para ir escribiendo el desarrollo, los compromisos y la próxima reunión. En «3. Asistentes» use «Traer firmas de la lista virtual»; quien no firmó por el enlace puede firmar en pantalla. Al guardar se genera el PDF en ${h(dest.subcarpeta)}.</p>
+        <div class="actions"><button type="button" class="btn pri" data-cv="acta">${I.edit} Abrir y diligenciar el acta</button></div>
+        <div class="fields" style="margin-top:6px">${f.input('grabacion', 'Enlace de la grabación (opcional: Drive o YouTube)', v.grabacion || '', { full: true, attrs: 'placeholder="https://…"' })}</div></fieldset></form>`,
+      alAbrir: (mm) => {
+        const g = (n) => mm.body.querySelector(`[name=${n}]`);
+        const meetV = () => (A.meetUrl ? A.meetUrl(g('meet').value) : g('meet').value.trim());
+        const en = () => a.datos?.enlace || {};
+        const texto = () => { const tu = en().token ? urlAsis(en().token, meetV()) : ''; const fe = g('fecha').value;
+          return [`${ent.razon_social} · ${g('tema').value || 'Comité de tecnovigilancia'} (acta ${a.numero || ''})`, `Fecha: ${fe ? new Date(fe + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ''} · ${horaTxt(g('hora').value)}`,
+            meetV() ? `1) Únase por Google Meet: ${meetV()}` : '', tu ? `${meetV() ? '2' : '1'}) Registre su asistencia y firme (desde el celular, sin usuario): ${tu}` : '', `Coordina: ${d0.coordinador || COORD}`].filter(Boolean).join('\n'); };
+        const pintarAsis = async (recargar = false) => {
+          if (recargar) a = (await S.get('actas_comite', a.id).catch(() => null)) || a;
+          const e = en(), lista = (a.datos?.asistentes || []).filter((x) => x.virtual && x.nombre), box = mm.body.querySelector('[data-cv-asis]');
+          box.innerHTML = e.token ? `<p style="font-size:.85rem;margin:0 0 6px">Enlace: <a href="${h(urlAsis(e.token, meetV()))}" target="_blank" rel="noopener">${h(urlAsis(e.token, meetV()))}</a> · ${e.abierto ? '<span class="pill ok">abierto</span>' : '<span class="pill warn">cerrado</span>'}</p>
+            <div class="actions"><button type="button" class="btn sm" data-cv="${e.abierto ? 'cerrar' : 'abrir'}">${e.abierto ? 'Cerrar la lista' : 'Abrir la lista'}</button><button type="button" class="btn sm" data-cv="cambiar">Cambiar enlace</button><button type="button" class="btn sm" data-cv="ver">↻ Ver quiénes firmaron</button></div>
+            <p class="muted" style="font-size:.82rem;margin:6px 0 0">${lista.length ? `${lista.length} firmado(s): ${h(lista.map((x) => x.nombre).join(', '))}` : 'Aún nadie ha firmado.'}</p>`
+            : `<p class="muted" style="font-size:.85rem;margin:0 0 6px">Cree el enlace y envíelo con la invitación: cada asistente escribe su nombre, cédula y cargo y firma en la pantalla del celular; queda en la lista de asistentes del acta.</p><button type="button" class="btn sm pri" data-cv="crear">Crear enlace de asistencia</button>`;
+          mm.body.querySelector('[data-cv-msg]').value = texto();
+          const nf = (a.datos?.fotos || []).filter((x) => x.virtual).length; mm.body.querySelector('[data-cv-nf]').textContent = nf ? `${nf} foto(s) de evidencia guardada(s).` : '';
+        };
+        const guardarV = async (extra = {}) => {
+          const x = leer(mm.body); const meet = meetV();
+          if (x.meet && !meet) { toast('El enlace de Google Meet no es válido (https://meet.google.com/abc-defg-hij)', true); return false; }
+          const fr = (await S.get('actas_comite', a.id).catch(() => null)) || a;
+          const datos = { ...(fr.datos || {}), metodologia: 'Virtual', hora_ini: x.hora || fr.datos?.hora_ini, virtual: { ...(fr.datos?.virtual || {}), meet, hora: x.hora, duracion: +x.duracion || 60, cada: +x.cada || 0, grabacion: (x.grabacion || '').trim() }, ...extra };
+          await S.update('actas_comite', a.id, { fecha: x.fecha || a.fecha, tema: x.tema || a.tema, datos }); a = { ...fr, fecha: x.fecha || a.fecha, tema: x.tema || a.tema, datos }; return true;
+        };
+        pintarAsis(); mm.body.addEventListener('input', () => { mm.body.querySelector('[data-cv-msg]').value = texto(); });
+        mm.body.addEventListener('click', async (e) => {
+          const bt = e.target.closest('[data-cv]'); if (!bt) return; const k = bt.dataset.cv;
+          if (k === 'cal') {
+            const fe = g('fecha').value || UI.hoy(), [hh, mi] = (g('hora').value || '08:00').split(':').map(Number), du = +g('duracion').value || 60;
+            const ini = new Date(`${fe}T00:00:00`); ini.setHours(hh, mi); const fin = new Date(ini.getTime() + du * 60000);
+            const fx = (y) => `${y.getFullYear()}${String(y.getMonth() + 1).padStart(2, '0')}${String(y.getDate()).padStart(2, '0')}T${String(y.getHours()).padStart(2, '0')}${String(y.getMinutes()).padStart(2, '0')}00`;
+            window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`${g('tema').value || 'Comité de tecnovigilancia'} · ${ent.razon_social}`)}&dates=${fx(ini)}/${fx(fin)}&ctz=America/Bogota&details=${encodeURIComponent(texto())}&vcon=meet`, '_blank', 'noopener');
+          }
+          if (k === 'nueva') window.open('https://meet.google.com/new', '_blank', 'noopener');
+          if (k === 'unirse') { const u = meetV(); if (!u) return toast('Pegue primero el enlace de Google Meet', true); window.open(u, '_blank', 'noopener'); }
+          if (['crear', 'cambiar'].includes(k)) { if (k === 'cambiar' && !(await confirmar('¿Cambiar el enlace? El enlace anterior deja de funcionar.'))) return; if ((await guardarV({ enlace: { token: token(), abierto: true } })) !== false) { toast('Enlace de asistencia listo'); pintarAsis(); } }
+          if (k === 'abrir' || k === 'cerrar') { if ((await guardarV({ enlace: { ...en(), abierto: k === 'abrir' } })) !== false) pintarAsis(); }
+          if (k === 'ver') pintarAsis(true);
+          const msg = mm.body.querySelector('[data-cv-msg]').value;
+          if (k === 'wa') window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+          if (k === 'mail') location.href = `mailto:?subject=${encodeURIComponent(`${g('tema').value || 'Comité de tecnovigilancia'} · reunión virtual`)}&body=${encodeURIComponent(msg)}`;
+          if (k === 'copiar') { try { await navigator.clipboard.writeText(msg); toast('Mensaje copiado'); } catch { toast('No se pudo copiar', true); } }
+          if (k === 'fotos') { if ((await guardarV()) === false) return; A.virIniciar({ ent, s: a, tb: 'actas_comite', carpeta: dest.carpeta, subcarpeta: dest.subcarpeta, base: `Acta ${a.numero || ''} comite` }, +g('cada').value || 0); }
+          if (k === 'acta') { if ((await guardarV()) === false) return; const fr = (await S.get('actas_comite', a.id).catch(() => null)) || a; A.formActa(ent, fr, actas); }
+        });
+      },
+      acciones: [{ t: 'Cerrar', fn: () => { A.recargar(); } }, { t: 'Guardar', cls: 'pri', fn: async (mm) => { const r = await (async () => { const x = leer(mm.body); const meet = A.meetUrl ? A.meetUrl(x.meet) : x.meet; if (x.meet && !meet) { toast('El enlace de Google Meet no es válido', true); return false; }
+        const fr = (await S.get('actas_comite', a.id).catch(() => null)) || a; const datos = { ...(fr.datos || {}), metodologia: 'Virtual', hora_ini: x.hora || fr.datos?.hora_ini, virtual: { ...(fr.datos?.virtual || {}), meet, hora: x.hora, duracion: +x.duracion || 60, cada: +x.cada || 0, grabacion: (x.grabacion || '').trim() } };
+        await S.update('actas_comite', a.id, { fecha: x.fecha || a.fecha, tema: x.tema || a.tema, datos }); return true; })(); if (r === false) return false; toast('Comité virtual guardado'); A.recargar(); } }] });
+    return m;
   };
 })();
