@@ -622,6 +622,11 @@ h1 .icon-btn { vertical-align: middle; }
 .login-hero .lh-chips li::before { display: none; }
 .login-hero .lh-btn { justify-self: start; display: inline-flex; align-items: center; gap: 8px; padding: 12px 30px; border-radius: 999px; color: #fff; text-decoration: none; font-weight: 600;
   background: linear-gradient(90deg, #17b3d6, var(--hb2)); box-shadow: 0 10px 24px rgba(10, 125, 160, .28); transition: transform .2s, box-shadow .2s; animation: lhEntra .9s .38s cubic-bezier(.2, .7, .2, 1) both; }
+.login-hero .lh-solicitar { display: grid; gap: 8px; justify-self: start; }
+.login-hero .lh-sol-t { font-weight: 600; color: var(--muted, #5b6b78); font-size: .92rem; }
+.login-hero .lh-btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.login-hero .lh-btn.lh-wa { background: linear-gradient(135deg, #25d366, #128c7e); box-shadow: 0 10px 24px rgba(18, 140, 126, .3); }
+.login-hero .lh-btn.lh-wa:hover { box-shadow: 0 14px 30px rgba(18, 140, 126, .4); }
 .login-hero .lh-btn:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(10, 125, 160, .36); }
 .login-hero .contacto { color: #6d777d; }
 @keyframes lhEntra { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
