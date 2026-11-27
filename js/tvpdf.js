@@ -253,7 +253,9 @@
       if (tok === '[[FICHAS]]') { for (const fi of TV.fichas(cfg)) { salto(50); doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, top: TOP, bottom: BOT }, styles: { fontSize: 8.5, cellPadding: 1.4, lineColor: NG, lineWidth: 0.2, textColor: NG }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 48, fillColor: CL } }, body: fi }); y = doc.lastAutoTable.finalY + 6; } continue; }
       if (tok === '[[DISPOSITIVOS]]' && cfg.dispositivos?.clases?.length) {
         // cuadro igual al formato "Dispositivos médicos objeto de vigilancia" (Excel cargado para la entidad / sede)
-        salto(30); const dv = cfg.dispositivos, body = [];
+        // v202: además del cuadro principal, uno por cada sede con cuadro propio (config.programa_tv.dispositivos_sedes, ej. SIEMPREE TIMBÍO)
+        for (const dv of [cfg.dispositivos, ...(cfg.dispositivos_sedes || [])].filter((x) => x?.clases?.length)) {
+        salto(30); const body = [];
         dv.clases.forEach((c) => {
           const filas = c.filas.length ? c.filas : [['', '', '', '']];
           body.push([{ content: `RIESGO CLASE ${c.clase}`, rowSpan: filas.length + 1, styles: { fontStyle: 'bold', halign: 'center', valign: 'middle', fillColor: CL } }, ...['DISPOSITIVO BIOMÉDICO', 'CODIFICACIÓN EVENTO ADVERSO', 'DISPOSITIVO BIOMÉDICO', 'CODIFICACIÓN EVENTO ADVERSO'].map((t) => ({ content: t, styles: { fontStyle: 'bold', halign: 'center', fillColor: CL } }))]);
@@ -262,7 +264,9 @@
         doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, top: TOP, bottom: BOT }, styles: { fontSize: 7.2, cellPadding: 1, lineColor: NG, lineWidth: 0.2, textColor: NG, valign: 'middle' },
           head: [[{ content: rep(dv.titulo || 'DISPOSITIVOS MÉDICOS OBJETO DE VIGILANCIA EN {ENTIDAD}').toUpperCase(), colSpan: 5, styles: { halign: 'center', fillColor: GR, textColor: AZ, fontStyle: 'bold', fontSize: 8.5 } }]], body,
           columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: (ancho - 20) * 0.2 }, 2: { cellWidth: (ancho - 20) * 0.3 }, 3: { cellWidth: (ancho - 20) * 0.2 }, 4: { cellWidth: (ancho - 20) * 0.3 } } });
-        y = doc.lastAutoTable.finalY + 4; doc.setFontSize(7.5); doc.setFont('helvetica', 'italic'); doc.text('Codificación según la NTC 5736:2009 (tipos de eventos adversos y sus causas).', M, y); y += 6; continue;
+        y = doc.lastAutoTable.finalY + 4; doc.setFontSize(7.5); doc.setFont('helvetica', 'italic'); doc.text('Codificación según la NTC 5736:2009 (tipos de eventos adversos y sus causas).', M, y); y += 8;
+        }
+        continue;
       }
       if (tok === '[[DISPOSITIVOS]]') {
         const act = (eqs || []).filter((e) => e.estado !== 'Dado de baja'); const g = {};
