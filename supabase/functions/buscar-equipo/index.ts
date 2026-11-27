@@ -293,9 +293,11 @@ async function alertasInvima(anio: number, mes: number, debug = false) {
   for (let i = 0; i < lista.length; i += 6) await Promise.all(lista.slice(i, i + 6).map(async (x) => {
     try {
       const t = sinTags(await getTxt(x.url));
-      const rs = [...new Set((t.match(/INVIMA\s*\d{4}\s*[A-Z]{1,5}\s*-\s*\d{3,8}(?:\s*-\s*R\d+)?/g) || []).map((r) => r.replace(/\s+/g, ' ').replace(/\s*-\s*/g, '-')))];
+      // el registro se escribe con o sin el prefijo INVIMA (ej. «INVIMA 2022DM-0000097-R2» o «2018DM-0018788»); se busca desde la tabla del producto
+      const ip = t.search(/Registro sanitario/i), zona = ip >= 0 ? t.slice(ip, ip + 4000) : t;
+      const rs = [...new Set((zona.match(/\b(?:INVIMA\s*)?\d{4}\s*[A-Z]{1,5}\s*-\s*\d{3,8}(?:\s*-\s*R\d+)?\b/g) || []).map((r) => r.replace(/^INVIMA\s*/i, '').replace(/\s+/g, '').trim()))];
       x.registro_sanitario = rs.join(' / ') || (/registro sanitario[^.]{0,40}(no aplica|n\/a|sin registro|no registra)/i.exec(t) ? 'NO APLICA' : '');
-      const prod = (t.match(/Producto\s+Registro sanitario\s+Titular\s+Lote \/ Serial\s+(.{5,250}?)\s+(?:INVIMA|No aplica|N\/A)/i) || [])[1];
+      const prod = (t.match(/Producto\s+Registro sanitario\s+Titular\s+Lote \/ Serial\s+(.{5,250}?)\s+(?:INVIMA|\d{4}[A-Z]{1,5}-|No aplica|N\/A)/i) || [])[1];
       x.producto = prod || '';
       if (!x.tipo) x.tipo = /informe de seguridad/i.test(t.slice(0, 3000)) ? 'INFORME DE SEGURIDAD' : 'ALERTA SANITARIA';
       if (debug && !dbg.some((d) => d.detalle)) dbg.push({ detalle: x.url, texto: t.slice(0, 2500) });
