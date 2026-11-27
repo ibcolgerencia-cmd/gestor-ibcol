@@ -280,20 +280,45 @@
 
   // ------------------------------------------------------------------ acto administrativo AA-PGTV-035 (datos y firma de cada entidad)
   const COMITE_BASE = ['Referente de Tecnovigilancia', 'Líder asistencial / profesional de la salud', 'Ingeniero Biomédico', 'Administrador'];
+  // v207: delegación del referente en los enlaces locales de las sedes (acto administrativo)
+  TV.RESP_ENLACE = [
+    'Ser el punto de contacto del programa de tecnovigilancia en la(s) sede(s) a cargo y mantener comunicación permanente con el referente institucional.',
+    'Ante un evento o incidente adverso: verificar que se atienda primero al paciente, retirar, rotular y conservar el dispositivo médico implicado (con su empaque, lote y accesorios) y evitar que se vuelva a usar.',
+    'Informar el mismo día al referente todo evento o incidente adverso SERIO (llamada o WhatsApp) y enviarle el formato FT-PGTV-016 diligenciado en máximo 24 horas, para que se notifique al INVIMA dentro de las 72 horas siguientes a su ocurrencia.',
+    'Registrar los eventos e incidentes adversos NO serios de la sede y entregar al referente, dentro de los cinco (5) primeros días hábiles de cada trimestre, el reporte trimestral de la sede o el reporte en cero cuando no se presenten casos.',
+    'Verificar cada mes las alertas sanitarias, retiros de producto (recall) e informes de seguridad que le envíe el referente contra el inventario de dispositivos médicos de la sede, dejar registro de la verificación (aplica / no aplica) y ejecutar las acciones indicadas (retiro, cuarentena, aviso al proveedor).',
+    'Promover la cultura del reporte (no punitiva y confidencial) y convocar al personal de la sede a las capacitaciones del programa, con su lista de asistencia y pre y post test.',
+    'Mantener actualizado el inventario de dispositivos médicos de la sede e informar al referente las altas, bajas, traslados y equipos fuera de servicio.',
+    'Participar en el comité de tecnovigilancia y en el análisis de los eventos de su sede (Protocolo de Londres), y hacer seguimiento a los planes de acción definidos.',
+    'Custodiar los soportes del programa en la sede y guardar la confidencialidad de la información de pacientes y reportantes.'];
+  TV.enlacesActo = (ent) => { const sc = TV.sedesCfg(ent), g = new Map(); Object.entries(sc).filter(([, x]) => x?.incluida !== false && x?.enlace).forEach(([sd, x]) => { const k = String(x.enlace).trim().toUpperCase(); if (!g.has(k)) g.set(k, { nombre: x.enlace, cc: '', exp: '', cargo: x.cargo || 'Enlace local de tecnovigilancia', sedes: [] }); g.get(k).sedes.push(sd); }); return [...g.values()].map((x) => ({ ...x, sedes: x.sedes.join(', ') })); };
   const formActo = (ent) => {
     const c = TV.cfg(ent), a = c.acto || {}; let firma = a.firma || null;
+    let enl = (a.enlaces && a.enlaces.length ? a.enlaces : TV.enlacesActo(ent)).map((x) => ({ ...x }));
+    const filaEn = (x, i) => `<tr data-enf="${i}">${[['nombre', 'Nombre', 170], ['cc', 'Cédula', 110], ['exp', 'Expedida en', 100], ['cargo', 'Cargo', 140], ['sedes', 'Sedes a cargo (separadas por coma)', 220]].map(([k, l, w]) => `<td style="padding:2px"><input data-en="${k}" value="${h(x[k] || '')}" aria-label="${l}" placeholder="${l}" style="width:100%;min-width:${w}px"></td>`).join('')}<td><button type="button" class="btn sm" data-enq="${i}" title="Quitar">✕</button></td></tr>`;
+    const tablaEn = () => `<div class="tbl-wrap"><table class="tbl" style="font-size:.82rem"><thead><tr><th>Nombre del enlace</th><th>Cédula</th><th>Expedida en</th><th>Cargo</th><th>Sedes a cargo</th><th></th></tr></thead><tbody>${enl.map(filaEn).join('') || '<tr><td colspan="6" class="muted">Sin enlaces: la institución no delega en sedes.</td></tr>'}</tbody></table></div>`;
     modal({ titulo: `Acto administrativo · ${TV.fmtDe('acto_tv').codigo}`, size: 'wide', cuerpo: `<form class="form" onsubmit="return false">
       <fieldset><legend>Referente delegado</legend><div class="fields">${f.input('ref_nombre', 'Nombre del referente', a.ref_nombre || c.referente)}${f.input('ref_cc', 'Cédula', a.ref_cc)}${f.input('ref_exp', 'Expedida en', a.ref_exp || ent.ciudad)}</div></fieldset>
       <fieldset><legend>Representante legal (firma el acto)</legend><div class="fields">${f.input('rep_nombre', 'Nombre', a.rep_nombre || (c.aprobo || '').split('|')[0])}${f.input('rep_cc', 'Cédula', a.rep_cc)}${f.input('rep_exp', 'Expedida en', a.rep_exp || ent.ciudad)}${f.input('rep_cargo', 'Cargo', a.rep_cargo || 'Representante legal')}
         <div class="field full"><span class="lbl">Firma</span><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span data-fprev style="display:inline-flex;width:170px;height:52px;border:1px dashed var(--line);border-radius:8px;align-items:center;justify-content:center;overflow:hidden;font-size:.75rem">${firma ? `<img src="${firma}" alt="Firma" style="max-height:48px;max-width:166px">` : 'Sin firma'}</span><button type="button" class="btn sm" data-firmar>${I.firma} Firmar / cargar</button>${c.firma_aprobo ? '<button type="button" class="btn sm" data-usar>Usar la firma de “Aprobó”</button>' : ''}</div></div></div></fieldset>
-      <fieldset><legend>Comité de tecnovigilancia</legend><div class="fields">${f.area('comite', 'Integrantes del comité (uno por línea)', (a.comite || COMITE_BASE).join('\n'), { rows: 4 })}${f.sel('periodicidad', 'Periodicidad de reuniones', ['trimestral', 'bimestral', 'mensual', 'semestral'], a.periodicidad || 'trimestral')}${f.input('fecha', 'Fecha del acto', a.fecha || UI.hoy(), { type: 'date' })}</div></fieldset></form>`,
+      <fieldset><legend>Comité de tecnovigilancia</legend><div class="fields">${f.area('comite', 'Integrantes del comité (uno por línea)', (a.comite || COMITE_BASE).join('\n'), { rows: 4 })}${f.sel('periodicidad', 'Periodicidad de reuniones', ['trimestral', 'bimestral', 'mensual', 'semestral'], a.periodicidad || 'trimestral')}${f.input('fecha', 'Fecha del acto', a.fecha || UI.hoy(), { type: 'date' })}</div></fieldset>
+      <fieldset><legend>Delegación en las sedes (enlaces locales)</legend><p class="muted" style="font-size:.82rem;margin:0 0 6px">El referente delega en estas personas como enlaces del programa en sus sedes (sin perder su responsabilidad ante el INVIMA). Salen en el acto con sus responsabilidades y su firma de aceptación. Se llenan con los enlaces de «Datos del programa › Sedes».</p>
+        <div data-entab>${tablaEn()}</div><div class="actions" style="margin-top:6px"><button type="button" class="btn sm" data-ena>+ Enlace</button><button type="button" class="btn sm" data-enr>Traer de las sedes del programa</button></div>
+        <div class="fields" style="margin-top:8px">${f.area('resp_enlace', 'Responsabilidades del enlace de sede (una por línea)', (a.resp_enlace && a.resp_enlace.length ? a.resp_enlace : TV.RESP_ENLACE).join('\n'), { rows: 8, full: true })}</div><button type="button" class="btn sm" data-enrb>Restaurar responsabilidades sugeridas</button></fieldset></form>`,
       alAbrir: (m) => m.body.addEventListener('click', async (e) => {
-        const prev = m.body.querySelector('[data-fprev]');
+        const prev = m.body.querySelector('[data-fprev]'), tb = m.body.querySelector('[data-entab]');
+        const leerEn = () => { enl = [...tb.querySelectorAll('[data-enf]')].map((tr) => Object.fromEntries([...tr.querySelectorAll('[data-en]')].map((i) => [i.dataset.en, i.value.trim()]))); };
+        if (e.target.closest('[data-ena]')) { leerEn(); enl.push({ nombre: '', cc: '', exp: ent.ciudad || '', cargo: 'Enlace local de tecnovigilancia', sedes: '' }); tb.innerHTML = tablaEn(); }
+        if (e.target.closest('[data-enq]')) { leerEn(); enl.splice(+e.target.closest('[data-enq]').dataset.enq, 1); tb.innerHTML = tablaEn(); }
+        if (e.target.closest('[data-enr]')) { leerEn(); const nu = TV.enlacesActo(ent); nu.forEach((x) => { const y = enl.find((z) => z.nombre.toUpperCase() === x.nombre.toUpperCase()); if (y) y.sedes = x.sedes; else enl.push(x); }); tb.innerHTML = tablaEn(); }
+        if (e.target.closest('[data-enrb]')) m.body.querySelector('[name=resp_enlace]').value = TV.RESP_ENLACE.join('\n');
         if (e.target.closest('[data-firmar]')) { const r = await UI.pedirFirma({ titulo: 'Firma del representante legal', actual: firma }); if (r) { firma = r; prev.innerHTML = `<img src="${r}" alt="Firma" style="max-height:48px;max-width:166px">`; } }
         if (e.target.closest('[data-usar]')) { firma = c.firma_aprobo; prev.innerHTML = `<img src="${firma}" alt="Firma" style="max-height:48px;max-width:166px">`; }
       }),
       acciones: [{ t: 'Cancelar' }, { t: 'Guardar y generar PDF', cls: 'pri', fn: async (m) => {
-        const v = leer(m.body); const acto = { ...v, comite: String(v.comite || '').split('\n').map((x) => x.trim()).filter(Boolean), firma };
+        const v = leer(m.body); Object.keys(v).filter((k) => !/^(ref_|rep_|comite|periodicidad|fecha|resp_enlace)/.test(k)).forEach((k) => delete v[k]);
+        const enlaces = [...m.body.querySelectorAll('[data-enf]')].map((tr) => Object.fromEntries([...tr.querySelectorAll('[data-en]')].map((i) => [i.dataset.en, i.value.trim()]))).filter((x) => x.nombre);
+        const acto = { ...v, comite: String(v.comite || '').split('\n').map((x) => x.trim()).filter(Boolean), firma, enlaces, resp_enlace: String(v.resp_enlace || '').split('\n').map((x) => x.trim()).filter(Boolean) };
         await guardarCfg(ent, { acto });
         const doc = TV.pdfActo(ent, { acto, cfg: TV.cfg(ent) });
         verDoc(ent, doc, 'Acto administrativo de tecnovigilancia', `${TV.fmtDe('acto_tv').codigo}_Acto_administrativo_${slug(ent.razon_social)}.pdf`, 1);

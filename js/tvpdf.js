@@ -358,16 +358,41 @@
     doc.autoTable({ startY: y, theme: 'grid', pageBreak: 'avoid', margin: { left: M, right: M, top: 40, bottom: BOT }, styles: { fontSize: 8.8, cellPadding: 1.8, lineColor: NG, lineWidth: 0.2, textColor: NG },
       body: [[{ content: 'Envío de reporte al INVIMA', styles: { fontStyle: 'bold', fillColor: CL } }], ['Los incidentes y eventos adversos presentados se reportan trimestralmente ante el Instituto Nacional de Vigilancia de Medicamentos y Alimentos – INVIMA; cuando no se presenten, se envía el reporte en cero. Aplicativo web: https://farmacoweb.invima.gov.co/TecnoVigilancia/']] });
     y = doc.lastAutoTable.finalY + 6;
+    // v207: delegación en los enlaces locales de las sedes
+    const enl = (a.enlaces || []).filter((x) => x.nombre); let nS = 2;
+    if (enl.length) {
+      salto(30); par(`${nS++}. DELEGACIÓN EN LAS SEDES · ENLACES LOCALES DE TECNOVIGILANCIA`, { b: true, gap: 2 });
+      par(`Para garantizar la operación del programa en todas las sedes de ${ent.razon_social}, el referente ${ref.toUpperCase()} delega como enlaces locales de tecnovigilancia a las siguientes personas, quienes responden ante el referente por las actividades del programa en las sedes a su cargo. La delegación no exime al referente de su responsabilidad ante el INVIMA.`, { gap: 3 });
+      doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, top: 40, bottom: BOT }, styles: { fontSize: 8.8, cellPadding: 1.6, lineColor: NG, lineWidth: 0.2, textColor: NG, valign: 'middle' }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold', halign: 'center' },
+        head: [['Enlace local', 'Identificación', 'Cargo', 'Sedes a cargo']], body: enl.map((x) => [x.nombre.toUpperCase(), x.cc ? `C.C. ${x.cc}${x.exp ? ` de ${x.exp}` : ''}` : 'C.C. __________', x.cargo || 'Enlace local de tecnovigilancia', x.sedes || '']), columnStyles: { 0: { fontStyle: 'bold', cellWidth: 48 }, 1: { cellWidth: 38 }, 2: { cellWidth: 38 } }, rowPageBreak: 'avoid' });
+      y = doc.lastAutoTable.finalY + 4;
+      const re = a.resp_enlace && a.resp_enlace.length ? a.resp_enlace : (TV.RESP_ENLACE || []);
+      doc.autoTable({ startY: y, theme: 'grid', margin: { left: M, right: M, top: 40, bottom: BOT }, styles: { fontSize: 8.8, cellPadding: 1.6, lineColor: NG, lineWidth: 0.2, textColor: NG }, headStyles: { fillColor: CL, textColor: NG, fontStyle: 'bold', halign: 'center' },
+        head: [['RESPONSABILIDADES DEL ENLACE LOCAL DE LA SEDE']], body: [[`${enl.map((x) => x.nombre).join(enl.length > 1 ? ', ' : '').replace(/, ([^,]*)$/, ' y $1')}, como enlace${enl.length > 1 ? 's' : ''} de tecnovigilancia de las sedes a su cargo, tendr${enl.length > 1 ? 'án' : 'á'} las siguientes responsabilidades:`], ...re.map((r, i) => [`${i + 1}. ${r}`])], rowPageBreak: 'avoid' });
+      y = doc.lastAutoTable.finalY + 6;
+    }
     par('Hasta tanto no haya cambios, se mantendrá vigente el presente acto administrativo.', { gap: 5 });
-    salto(30); par('2. CONFORMACIÓN DEL COMITÉ DE TECNOVIGILANCIA', { b: true, gap: 2 }); par('Así mismo, el grupo que conformará el comité será:', { gap: 2 });
+    salto(30); par(`${nS++}. CONFORMACIÓN DEL COMITÉ DE TECNOVIGILANCIA`, { b: true, gap: 2 }); par('Así mismo, el grupo que conformará el comité será:', { gap: 2 });
     (a.comite && a.comite.length ? a.comite : ['Referente de Tecnovigilancia']).forEach((x, i) => par(`${'abcdefghijklmnop'[i]})  ${x}`, { ind: 6, gap: 0.5 })); y += 3;
-    salto(20); par('3. FUNCIONES DEL COMITÉ', { b: true, gap: 2 }); par('El comité de tecnovigilancia es el responsable del análisis y la gestión de los eventos e incidentes adversos reportados, utilizando la metodología del Protocolo de Londres, y del seguimiento a los planes de acción, alertas sanitarias e indicadores del programa.', { gap: 4 });
-    salto(20); par('4. PERIODICIDAD DE LAS REUNIONES', { b: true, gap: 2 }); par(`El comité de tecnovigilancia se reunirá de manera ${a.periodicidad || 'trimestral'} o en forma extraordinaria cuando se presente un evento o incidente adverso serio que lo requiera.`, { gap: 6 });
+    salto(20); par(`${nS++}. FUNCIONES DEL COMITÉ`, { b: true, gap: 2 }); par('El comité de tecnovigilancia es el responsable del análisis y la gestión de los eventos e incidentes adversos reportados, utilizando la metodología del Protocolo de Londres, y del seguimiento a los planes de acción, alertas sanitarias e indicadores del programa.', { gap: 4 });
+    salto(20); par(`${nS++}. PERIODICIDAD DE LAS REUNIONES`, { b: true, gap: 2 }); par(`El comité de tecnovigilancia se reunirá de manera ${a.periodicidad || 'trimestral'} o en forma extraordinaria cuando se presente un evento o incidente adverso serio que lo requiera.`, { gap: 6 });
     const fd = a.fecha ? new Date(a.fecha + 'T12:00:00') : new Date();
     par(`Dado en ${ent.ciudad || '__________'}, a los ${fd.getDate()} días del mes de ${CAT.MESES[fd.getMonth()].toLowerCase()} de ${fd.getFullYear()}.`, { gap: 6 });
     salto(42); y += 4; if (a.firma) img(doc, a.firma, M, y, 60, 18); y += 20;
     doc.setDrawColor(...NG); doc.line(M, y, M + 75, y); y += 4.5; doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text((a.rep_nombre || 'REPRESENTANTE LEGAL').toUpperCase(), M, y); y += 4.5;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); [a.rep_cc ? `C.C. ${a.rep_cc}${a.rep_exp ? ` expedida en ${a.rep_exp}` : ''}` : '', a.rep_cargo || 'Representante legal', ent.razon_social].filter(Boolean).forEach((l) => { doc.text(l, M, y); y += 4.3; });
+    // aceptación de la designación: referente y enlaces (dos por fila)
+    if (enl.length) {
+      const fir = [{ nombre: ref, cc: a.ref_cc, exp: a.ref_exp, cargo: 'Referente de tecnovigilancia' }, ...enl.map((x) => ({ ...x, cargo: `Enlace local · ${x.sedes || ''}` }))];
+      y += 6; salto(40); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.text('ACEPTAN LA DESIGNACIÓN:', M, y); y += 4;
+      const cw = (ancho - 10) / 2;
+      for (let i = 0; i < fir.length; i += 2) {
+        salto(32); y += 18;
+        fir.slice(i, i + 2).forEach((x, k) => { const x0 = M + k * (cw + 10); doc.setDrawColor(...NG); doc.line(x0, y, x0 + cw - 10, y); doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text(String(x.nombre || '').toUpperCase(), x0, y + 4.5);
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(8.3); const ls = [x.cc ? `C.C. ${x.cc}${x.exp ? ` de ${x.exp}` : ''}` : 'C.C. __________', ...doc.splitTextToSize(x.cargo || '', cw - 10)]; ls.forEach((l, j) => doc.text(l, x0, y + 8.8 + j * 3.9)); });
+        y += 16;
+      }
+    }
     for (let i = 2; i <= doc.getNumberOfPages(); i++) { doc.setPage(i); TV.encabezado(doc, { fmt, ent, titulo: fmt.titulo }); }
     TV.pie(doc, fmt, { elaboro: false }); return doc;
   };
