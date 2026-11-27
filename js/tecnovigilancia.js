@@ -739,14 +739,23 @@
   st.tvAlSede = st.tvAlSede || {};
   const nrmRS = (t) => String(t || '').toUpperCase().replace(/REGISTRO\s*SANITARIO|INVIMA|RS\b/g, '').replace(/[^A-Z0-9]/g, '');
   const vAlertasSede = async (box, { ent, sedeTV, cons }) => {
-    const [als, eqs, regs] = await Promise.all([S.list('alertas', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id }), regsDe(ent)]);
+    const [als, eqs, regs, docs] = await Promise.all([S.list('alertas', { entidad_id: ent.id }), S.list('equipos', { entidad_id: ent.id }), regsDe(ent), S.list('documentos', { entidad_id: ent.id }).catch(() => [])]);
     const eqSede = eqs.filter((e) => e.estado !== 'Dado de baja' && sedeEq(e, cons) === sedeTV);
     const per = (a) => A.periodoAlerta(a), clave = (p) => p.anio * 100 + p.mes;
-    const periodos = [...new Set(als.map((a) => clave(per(a))).filter((k) => k > 0))].sort((a, b) => b - a);
+    // v203: las alertas del mes se leen de la bitácora FT-PGTV-015 institucional (la misma de Popayán) guardada en la carpeta de alertas (año / mes)
+    const bits = (docs || []).filter((d) => d.carpeta === 'alertas' && /^\d{4}\/\d{2}\./.test(d.subcarpeta || '') && /\.pdf$/i.test(d.nombre || '') && /pgtv[\s_-]*0?15|bit[aá]cora/i.test(d.nombre));
+    const claveDoc = (d) => +d.subcarpeta.slice(0, 4) * 100 + +d.subcarpeta.slice(5, 7);
+    const periodos = [...new Set([...als.map((a) => clave(per(a))), ...bits.map(claveDoc)].filter((k) => k > 0))].sort((a, b) => b - a);
     const selK = st.tvAlSede[ent.id] && periodos.includes(st.tvAlSede[ent.id]) ? st.tvAlSede[ent.id] : periodos[0];
     const anio = Math.floor((selK || 0) / 100), mes = (selK || 0) % 100;
-    const delMes = als.filter((a) => clave(per(a)) === selK);
-    const filas = delMes.map((a) => { const rs = nrmRS(a.registro_sanitario); const q = rs ? eqSede.filter((e) => nrmRS(e.registro_sanitario) === rs) : [];
+    TV._bitCache = TV._bitCache || {};
+    let fuente = [];
+    for (const d of bits.filter((x) => claveDoc(x) === selK)) {
+      if (!TV._bitCache[d.id]) TV._bitCache[d.id] = await TV.filasBitacora(await S.fileBlob(d.archivo)).catch(() => []);
+      TV._bitCache[d.id].forEach((r) => fuente.push({ dispositivo: r.dispositivo || '', registro_sanitario: r.rs || '', tipo_notificacion: r.tipo || '', agencia: r.agencia || 'INVIMA', fecha_publicacion: r.fecha || '' }));
+    }
+    if (!fuente.length) fuente = als.filter((a) => clave(per(a)) === selK);
+    const filas = fuente.map((a) => { const rs = nrmRS(a.registro_sanitario); const q = rs ? eqSede.filter((e) => nrmRS(e.registro_sanitario) === rs) : [];
       return { alerta: a.dispositivo || a.tipo_notificacion || '', rs: a.registro_sanitario || '', tipo: a.tipo_notificacion || '', agencia: a.agencia || '', fecha: a.fecha_publicacion || '', aplica: q.length > 0, equipos: q.map((e) => `${e.codigo_inv || ''} ${e.nombre || ''}`.trim()), resultado: q.length ? `APLICA: ${q.map((e) => e.codigo_inv || e.nombre).join(', ')}` : rs ? 'No aplica: ningún dispositivo de la sede tiene este registro sanitario' : 'Sin registro sanitario: verificar por nombre / lote' }; });
     const regDe = (k) => (regs || []).find((r) => r.tipo === 'alertas_sede' && r.datos?.sede === sedeTV && r.anio === Math.floor(k / 100) && r.periodo === `M${k % 100}`);
     const reg = selK ? regDe(selK) : null;
