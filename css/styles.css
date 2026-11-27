@@ -760,3 +760,10 @@ h1 .icon-btn { vertical-align: middle; }
 @media (prefers-reduced-motion: reduce) { .vir-barra .vir-rec { animation: none; } }
 /* v180: último equipo abierto al volver a la lista */
 .eq-row.eq-ultimo { outline: 2px solid var(--pri, #0a7da0); outline-offset: 2px; background: rgba(23, 179, 214, .12); transition: background .6s; }
+
+/* v212 · evidencia fotográfica del mantenimiento correctivo */
+.mto-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.mto-fotos figure { margin: 0; position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface-2); display: flex; flex-direction: column; }
+.mto-fotos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.mto-fotos input { border: 0; border-top: 1px solid var(--line); padding: 6px 8px; font: inherit; font-size: .8rem; background: var(--surface); color: var(--ink); width: 100%; }
+.mto-fotos .icon-btn { position: absolute; top: 4px; right: 4px; background: var(--surface); }
