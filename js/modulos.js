@@ -1214,6 +1214,7 @@
     const obsIni = notaAuto?.texto && !obsBase.includes(notaAuto.texto) ? [notaAuto.texto, obsBase].filter(Boolean).join('\n') : obsBase;
     const val = d.valoracion || (m ? [] : ['Equipo queda en funcionamiento', 'Equipo encontrado en servicio', 'Servicio concluido']);
     const titulo = { preventivo: 'Mantenimiento preventivo', correctivo: 'Mantenimiento correctivo', metrologia: 'Metrología / calibración' }[tipo];
+    const fotosV = (d.fotos || []).map((x) => ({ ...x })), fotosN = [];
     let cert = null;
     const cuerpo = `<form class="form" onsubmit="return false">
       <div class="fields">${f.input('numero', 'Reporte N°', numero)}${f.input('fecha', tipo === 'correctivo' ? 'Fecha de cierre' : 'Fecha', m?.fecha || fechaIni || UI.hoy(), { type: 'date' })}
@@ -1226,6 +1227,8 @@
         <div data-acts-box>${f.checks('actividades', 'Actividades de mantenimiento (máximo 12 en el formato)', actsTodas, actsSel)}</div>${f.area('otras_act', 'Otras actividades (una por línea)', '', { rows: 2 })}${UI.dictarBtn('actividades', 'Dictar actividades')}<p class="muted mic-ayuda">Al dictar, las actividades que coinciden con la lista se marcan solas; las demás se escriben en «Otras actividades». Diga «siguiente» para pasar a otra actividad.</p></fieldset>` : ''}
       ${tipo === 'correctivo' ? `<fieldset><legend>Falla y reparación</legend><div class="fields">${f.area('falla', 'Falla reportada *', d.falla, { rows: 2 })}${f.area('diagnostico', 'Diagnóstico', d.diagnostico, { rows: 2 })}${f.sel('causa', 'Causa', ['Desgaste', 'Mal uso', 'Falla eléctrica', 'Falla de fábrica', 'Accidente', 'Falta de mantenimiento', 'Otra'], d.causa)}
         ${f.area('actividades_txt', 'Actividades realizadas (una por línea)', (d.actividades || []).join('\n'), { rows: 3 })}<div class="field full" style="display:flex;gap:8px;flex-wrap:wrap">${UI.dictarBtn('falla', 'Dictar falla')}${UI.dictarBtn('diagnostico', 'Dictar diagnóstico')}${UI.dictarBtn('actividades_txt', 'Dictar actividades')}</div></div></fieldset>` : ''}
+      ${tipo === 'correctivo' ? `<fieldset><legend>Evidencia fotográfica</legend><p class="muted" style="font-size:.84rem;margin:0 0 6px">Fotos de la falla, de las piezas cambiadas y del equipo reparado. Salen en el PDF del reporte (después del formato) y quedan en la carpeta «3. Mantenimientos correctivos» del equipo.</p>
+        <div class="mto-fotos" data-mfotos></div><div class="actions"><label class="btn sm">${I.subir} Cargar fotos<input type="file" accept="image/*" multiple hidden data-mfin></label><label class="btn sm">📷 Tomar foto<input type="file" accept="image/*" capture="environment" hidden data-mfin></label></div></fieldset>` : ''}
       ${tipo === 'metrologia' ? `<fieldset><legend>Calibración</legend><div class="fields">${f.input('laboratorio', 'Laboratorio', d.laboratorio, { full: true })}${f.input('certificado', 'Certificado N°', d.certificado)}${f.input('magnitud', 'Magnitud', d.magnitud)}
         ${f.sel('resultado', 'Resultado', ['Conforme', 'No conforme'], d.resultado)}${f.area('mediciones', 'Resultados de la verificación / mediciones', d.mediciones, { rows: 3 })}${f.input('proxima', 'Próxima calibración', d.proxima || UI.sumarMeses(UI.hoy(), CAT.PERIODICIDAD[eq.periodicidad_metro] || 12), { type: 'date' })}
         <div class="field full"><span class="lbl">Adjuntar certificado (PDF) — se guarda en la carpeta Metrología con alerta de vencimiento</span><input type="file" accept="application/pdf,image/*" data-cert></div></div></fieldset>` : ''}
@@ -1241,6 +1244,19 @@
       titulo: `${titulo} · ${eq.nombre}`, size: 'wide', cuerpo,
       alAbrir: (mm) => {
         repBind(mm.body);
+        const fbox = mm.body.querySelector('[data-mfotos]');
+        if (fbox) {
+          const leerDesc = () => fbox.querySelectorAll('[data-mdesc]').forEach((i) => { const k = i.dataset.mdesc; (k[0] === 'v' ? fotosV : fotosN)[+k.slice(1)].desc = i.value.trim(); });
+          const pintarF = async () => {
+            const urls = await Promise.all(fotosV.map(async (p) => { try { return URL.createObjectURL(await S.fileBlob(p.archivo)); } catch { return ''; } }));
+            const fig = (src, x, k) => `<figure><img src="${src}" alt="${h(x.desc || 'Foto de evidencia')}"><button type="button" class="icon-btn bad" data-mq="${k}" aria-label="Quitar foto">${I.x}</button><input data-mdesc="${k}" value="${h(x.desc || '')}" placeholder="Descripción (ej. antes / después)" aria-label="Descripción de la foto"></figure>`;
+            fbox.innerHTML = [...fotosV.map((x, i) => fig(urls[i], x, 'v' + i)), ...fotosN.map((x, i) => fig(x.dataURL, x, 'n' + i))].join('') || '<span class="muted">Sin fotos.</span>';
+            fbox.querySelectorAll('[data-mq]').forEach((b) => { b.onclick = () => { leerDesc(); const k = b.dataset.mq; (k[0] === 'v' ? fotosV : fotosN).splice(+k.slice(1), 1); pintarF(); }; });
+          };
+          mm.leerDescFotos = leerDesc;
+          mm.body.querySelectorAll('[data-mfin]').forEach((inp) => { inp.onchange = async () => { leerDesc(); for (const fl of inp.files) { if (!/^image\//.test(fl.type)) continue; fotosN.push({ nombre: fl.name, dataURL: await UI.reducirImagen(fl, 1400, 'image/jpeg'), desc: '' }); } inp.value = ''; pintarF(); }; });
+          pintarF();
+        }
         mm.body.querySelectorAll('[data-mic]').forEach((b) => { b.onclick = () => UI.dictar(b, (t) => A.dictadoMto(mm.body, b.dataset.mic, t), mm.body.querySelector(`[data-mic-prev="${b.dataset.mic}"]`)); });
         mm.body.querySelectorAll('[data-addnota]').forEach((b) => { b.onclick = () => { const t = notasCr[+b.dataset.addnota].texto; const ob = mm.body.querySelector('[name=observaciones]'); if (ob.value.includes(t)) return toast('Esa anotación ya está en Observaciones'); ob.value = [ob.value.trim(), t].filter(Boolean).join('\n'); toast('Anotación agregada a Observaciones'); }; });
         firmaBind(mm.body, null, (i, dd) => { if (i === 0) { fRecibe = dd; recibeNueva = true; } else fRealizo = dd; }, { titulos: ['Firma de quien recibe', 'Firma de quien realizó'], actual: [null, st.firma] });
@@ -1272,6 +1288,18 @@
         if (tipo === 'correctivo' && !v.falla) { toast('Describa la falla reportada', true); return false; }
         const datos = { observaciones: v.observaciones };
         if (tipo === 'preventivo') Object.assign(datos, { frecuencia: v.frecuencia, tiempo: v.tiempo, pruebas: repLeer(mm.body, 'pruebas').map((p) => ({ item: p.item, r: p.r })), actividades: [...v.actividades, ...v.otras_act.split('\n').map((s) => s.trim()).filter(Boolean)], herramientas: v.herramientas });
+        if (tipo === 'correctivo') {
+          mm.body.querySelectorAll('[data-mdesc]').forEach((i) => { const k = i.dataset.mdesc; const o = (k[0] === 'v' ? fotosV : fotosN)[+k.slice(1)]; if (o) o.desc = i.value.trim(); });
+          const nuevas = [];
+          for (const [i, x] of fotosN.entries()) {
+            const blob = await (await fetch(x.dataURL)).blob(); const path = `${ent.id}/${eq.id}/mto_correctivo/${Date.now()}-foto${i + 1}.jpg`;
+            await S.upload(path, new Blob([blob], { type: 'image/jpeg' }));
+            const nom = `Evidencia correctivo ${v.numero} - ${x.desc || 'foto ' + (fotosV.length + i + 1)}.jpg`.replace(/[\\/:*?"<>|]/g, '-');
+            try { await S.insert('documentos', { entidad_id: ent.id, equipo_id: eq.id, carpeta: 'mto_correctivo', subcarpeta: 'EVIDENCIA FOTOGRÁFICA', nombre: nom, archivo: path, mime: 'image/jpeg', tamano: blob.size, fecha_documento: v.fecha, visible_cliente: true, firmado: false }); } catch (er) { console.warn(er); }
+            nuevas.push({ archivo: path, nombre: nom, desc: x.desc || '' });
+          }
+          fotosN.length = 0; fotosV.push(...nuevas); datos.fotos = fotosV.map((x) => ({ archivo: x.archivo, nombre: x.nombre, desc: x.desc || '' }));
+        }
         if (tipo === 'correctivo') Object.assign(datos, { fecha_reporte: v.fecha_reporte, fecha_cierre: v.fecha, horas: v.horas, falla: v.falla, diagnostico: v.diagnostico, causa: v.causa, actividades: v.actividades_txt.split('\n').map((s) => s.trim()).filter(Boolean) });
         if (tipo === 'metrologia') Object.assign(datos, { mediciones: v.mediciones, laboratorio: v.laboratorio, certificado: v.certificado, magnitud: v.magnitud, resultado: v.resultado, proxima: v.proxima });
         if (tipo !== 'metrologia') Object.assign(datos, { valoracion: v.valoracion, repuestos: repLeer(mm.body, 'repuestos'), recibe_nombre: v.recibe_nombre, recibe_cargo: v.recibe_cargo });

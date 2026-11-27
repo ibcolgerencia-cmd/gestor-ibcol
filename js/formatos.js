@@ -260,7 +260,35 @@ window.FMT = (() => {
     const d = o.m.datos || {}; const v = mtoComun(o);
     Object.assign(v, { frecuencia: fD(d.fecha_reporte), tiempo: d.horas ? `${d.horas} h` : '', falla: d.falla || '', diagnostico: d.diagnostico || '', causa: d.causa || '' });
     (d.actividades || []).slice(0, 12).forEach((a, i) => { v[`ac${i}`] = a; v[`ok${i}`] = '✓'; });
-    return render('mto_correctivo', [v]);
+    const blob = await render('mto_correctivo', [v]);
+    return (d.fotos || []).length ? anexarFotos(blob, d.fotos, `EVIDENCIA FOTOGRÁFICA · REPORTE DE MANTENIMIENTO CORRECTIVO N° ${o.m.numero || ''}`, [`${val(o.eq, 'nombre') || ''} · ${val(o.eq, 'codigo_inv') || ''}`, `${o.ent?.razon_social || ''}${o.cons?.nombre ? ' · ' + o.cons.nombre : ''} · ${fD(o.m.fecha)}`]) : blob;
+  }
+  // v212: páginas de evidencia fotográfica al final de un reporte (2 fotos por página, con su descripción)
+  const winAnsi = (t) => String(t || '').normalize('NFC').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-').replace(/[^\x20-\x7E\u00A0-\u00FF]/g, '');
+  async function anexarFotos(blob, fotos, titulo, sub = []) {
+    if (!window.PDFLib) return blob;
+    try {
+      const { PDFDocument, StandardFonts, rgb } = PDFLib;
+      const doc = await PDFDocument.load(await blob.arrayBuffer()); const fb = await doc.embedFont(StandardFonts.HelveticaBold), fn = await doc.embedFont(StandardFonts.Helvetica);
+      const imgs = [];
+      for (const ft of fotos) { try { const b = await APP.S.fileBlob(ft.archivo); const by = new Uint8Array(await b.arrayBuffer()); const im = by[0] === 0x89 ? await doc.embedPng(by) : await doc.embedJpg(by); imgs.push({ im, desc: ft.desc || '' }); } catch (e) { console.warn('foto', e); } }
+      const W = 612, H = 792, M = 40, AW = W - 2 * M, AH = 300;
+      for (let i = 0; i < imgs.length; i += 2) {
+        const pg = doc.addPage([W, H]); let y = H - M;
+        pg.drawText(winAnsi(titulo), { x: M, y: y - 12, size: 11.5, font: fb, color: rgb(0.05, 0.25, 0.32) }); y -= 18;
+        sub.filter(Boolean).forEach((l) => { pg.drawText(winAnsi(l), { x: M, y: y - 10, size: 9, font: fn, color: rgb(0.25, 0.25, 0.25) }); y -= 13; });
+        pg.drawLine({ start: { x: M, y: y - 4 }, end: { x: W - M, y: y - 4 }, thickness: 0.8, color: rgb(0.05, 0.59, 0.75) }); y -= 16;
+        for (const [k, x] of imgs.slice(i, i + 2).entries()) {
+          const r = Math.min(AW / x.im.width, AH / x.im.height), w = x.im.width * r, hh = x.im.height * r;
+          pg.drawRectangle({ x: M, y: y - AH - 4, width: AW, height: AH + 4, borderColor: rgb(0.75, 0.8, 0.82), borderWidth: 0.6 });
+          pg.drawImage(x.im, { x: M + (AW - w) / 2, y: y - 2 - AH + (AH - hh) / 2, width: w, height: hh });
+          pg.drawText(winAnsi(`Foto ${i + k + 1}${x.desc ? ': ' + x.desc : ''}`).slice(0, 110), { x: M, y: y - AH - 18, size: 9.5, font: fb, color: rgb(0.15, 0.15, 0.15) });
+          y -= AH + 36;
+        }
+        pg.drawText(winAnsi(`IBCOL Ingenieria Biomedica de Colombia · Evidencia fotografica`), { x: M, y: 24, size: 7.5, font: fn, color: rgb(0.45, 0.45, 0.45) });
+      }
+      return new Blob([await doc.save()], { type: 'application/pdf' });
+    } catch (e) { console.warn(e); return blob; }
   }
 
   async function metrologia(o) {
@@ -428,5 +456,5 @@ window.FMT = (() => {
     return render(k, [v]);
   }
 
-  return { acta, val, marca, NOAPL, NOREG, textoMediciones, render, cuentaCobro, hojaVida, mtoPreventivo, mtoCorrectivo, metrologia, cronograma, inventario, alertas, cargar, vacio };
+  return { anexarFotos, acta, val, marca, NOAPL, NOREG, textoMediciones, render, cuentaCobro, hojaVida, mtoPreventivo, mtoCorrectivo, metrologia, cronograma, inventario, alertas, cargar, vacio };
 })();
