@@ -769,16 +769,48 @@
             pintar();
           } }],
         }),
-        agregar: () => modal({
-          titulo: cap ? 'Agregar capacitación' : 'Agregar equipo al cronograma', size: 'sm',
-          cuerpo: `<div class="form">${cap ? f.input('tema', 'Tema de la capacitación *', '') : ''}${f.sel('equipo_id', cap ? 'Equipo relacionado (opcional)' : 'Equipo', [...(cap ? [['', '— Ninguno —']] : []), ...eqs.filter((e) => e.estado !== 'Dado de baja').map((e) => [e.id, `${e.codigo_inv} · ${e.nombre}`])], '')}</div>`,
-          acciones: [{ t: 'Cancelar' }, { t: 'Agregar', cls: 'pri', fn: async (m) => {
-            const d = leer(m.body); if (cap && !d.tema) { toast('Escriba el tema', true); return false; }
-            const e = eqs.find((x) => x.id === d.equipo_id);
-            const plan = !cap && e ? A.planDesde(tipo === 'metrologia' ? e.periodicidad_metro : e.periodicidad_mto, 1, 2) : {};
-            await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: d.equipo_id || null, tipo, anio, tema: d.tema || null, plan }); pintar();
-          } }],
-        }),
+        agregar: () => {
+          if (cap) return modal({
+            titulo: 'Agregar capacitación', size: 'sm',
+            cuerpo: `<div class="form">${f.input('tema', 'Tema de la capacitación *', '')}${f.sel('equipo_id', 'Equipo relacionado (opcional)', [['', '— Ninguno —'], ...eqs.filter((e) => e.estado !== 'Dado de baja').map((e) => [e.id, `${e.codigo_inv} · ${e.nombre}`])], '')}</div>`,
+            acciones: [{ t: 'Cancelar' }, { t: 'Agregar', cls: 'pri', fn: async (m) => { const d = leer(m.body); if (!d.tema) { toast('Escriba el tema', true); return false; } await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: d.equipo_id || null, tipo, anio, tema: d.tema || null, plan: {} }); pintar(); } }],
+          });
+          // v215: equipos de la sede que aún no están en este cronograma (incluye los quitados y los que no venían en el Excel cargado);
+          // se programa según la periodicidad desde el mes elegido dentro del periodo que se ve (ej. abr 2026 – mar 2027)
+          const visibles = new Set(filas.map((r) => r.equipo_id));
+          const cand = eqs.filter((e) => e.estado !== 'Dado de baja' && (!sedeVista || sedeEq(e) === sedeVista) && !visibles.has(e.id)).sort(ordenEq);
+          const perDef = (e) => (tipo === 'metrologia' ? e?.periodicidad_metro : e?.periodicidad_mto) || 'Anual';
+          const servDe = (e) => cons.find((c) => c.id === e.consultorio_id)?.nombre || '';
+          modal({ titulo: `Agregar equipo al cronograma de ${tipo === 'metrologia' ? 'metrología' : 'mantenimiento'}${sedeVista ? ' · ' + sedeVista : ''}`, cuerpo: `<form class="form" onsubmit="return false">
+            <p class="muted" style="font-size:.84rem;margin:0 0 6px">Elija un equipo del inventario${sedeVista ? ' de la sede' : ''} que no está en este cronograma (${cand.length}). Si el equipo no existe en el inventario, créelo primero con «Crear equipo nuevo».</p>
+            ${cand.length ? `<input type="search" data-bq placeholder="Buscar código, equipo, marca, serie…" aria-label="Buscar equipo" style="width:100%;margin-bottom:6px">
+            <select name="equipo_id" size="8" style="width:100%" aria-label="Equipo">${cand.map((e, i) => `<option value="${e.id}" ${i ? '' : 'selected'} data-t="${h(nrmQ([e.codigo_inv, e.activo_fijo, e.nombre, e.marca, e.modelo, e.serie, servDe(e)].join(' ')))}">${h([e.codigo_inv, e.nombre, e.marca, e.modelo, e.serie && 'S/N ' + e.serie, servDe(e)].filter(Boolean).join(' · '))}</option>`).join('')}</select>
+            <div class="fields" style="margin-top:8px">${f.sel('per', 'Periodicidad', Object.keys(CAT.PERIODICIDAD).map((k) => [k, k]), perDef(cand[0]))}${f.sel('desde', 'Primera programación', ventana.map((v) => [v.p, `${CAT.MESES[v.m - 1]} ${v.y}`]), 0)}${f.sel('sem', 'Semana', [[1, 'Semana 1'], [2, 'Semana 2'], [3, 'Semana 3'], [4, 'Semana 4']], 2)}</div>
+            <p class="muted" data-prev-per style="font-size:.82rem;margin:4px 0 0"></p>` : '<div class="empty">Todos los equipos activos de la sede ya están en este cronograma.</div>'}
+            </form>`,
+            alAbrir: (mm) => {
+              const sel = mm.body.querySelector('[name=equipo_id]'); if (!sel) return;
+              const prev = () => { const paso = CAT.PERIODICIDAD[mm.body.querySelector('[name=per]').value] || 0, p0 = +mm.body.querySelector('[name=desde]').value; const ms = []; if (paso) for (let i = p0; i < 12; i += paso) ms.push(`${M3(ventana[i].m)} ${ventana[i].y}`); mm.body.querySelector('[data-prev-per]').textContent = ms.length ? `Quedará programado (P) en: ${ms.join(', ')}.` : 'Sin programación (podrá marcar las semanas a mano en la tabla).'; };
+              sel.onchange = () => { const e = cand.find((x) => x.id === sel.value); mm.body.querySelector('[name=per]').value = perDef(e); prev(); };
+              mm.body.querySelector('[data-bq]').oninput = (ev) => { const q = nrmQ(ev.target.value); let pr = null; [...sel.options].forEach((o) => { o.hidden = !!q && !o.dataset.t.includes(q); if (!o.hidden && !pr) pr = o; }); if (pr && sel.selectedOptions[0]?.hidden) { sel.value = pr.value; sel.onchange(); } };
+              mm.body.querySelectorAll('[name=per],[name=desde]').forEach((x) => { x.onchange = prev; }); prev();
+            },
+            acciones: [{ t: 'Crear equipo nuevo', fn: () => { const c0 = cons.find((c) => !sedeVista || sedeC(c) === sedeVista); A.formEquipo({ entidad_id: ent.id, consultorio_id: c0?.id }, cons); } }, { t: 'Cancelar' }, ...(cand.length ? [{ t: 'Agregar al cronograma', cls: 'pri', fn: async (mm) => {
+              const d = leer(mm.body), e = cand.find((x) => x.id === d.equipo_id); if (!e) { toast('Elija un equipo', true); return false; }
+              const paso = CAT.PERIODICIDAD[d.per] || 0, p0 = +d.desde || 0, sem = +d.sem || 2, porAnio = {};
+              if (paso) for (let i = p0; i < 12; i += paso) { const v = ventana[i]; (porAnio[v.y] = porAnio[v.y] || {})[`${v.m}-${sem}`] = 'P'; }
+              if (!Object.keys(porAnio).length) porAnio[anio] = {};
+              const exist = (await S.list('cronogramas', { entidad_id: ent.id })).filter((c) => c.equipo_id === e.id && c.tipo === tipo);
+              for (const [y, pl] of Object.entries(porAnio)) { const c = exist.find((x) => +x.anio === +y); if (c) await S.update('cronogramas', c.id, { plan: { ...(c.plan || {}), ...pl } }); else await S.insert('cronogramas', { entidad_id: ent.id, equipo_id: e.id, tipo, anio: +y, plan: pl }); }
+              // que se vea en este cronograma: sale de «quitados» y entra a la lista del cronograma cargado de la sede
+              const fresh = (await S.get('entidades', ent.id)) || ent; const cfg = { ...(fresh.config || {}) };
+              const cf = { ...(cfg.crono_fuera || {}) }; cf[tipo] = (cf[tipo] || []).filter((x) => x !== e.id); cfg.crono_fuera = cf;
+              const sd = sedeVista || sedeEq(e); if (cfg.crono_orden?.[tipo]?.[sd]) { const co2 = { ...cfg.crono_orden }; const pt = { ...co2[tipo] }; const ids = (pt[sd].ids || []).filter((x) => x !== e.id); pt[sd] = { ...pt[sd], ids: [...ids, e.id], vacio: false }; co2[tipo] = pt; cfg.crono_orden = co2; }
+              await S.update('entidades', ent.id, { config: cfg }); ent.config = cfg;
+              S.log('EDITAR', 'cronogramas', ent.id, `Agregar ${e.codigo_inv || e.nombre} al cronograma de ${tipo}`);
+              toast(`${e.codigo_inv || e.nombre} agregado al cronograma`); pintar();
+            } }] : [])] });
+        },
       });
     };
     await pintar();
